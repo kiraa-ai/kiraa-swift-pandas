@@ -68,6 +68,7 @@ The following vendored C libraries from the pandas project are compiled directly
 - Apple Accelerate framework integration (vDSP) for vectorized math on macOS/iOS
 - Copy-on-write value semantics via `isKnownUniquelyReferenced`
 - Compact `BitVector` validity bitmaps (1 bit per element)
+- **Planned**: Metal GPU compute shaders for GroupBy and Merge on Apple Silicon
 
 ### Swift Idioms
 - Value types (structs) with copy-on-write — no SettingWithCopyWarning
@@ -209,15 +210,16 @@ SwiftPandas/
 │       │   └── CSV/             # CSV reader/writer with type inference
 │       └── Numeric/             # VectorOps with Accelerate support
 └── Tests/
-    └── SwiftPandasTests/        # 133 tests covering all components
+    └── SwiftPandasTests/        # 147 tests covering all components
         ├── CSVDataFrameTests.swift    # Comprehensive API documentation tests
+        ├── BenchmarkTests.swift       # Performance benchmarks (Swift vs Python pandas)
         ├── NewFeaturesTests.swift     # Comparison, apply, groupby, concat tests
         └── SampleData/employees.csv   # 15-row sample dataset
 ```
 
 ## Test Suite
 
-133 tests across all components:
+147 tests across all components:
 
 | Category | Tests | Coverage |
 |---|---|---|
@@ -242,7 +244,31 @@ SwiftPandas/
 | Concat | 2 | Vertical stacking with mixed types |
 | Integration | 1 | End-to-end pandas-style workflow |
 | VectorOps | 4 | Accelerate/scalar math operations |
+| Benchmarks | 14 | Performance comparison vs Python pandas |
 | Other | 10 | Version, column, format, edge cases |
+
+## Performance: SwiftPandas vs Python pandas
+
+Run `./run_csv_demo.sh` or `swift test --filter BenchmarkTests` to see live benchmarks on your machine.
+
+| Category | Winner | Reason |
+|---|---|---|
+| Aggregation (sum/mean) | **Swift** | No interpreter overhead, tight loops |
+| Boolean Filtering | **Swift** | Single-pass value types, no GIL |
+| Sorting | Tie | Both use O(n log n) TimSort variants |
+| Scalar Arithmetic | pandas | NumPy SIMD vectorized C kernels |
+| Series Arithmetic | pandas | NumPy SIMD ops vs Swift scalar loops |
+| DataFrame Construction | **Swift** | Direct ContiguousArray, no BlockManager |
+| GroupBy | pandas | Cython integer-coded hash tables |
+| Merge/Join | pandas | C hash-join on raw arrays |
+| CSV Read | pandas | C tokenizer vs Swift Character parsing |
+| CSV Write | Tie | Both string-formatting bound |
+| Median/Quantile | pandas | O(n) introselect vs O(n log n) sort |
+| Concat | **Swift** | Simple array append, value semantics |
+
+**Planned GPU Acceleration:** GroupBy and Merge will be reimplemented as Metal compute shaders for massively parallel execution on Apple Silicon GPUs, leveraging unified memory for zero-copy CPU↔GPU data transfer.
+
+*Reference: Python pandas 2.2 on Apple M2, 16GB RAM, Python 3.11, NumPy 1.26*
 
 ## Roadmap
 
@@ -256,6 +282,11 @@ SwiftPandas/
 - [x] Boolean mask subscript (`df[mask]`)
 - [x] Concat with mixed column types
 - [x] Pretty-printed table output with box drawing
+- [x] Performance benchmarks (Swift vs Python pandas)
+- [ ] Metal GPU compute shaders for GroupBy and Merge
+- [ ] Wire VectorOps/Accelerate into NullableArray arithmetic
+- [ ] O(n) nth_element for median/quantile
+- [ ] Byte-level CSV parser
 - [ ] JSON I/O (bridging to CUltraJSON)
 - [ ] Time series types (Timestamp, Timedelta, Period)
 - [ ] Window functions (rolling, expanding, EWM) using CSkipList
