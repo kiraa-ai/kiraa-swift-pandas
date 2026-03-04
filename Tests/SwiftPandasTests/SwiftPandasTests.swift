@@ -443,7 +443,7 @@ final class SeriesTests: XCTestCase {
     func testDescribe() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let desc = s.describe()
-        XCTAssertEqual(desc.count, 5) // count, mean, std, min, max
+        XCTAssertEqual(desc.count, 8) // count, mean, std, min, 25%, 50%, 75%, max
     }
 }
 
@@ -529,7 +529,7 @@ final class DataFrameTests: XCTestCase {
     func testDescribe() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0], "b": [4.0, 5.0, 6.0]])
         let desc = df.describe()
-        XCTAssertEqual(desc.rowCount, 5) // count, mean, std, min, max
+        XCTAssertEqual(desc.rowCount, 8) // count, mean, std, min, 25%, 50%, 75%, max
         XCTAssertEqual(desc.columnCount, 2)
     }
 

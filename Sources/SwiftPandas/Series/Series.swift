@@ -291,6 +291,15 @@ public struct Series: CustomStringConvertible, Sendable {
         return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
     }
 
+    public static func - (lhs: Series, rhs: Double) -> Series {
+        guard case .double(let a) = lhs.data else { return lhs }
+        var result = a.copy()
+        for i in 0..<result.count where result.mask[i] {
+            result.data[i] = result.data[i] - rhs
+        }
+        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+    }
+
     public static func * (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
         var result = a.copy()
@@ -300,28 +309,242 @@ public struct Series: CustomStringConvertible, Sendable {
         return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
     }
 
+    public static func / (lhs: Series, rhs: Double) -> Series {
+        guard case .double(let a) = lhs.data else { return lhs }
+        var result = a.copy()
+        for i in 0..<result.count where result.mask[i] {
+            result.data[i] = result.data[i] / rhs
+        }
+        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+    }
+
+    // MARK: - Comparison operators (return Bool masks like pandas)
+
+    /// Element-wise greater than. NA values produce false.
+    public static func > (lhs: Series, rhs: Double) -> [Bool] {
+        guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] > rhs }
+    }
+
+    /// Element-wise greater than or equal. NA values produce false.
+    public static func >= (lhs: Series, rhs: Double) -> [Bool] {
+        guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] >= rhs }
+    }
+
+    /// Element-wise less than. NA values produce false.
+    public static func < (lhs: Series, rhs: Double) -> [Bool] {
+        guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] < rhs }
+    }
+
+    /// Element-wise less than or equal. NA values produce false.
+    public static func <= (lhs: Series, rhs: Double) -> [Bool] {
+        guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] <= rhs }
+    }
+
+    /// Element-wise equality. NA values produce false.
+    public func eq(_ value: Double) -> [Bool] {
+        guard case .double(let a) = data else { return [Bool](repeating: false, count: count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] == value }
+    }
+
+    /// Element-wise inequality. NA values produce false.
+    public func ne(_ value: Double) -> [Bool] {
+        guard case .double(let a) = data else { return [Bool](repeating: false, count: count) }
+        return (0..<a.count).map { a.mask[$0] && a.data[$0] != value }
+    }
+
+    /// Element-wise string equality. NA values produce false.
+    public func eq(_ value: String) -> [Bool] {
+        guard case .string(let a) = data else { return [Bool](repeating: false, count: count) }
+        return a.storage.map { $0 == value }
+    }
+
+    /// Element-wise string inequality. NA values produce false.
+    public func ne(_ value: String) -> [Bool] {
+        guard case .string(let a) = data else { return [Bool](repeating: false, count: count) }
+        return a.storage.map { $0 != nil && $0 != value }
+    }
+
+    /// String contains check (like pandas .str.contains). NA values produce false.
+    public func strContains(_ substring: String) -> [Bool] {
+        guard case .string(let a) = data else { return [Bool](repeating: false, count: count) }
+        return a.storage.map { $0?.contains(substring) ?? false }
+    }
+
+    // MARK: - Apply / Map
+
+    /// Apply a function to each numeric element, returning a new Series.
+    public func apply(_ transform: (Double) -> Double) -> Series {
+        guard case .double(let a) = data else { return self }
+        var result = a.copy()
+        for i in 0..<result.count where result.mask[i] {
+            result.data[i] = transform(result.data[i])
+        }
+        return Series(data: .double(result), index: indexLabels, name: name)
+    }
+
+    /// Map values using a dictionary. Unmapped values become NA.
+    public func map(_ mapping: [Double: Double]) -> Series {
+        guard case .double(let a) = data else { return self }
+        var values = [Double?]()
+        values.reserveCapacity(a.count)
+        for i in 0..<a.count {
+            if a.mask[i], let mapped = mapping[a.data[i]] {
+                values.append(mapped)
+            } else {
+                values.append(nil)
+            }
+        }
+        return Series(values, name: name)
+    }
+
+    /// Map string values using a dictionary. Unmapped values become NA.
+    public func map(_ mapping: [String: String]) -> Series {
+        guard case .string(let a) = data else { return self }
+        let mapped: [String?] = a.storage.map { s in
+            guard let s = s, let v = mapping[s] else { return nil }
+            return v
+        }
+        return Series(mapped, name: name)
+    }
+
+    // MARK: - Cumulative operations
+
+    /// Cumulative sum. NA values are skipped (not propagated).
+    public func cumsum() -> Series {
+        guard case .double(let a) = data else { return self }
+        var cumValues = [Double?]()
+        cumValues.reserveCapacity(a.count)
+        var running = 0.0
+        for i in 0..<a.count {
+            if a.mask[i] {
+                running += a.data[i]
+                cumValues.append(running)
+            } else {
+                cumValues.append(nil)
+            }
+        }
+        return Series(cumValues, name: name)
+    }
+
+    // MARK: - Additional aggregations
+
+    /// Median of numeric values.
+    public func median() -> Double? {
+        guard case .double(let a) = data else { return nil }
+        let valid = a.dropNA()
+        guard valid.count > 0 else { return nil }
+        let sorted = valid.array.sorted()
+        let mid = sorted.count / 2
+        if sorted.count % 2 == 0 {
+            return (sorted[mid - 1] + sorted[mid]) / 2.0
+        }
+        return sorted[mid]
+    }
+
+    /// Quantile (0.0 to 1.0) using linear interpolation.
+    public func quantile(_ q: Double) -> Double? {
+        precondition(q >= 0.0 && q <= 1.0, "Quantile must be between 0 and 1")
+        guard case .double(let a) = data else { return nil }
+        let valid = a.dropNA()
+        guard valid.count > 0 else { return nil }
+        let sorted = valid.array.sorted()
+        if sorted.count == 1 { return sorted[0] }
+        let pos = q * Double(sorted.count - 1)
+        let lower = Int(pos)
+        let upper = Swift.min(lower + 1, sorted.count - 1)
+        let frac = pos - Double(lower)
+        return sorted[lower] + frac * (sorted[upper] - sorted[lower])
+    }
+
+    // MARK: - Unique / duplicated
+
+    /// Return unique values as a new Series.
+    public func unique() -> Series {
+        switch data {
+        case .double(let a):
+            let u = a.unique()
+            return Series(data: .double(u), name: name)
+        case .string(let a):
+            let u = a.unique()
+            return Series(data: .string(u), name: name)
+        default:
+            return self
+        }
+    }
+
+    /// Number of unique non-NA values.
+    public var nUnique: Int {
+        switch data {
+        case .double(let a): return a.unique().validCount
+        case .string(let a): return a.unique().validCount
+        default: return 0
+        }
+    }
+
+    /// Boolean mask: true where the value is a duplicate (has appeared before).
+    public func duplicated() -> [Bool] {
+        switch data {
+        case .double(let a):
+            var seen = Set<Double>()
+            return (0..<a.count).map { i in
+                guard a.mask[i] else { return false }
+                return !seen.insert(a.data[i]).inserted
+            }
+        case .string(let a):
+            var seen = Set<String>()
+            return a.storage.map { s in
+                guard let s = s else { return false }
+                return !seen.insert(s).inserted
+            }
+        default:
+            return [Bool](repeating: false, count: count)
+        }
+    }
+
+    /// Drop duplicate values, keeping first occurrence.
+    public func dropDuplicates() -> Series {
+        let dupes = duplicated()
+        let keepIndices = dupes.enumerated().compactMap { !$1 ? $0 : nil }
+        return Series(
+            data: data.take(indices: keepIndices),
+            index: keepIndices.map { indexLabels[$0] },
+            name: name
+        )
+    }
+
     // MARK: - Description
 
     public var description: String {
         var lines = [String]()
         let maxDisplay = Swift.min(count, 20)
-        let maxLabelWidth = indexLabels.prefix(maxDisplay).map { $0.count }.max() ?? 0
+        let maxLabelWidth = Swift.max(indexLabels.prefix(maxDisplay).map { $0.count }.max() ?? 0, 1)
+
+        // Calculate value width for right-aligning numeric values
+        let maxValueWidth = (0..<maxDisplay).map { data.formattedValue(at: $0).count }.max() ?? 0
 
         for i in 0..<maxDisplay {
             let label = indexLabels[i].padding(toLength: maxLabelWidth, withPad: " ", startingAt: 0)
             let value = data.formattedValue(at: i)
-            lines.append("\(label)    \(value)")
+            let aligned = isNumeric
+                ? String(repeating: " ", count: Swift.max(0, maxValueWidth - value.count)) + value
+                : value
+            lines.append("\(label)  \(aligned)")
         }
 
         if count > maxDisplay {
             lines.append("... (\(count) rows)")
         }
 
+        var meta = "dtype: \(dtype)"
         if let name = name {
-            lines.append("Name: \(name), dtype: \(dtype)")
-        } else {
-            lines.append("dtype: \(dtype)")
+            meta = "Name: \(name), " + meta
         }
+        meta += ", length: \(count)"
+        lines.append(meta)
 
         return lines.joined(separator: "\n")
     }
@@ -342,6 +565,9 @@ public struct Series: CustomStringConvertible, Sendable {
             ("mean", doubles.mean() ?? .nan),
             ("std", doubles.std(ddof: 1) ?? .nan),
             ("min", doubles.min() ?? .nan),
+            ("25%", quantile(0.25) ?? .nan),
+            ("50%", median() ?? .nan),
+            ("75%", quantile(0.75) ?? .nan),
             ("max", doubles.max() ?? .nan),
         ]
         return Series(

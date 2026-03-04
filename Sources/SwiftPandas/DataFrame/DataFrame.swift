@@ -180,11 +180,32 @@ public struct DataFrame: CustomStringConvertible, Sendable {
         return row
     }
 
+    // MARK: - Row access (loc — label-based)
+
+    /// Select a single row by label, returning a dictionary.
+    public func loc(_ label: String) -> [String: Any?]? {
+        guard let pos = indexLabels.firstIndex(of: label) else { return nil }
+        return iloc(pos)
+    }
+
+    /// Select multiple rows by labels.
+    public func loc(_ labels: [String]) -> DataFrame {
+        let indices = labels.compactMap { label in indexLabels.firstIndex(of: label) }
+        return takeRows(indices)
+    }
+
+    // MARK: - Boolean mask filtering
+
     /// Select rows by boolean mask.
     public func filter(mask: [Bool]) -> DataFrame {
         precondition(mask.count == rowCount, "Mask must have same length as DataFrame")
         let indices = mask.enumerated().compactMap { $1 ? $0 : nil }
         return takeRows(indices)
+    }
+
+    /// Subscript with a boolean mask — enables `df[df["age"] > 30]` syntax.
+    public subscript(mask: [Bool]) -> DataFrame {
+        filter(mask: mask)
     }
 
     /// Take rows at specified integer positions.
@@ -209,6 +230,49 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     }
 
     // MARK: - Sorting
+
+    /// Sort by values in multiple columns (leftmost column is primary sort key).
+    public func sortValues(by sortColumns: [String], ascending: [Bool]? = nil) -> DataFrame {
+        let ascFlags = ascending ?? [Bool](repeating: true, count: sortColumns.count)
+        precondition(ascFlags.count == sortColumns.count, "ascending array must match columns count")
+
+        let indices = Array(0..<rowCount).sorted { i, j in
+            for (colIdx, colName) in sortColumns.enumerated() {
+                guard let col = columns[colName] else { continue }
+                let asc = ascFlags[colIdx]
+                switch col {
+                case .double(let a):
+                    let iValid = a.mask[i], jValid = a.mask[j]
+                    if !iValid && !jValid { continue }
+                    if !iValid { return false } // NAs to end
+                    if !jValid { return true }
+                    if a.data[i] != a.data[j] {
+                        return asc ? a.data[i] < a.data[j] : a.data[i] > a.data[j]
+                    }
+                case .string(let a):
+                    let iVal = a[i], jVal = a[j]
+                    if iVal == nil && jVal == nil { continue }
+                    if iVal == nil { return false }
+                    if jVal == nil { return true }
+                    if iVal! != jVal! {
+                        return asc ? iVal! < jVal! : iVal! > jVal!
+                    }
+                case .int64(let a):
+                    let iValid = a.mask[i], jValid = a.mask[j]
+                    if !iValid && !jValid { continue }
+                    if !iValid { return false }
+                    if !jValid { return true }
+                    if a.data[i] != a.data[j] {
+                        return asc ? a.data[i] < a.data[j] : a.data[i] > a.data[j]
+                    }
+                default:
+                    continue
+                }
+            }
+            return false // equal on all sort keys
+        }
+        return takeRows(indices)
+    }
 
     /// Sort by values in a column.
     public func sortValues(by column: String, ascending: Bool = true) -> DataFrame {
@@ -278,18 +342,29 @@ public struct DataFrame: CustomStringConvertible, Sendable {
         return Series(data: .fromDoubles(values), index: numericCols, name: nil)
     }
 
-    /// Describe all numeric columns.
+    /// Median of each numeric column.
+    public func median() -> Series {
+        let numericCols = columnNames.filter { columns[$0]!.isNumeric }
+        let values = numericCols.map { self[$0].median() ?? .nan }
+        return Series(data: .fromDoubles(values), index: numericCols, name: nil)
+    }
+
+    /// Describe all numeric columns (with quartiles like pandas).
     public func describe() -> DataFrame {
         let numericCols = columnNames.filter { columns[$0]!.isNumeric }
         var resultCols = [(String, Column)]()
 
         for colName in numericCols {
+            let s = self[colName]
             guard let doubles = columns[colName]!.asDouble() else { continue }
             let stats: [Double] = [
                 Double(doubles.validCount),
                 doubles.mean() ?? .nan,
                 doubles.std(ddof: 1) ?? .nan,
                 doubles.min() ?? .nan,
+                s.quantile(0.25) ?? .nan,
+                s.median() ?? .nan,
+                s.quantile(0.75) ?? .nan,
                 doubles.max() ?? .nan,
             ]
             resultCols.append((colName, .fromDoubles(stats)))
@@ -297,8 +372,27 @@ public struct DataFrame: CustomStringConvertible, Sendable {
 
         return DataFrame(
             columns: resultCols,
-            index: ["count", "mean", "std", "min", "max"]
+            index: ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
         )
+    }
+
+    // MARK: - Duplicates
+
+    /// Boolean mask: true where the row is a duplicate based on the given columns.
+    public func duplicated(subset: [String]? = nil) -> [Bool] {
+        let cols = subset ?? columnNames
+        var seen = Set<String>()
+        return (0..<rowCount).map { i in
+            let key = cols.map { columns[$0]!.formattedValue(at: i) }.joined(separator: "\t")
+            return !seen.insert(key).inserted
+        }
+    }
+
+    /// Drop duplicate rows, keeping first occurrence.
+    public func dropDuplicates(subset: [String]? = nil) -> DataFrame {
+        let dupes = duplicated(subset: subset)
+        let keepIndices = dupes.enumerated().compactMap { !$1 ? $0 : nil }
+        return takeRows(keepIndices)
     }
 
     // MARK: - Apply
@@ -316,7 +410,7 @@ public struct DataFrame: CustomStringConvertible, Sendable {
 
     // MARK: - Concat
 
-    /// Concatenate DataFrames vertically.
+    /// Concatenate DataFrames vertically (supports all column types).
     public static func concat(_ frames: [DataFrame]) -> DataFrame {
         guard let first = frames.first else { return DataFrame() }
         let colNames = first.columnNames
@@ -325,14 +419,37 @@ public struct DataFrame: CustomStringConvertible, Sendable {
         var resultIndex = [String]()
 
         for name in colNames {
-            var allValues = [Double?]()
-            for frame in frames {
-                guard case .double(let arr) = frame.columns[name] else { continue }
-                for i in 0..<arr.count {
-                    allValues.append(arr[i])
+            guard let firstCol = first.columns[name] else { continue }
+            switch firstCol {
+            case .double:
+                var allValues = [Double?]()
+                for frame in frames {
+                    guard case .double(let arr) = frame.columns[name] else { continue }
+                    for i in 0..<arr.count { allValues.append(arr[i]) }
                 }
+                resultCols.append((name, .fromOptionalDoubles(allValues)))
+            case .string:
+                var allValues = [String?]()
+                for frame in frames {
+                    guard case .string(let arr) = frame.columns[name] else { continue }
+                    allValues.append(contentsOf: arr.storage)
+                }
+                resultCols.append((name, .fromOptionalStrings(allValues)))
+            case .int64:
+                var allValues = [Double?]()
+                for frame in frames {
+                    guard let arr = frame.columns[name]?.asDouble() else { continue }
+                    for i in 0..<arr.count { allValues.append(arr[i]) }
+                }
+                resultCols.append((name, .fromOptionalDoubles(allValues)))
+            case .bool:
+                var allValues = [Bool]()
+                for frame in frames {
+                    guard case .bool(let arr) = frame.columns[name] else { continue }
+                    for i in 0..<arr.count { allValues.append(arr.mask[i] ? arr.data[i] : false) }
+                }
+                resultCols.append((name, .fromBools(allValues)))
             }
-            resultCols.append((name, .fromOptionalDoubles(allValues)))
         }
 
         for frame in frames {
@@ -392,9 +509,14 @@ public struct DataFrame: CustomStringConvertible, Sendable {
 
     // MARK: - GroupBy
 
-    /// Group by a column, returning a GroupBy object.
+    /// Group by a single column, returning a GroupBy object.
     public func groupBy(_ column: String) -> GroupBy {
-        GroupBy(dataFrame: self, by: column)
+        GroupBy(dataFrame: self, by: [column])
+    }
+
+    /// Group by multiple columns, returning a GroupBy object.
+    public func groupBy(_ groupColumns: [String]) -> GroupBy {
+        GroupBy(dataFrame: self, by: groupColumns)
     }
 
     // MARK: - Description
@@ -402,12 +524,13 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     public var description: String {
         guard !isEmpty else { return "Empty DataFrame" }
 
-        // Calculate column widths
+        let maxRows = Swift.min(rowCount, 20)
+
+        // Calculate column widths (right-aligned for numeric, left-aligned for strings)
         var colWidths = [String: Int]()
         for name in columnNames {
             colWidths[name] = name.count
         }
-        let maxRows = Swift.min(rowCount, 20)
         for i in 0..<maxRows {
             for name in columnNames {
                 let val = columns[name]!.formattedValue(at: i)
@@ -415,30 +538,54 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             }
         }
 
-        let indexWidth = indexLabels.prefix(maxRows).map { $0.count }.max() ?? 0
+        let indexWidth = Swift.max(indexLabels.prefix(maxRows).map { $0.count }.max() ?? 0, 1)
 
-        // Header
+        // Build separator line
+        let colSeparators = columnNames.map { String(repeating: "\u{2500}", count: colWidths[$0]! + 2) }
+        let topBorder = "\u{250C}" + String(repeating: "\u{2500}", count: indexWidth + 2) + "\u{252C}" + colSeparators.joined(separator: "\u{252C}") + "\u{2510}"
+        let headerSep = "\u{251C}" + String(repeating: "\u{2500}", count: indexWidth + 2) + "\u{253C}" + colSeparators.joined(separator: "\u{253C}") + "\u{2524}"
+        let bottomBorder = "\u{2514}" + String(repeating: "\u{2500}", count: indexWidth + 2) + "\u{2534}" + colSeparators.joined(separator: "\u{2534}") + "\u{2518}"
+
         var lines = [String]()
-        let header = String(repeating: " ", count: indexWidth + 2) +
-            columnNames.map { $0.padding(toLength: colWidths[$0]!, withPad: " ", startingAt: 0) }
-            .joined(separator: "  ")
-        lines.append(header)
 
-        // Rows
+        // Top border
+        lines.append(topBorder)
+
+        // Header row
+        let idxHeader = String(repeating: " ", count: indexWidth).padding(toLength: indexWidth, withPad: " ", startingAt: 0)
+        let headerCells = columnNames.map { name in
+            " " + name.padding(toLength: colWidths[name]!, withPad: " ", startingAt: 0) + " "
+        }
+        lines.append("\u{2502} \(idxHeader) \u{2502}" + headerCells.joined(separator: "\u{2502}") + "\u{2502}")
+
+        // Header separator
+        lines.append(headerSep)
+
+        // Data rows
         for i in 0..<maxRows {
             let idx = indexLabels[i].padding(toLength: indexWidth, withPad: " ", startingAt: 0)
-            let vals = columnNames.map { name in
-                columns[name]!.formattedValue(at: i)
-                    .padding(toLength: colWidths[name]!, withPad: " ", startingAt: 0)
-            }.joined(separator: "  ")
-            lines.append("\(idx)  \(vals)")
+            let cells = columnNames.map { name -> String in
+                let val = columns[name]!.formattedValue(at: i)
+                let isNumeric = columns[name]!.isNumeric
+                if isNumeric {
+                    // Right-align numeric values
+                    let padded = String(repeating: " ", count: Swift.max(0, colWidths[name]! - val.count)) + val
+                    return " " + padded + " "
+                } else {
+                    return " " + val.padding(toLength: colWidths[name]!, withPad: " ", startingAt: 0) + " "
+                }
+            }
+            lines.append("\u{2502} \(idx) \u{2502}" + cells.joined(separator: "\u{2502}") + "\u{2502}")
         }
+
+        // Bottom border
+        lines.append(bottomBorder)
 
         if rowCount > maxRows {
-            lines.append("... (\(rowCount) rows x \(columnCount) columns)")
+            lines.append("... \(rowCount) rows total")
         }
 
-        lines.append("\n[\(rowCount) rows x \(columnCount) columns]")
+        lines.append("[\(rowCount) rows x \(columnCount) columns]")
         return lines.joined(separator: "\n")
     }
 }
@@ -455,19 +602,19 @@ public enum MergeHow: Sendable {
 // MARK: - GroupBy
 
 /// GroupBy object for split-apply-combine operations.
+/// Supports grouping by one or more columns.
 public struct GroupBy: Sendable {
     public let dataFrame: DataFrame
-    public let by: String
+    public let by: [String]
 
-    /// The group keys and their row indices.
+    /// The group keys (composite key string) and their row indices.
     public var groups: [String: [Int]] {
         var result = [String: [Int]]()
-        guard let col = dataFrame.columns[by] else { return result }
         for i in 0..<dataFrame.rowCount {
-            let key = col.formattedValue(at: i)
-            if key != "NA" {
-                result[key, default: []].append(i)
-            }
+            let keyParts = by.map { dataFrame.columns[$0]!.formattedValue(at: i) }
+            if keyParts.contains("NA") { continue }
+            let key = keyParts.joined(separator: "\t")
+            result[key, default: []].append(i)
         }
         return result
     }
@@ -502,10 +649,19 @@ public struct GroupBy: Sendable {
         let grps = groups
         let sortedKeys = grps.keys.sorted()
         let numericCols = dataFrame.columnNames.filter {
-            $0 != by && dataFrame.columns[$0]!.isNumeric
+            !by.contains($0) && dataFrame.columns[$0]!.isNumeric
         }
 
+        // Build group key columns
         var resultCols = [(String, Column)]()
+        if by.count > 1 {
+            // For multi-column groupBy, include the group key columns in the result
+            for groupCol in by {
+                let firstIndices = sortedKeys.map { grps[$0]!.first! }
+                resultCols.append((groupCol, dataFrame.columns[groupCol]!.take(indices: firstIndices)))
+            }
+        }
+
         for colName in numericCols {
             guard let colData = dataFrame.columns[colName]!.asDouble() else { continue }
             var values = [Double]()
@@ -518,6 +674,14 @@ public struct GroupBy: Sendable {
             resultCols.append((colName, .fromDoubles(values)))
         }
 
-        return DataFrame(columns: resultCols, index: sortedKeys)
+        // For single-column groupBy, use the group keys as the index
+        let index: [String]
+        if by.count == 1 {
+            index = sortedKeys
+        } else {
+            index = (0..<sortedKeys.count).map { "\($0)" }
+        }
+
+        return DataFrame(columns: resultCols, index: index)
     }
 }

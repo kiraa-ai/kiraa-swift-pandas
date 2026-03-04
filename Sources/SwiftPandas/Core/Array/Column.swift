@@ -85,8 +85,19 @@ public enum Column: CustomStringConvertible, Sendable {
         switch self {
         case .double(let a):
             guard let v = a[index] else { return "NA" }
-            return v.truncatingRemainder(dividingBy: 1) == 0
-                ? String(format: "%.1f", v) : "\(v)"
+            if v.truncatingRemainder(dividingBy: 1) == 0 && abs(v) < 1e15 {
+                return String(format: "%.0f", v)
+            }
+            // Cap at 4 decimal places for readability
+            let formatted = String(format: "%.4f", v)
+            // Strip trailing zeros after decimal point
+            if formatted.contains(".") {
+                var trimmed = formatted
+                while trimmed.hasSuffix("0") { trimmed.removeLast() }
+                if trimmed.hasSuffix(".") { trimmed.removeLast() }
+                return trimmed
+            }
+            return formatted
         case .string(let a):
             return a[index] ?? "NA"
         case .bool(let a):

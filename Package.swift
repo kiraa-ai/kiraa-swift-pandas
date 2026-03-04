@@ -42,7 +42,8 @@ let package = Package(
         .testTarget(
             name: "SwiftPandasTests",
             dependencies: ["SwiftPandas"],
-            path: "Tests/SwiftPandasTests"
+            path: "Tests/SwiftPandasTests",
+            resources: [.copy("SampleData")]
         ),
     ]
 )
