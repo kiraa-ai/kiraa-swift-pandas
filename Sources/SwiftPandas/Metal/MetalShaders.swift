@@ -1,3 +1,6 @@
+// Only needed for SPM builds where Metal shaders can't be precompiled.
+// Xcode builds use .metal files compiled to default.metallib at build time.
+#if SWIFT_PACKAGE
 import Metal
 
 /// Metal Shading Language source code for all GPU compute kernels.
@@ -301,3 +304,4 @@ internal enum MetalShaders {
     }
     """
 }
+#endif

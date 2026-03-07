@@ -756,58 +756,100 @@ public struct GroupBy: Sendable {
         let n = dataFrame.rowCount
 
         // Step 1: Factorize group columns to integer codes
-        var groupCodes = [Int](repeating: 0, count: n)
-        var nGroups = 1
-        // Track which rows have NA keys (skip them)
-        var validRow = [Bool](repeating: true, count: n)
+        var groupCodes: [Int]
+        var nGroups: Int
+        var hasNA = false
 
-        for colName in by {
-            guard let col = dataFrame.columns[colName] else { continue }
+        if by.count == 1 {
+            // Single-column fast path: codes are already dense [0, nUnique)
+            guard let col = dataFrame.columns[by[0]] else {
+                return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
+            }
             let (codes, nUnique): ([Int], Int)
             switch col {
             case .double(let a):
                 let f = a.factorize()
-                codes = f.codes
-                nUnique = f.uniques.count
+                codes = f.codes; nUnique = f.uniques.count
             case .string(let a):
                 let f = a.factorize()
-                codes = f.codes
-                nUnique = f.uniques.count
+                codes = f.codes; nUnique = f.uniques.count
             case .int64(let a):
                 let f = a.factorize()
-                codes = f.codes
-                nUnique = f.uniques.count
+                codes = f.codes; nUnique = f.uniques.count
             default:
-                codes = [Int](repeating: 0, count: n)
-                nUnique = 1
+                codes = [Int](repeating: 0, count: n); nUnique = 1
             }
-            // Combine codes: composite key = existing * nUnique + newCode
-            for i in 0..<n {
-                if codes[i] < 0 {
-                    validRow[i] = false
-                } else {
-                    groupCodes[i] = groupCodes[i] * nUnique + codes[i]
+            groupCodes = codes
+            nGroups = nUnique
+            // Check for NAs (code == -1)
+            for c in codes where c < 0 { hasNA = true; break }
+        } else {
+            // Multi-column: build composite codes
+            groupCodes = [Int](repeating: 0, count: n)
+            nGroups = 1
+            var validRow = [Bool](repeating: true, count: n)
+            for colName in by {
+                guard let col = dataFrame.columns[colName] else { continue }
+                let (codes, nUnique): ([Int], Int)
+                switch col {
+                case .double(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                case .string(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                case .int64(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                default:
+                    codes = [Int](repeating: 0, count: n); nUnique = 1
                 }
+                for i in 0..<n {
+                    if codes[i] < 0 { validRow[i] = false }
+                    else { groupCodes[i] = groupCodes[i] * nUnique + codes[i] }
+                }
+                nGroups *= nUnique
             }
-            nGroups *= nUnique
+            hasNA = !validRow.allSatisfy { $0 }
+            // Mark NA rows with -1 code
+            if hasNA {
+                for i in 0..<n where !validRow[i] { groupCodes[i] = -1 }
+            }
         }
 
         // Step 2: Compact group codes to dense range [0, actualGroups)
-        // (composite codes may be sparse)
-        var codeMap = [Int: Int]()
-        var denseCode = 0
-        var firstRowForGroup = [Int]() // first row index for each dense group (for key reconstruction)
-        for i in 0..<n {
-            guard validRow[i] else { continue }
-            let code = groupCodes[i]
-            if codeMap[code] == nil {
-                codeMap[code] = denseCode
-                firstRowForGroup.append(i)
-                denseCode += 1
+        // For single-column groupby, codes are already dense — skip dictionary compaction
+        let actualGroups: Int
+        var firstRowForGroup: [Int]
+
+        if by.count == 1 && !hasNA {
+            // Codes are already [0, nGroups) — just find first row per group
+            actualGroups = nGroups
+            firstRowForGroup = [Int](repeating: -1, count: actualGroups)
+            groupCodes.withUnsafeBufferPointer { codesBuf in
+                for i in 0..<n {
+                    let g = codesBuf[i]
+                    if firstRowForGroup[g] < 0 { firstRowForGroup[g] = i }
+                }
             }
-            groupCodes[i] = codeMap[code]!
+        } else {
+            // General case: compact sparse composite codes via dictionary
+            var codeMap = [Int: Int]()
+            var denseCode = 0
+            firstRowForGroup = [Int]()
+            for i in 0..<n {
+                let code = groupCodes[i]
+                guard code >= 0 else { continue }
+                if codeMap[code] == nil {
+                    codeMap[code] = denseCode
+                    firstRowForGroup.append(i)
+                    denseCode += 1
+                }
+                groupCodes[i] = codeMap[code]!
+            }
+            actualGroups = denseCode
         }
-        let actualGroups = denseCode
+
         guard actualGroups > 0 else {
             return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
         }
@@ -855,7 +897,7 @@ public struct GroupBy: Sendable {
         }
 
         // Check if all rows have valid keys (common case: no NA in group columns)
-        let allRowsValid = validRow.allSatisfy { $0 }
+        let allRowsValid = !hasNA
 
         for colName in numericCols {
             guard let colData = dataFrame.columns[colName]!.asDouble() else { continue }
@@ -866,82 +908,104 @@ public struct GroupBy: Sendable {
             let fullyValid = allRowsValid && allColValid
 
             if fullyValid {
-                // Fastest path: raw pointer access, no validity checks
+                // Fastest path: raw pointers throughout, no bounds checks
                 values = colData.data.withUnsafeBufferPointer { dataBuf in
                     groupCodes.withUnsafeBufferPointer { codesBuf in
                         switch op {
                         case .sum:
-                            var sums = [Double](repeating: 0, count: actualGroups)
+                            let sums = UnsafeMutablePointer<Double>.allocate(capacity: actualGroups)
+                            sums.initialize(repeating: 0, count: actualGroups)
                             for i in 0..<n { sums[codesBuf[i]] += dataBuf[i] }
-                            return sortedGroupIndices.map { sums[$0] }
+                            let result = sortedGroupIndices.map { sums[$0] }
+                            sums.deallocate()
+                            return result
                         case .mean:
-                            var sums = [Double](repeating: 0, count: actualGroups)
-                            var counts = [Int](repeating: 0, count: actualGroups)
+                            let sums = UnsafeMutablePointer<Double>.allocate(capacity: actualGroups)
+                            let counts = UnsafeMutablePointer<Int>.allocate(capacity: actualGroups)
+                            sums.initialize(repeating: 0, count: actualGroups)
+                            counts.initialize(repeating: 0, count: actualGroups)
                             for i in 0..<n {
-                                sums[codesBuf[i]] += dataBuf[i]
-                                counts[codesBuf[i]] += 1
+                                let g = codesBuf[i]
+                                sums[g] += dataBuf[i]
+                                counts[g] += 1
                             }
-                            return sortedGroupIndices.map { g in
+                            let result = sortedGroupIndices.map { g in
                                 counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
                             }
+                            sums.deallocate(); counts.deallocate()
+                            return result
                         case .count:
-                            var counts = [Int](repeating: 0, count: actualGroups)
+                            let counts = UnsafeMutablePointer<Int>.allocate(capacity: actualGroups)
+                            counts.initialize(repeating: 0, count: actualGroups)
                             for i in 0..<n { counts[codesBuf[i]] += 1 }
-                            return sortedGroupIndices.map { Double(counts[$0]) }
+                            let result = sortedGroupIndices.map { Double(counts[$0]) }
+                            counts.deallocate()
+                            return result
                         case .min:
-                            var mins = [Double](repeating: .infinity, count: actualGroups)
+                            let mins = UnsafeMutablePointer<Double>.allocate(capacity: actualGroups)
+                            mins.initialize(repeating: .infinity, count: actualGroups)
                             for i in 0..<n {
                                 let g = codesBuf[i]
                                 if dataBuf[i] < mins[g] { mins[g] = dataBuf[i] }
                             }
-                            return sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                            let result = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                            mins.deallocate()
+                            return result
                         case .max:
-                            var maxs = [Double](repeating: -.infinity, count: actualGroups)
+                            let maxs = UnsafeMutablePointer<Double>.allocate(capacity: actualGroups)
+                            maxs.initialize(repeating: -.infinity, count: actualGroups)
                             for i in 0..<n {
                                 let g = codesBuf[i]
                                 if dataBuf[i] > maxs[g] { maxs[g] = dataBuf[i] }
                             }
-                            return sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                            let result = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                            maxs.deallocate()
+                            return result
                         }
                     }
                 }
             } else {
-                // Slow path: check validity per element
+                // Slow path: check validity per element (NA keys have code -1)
                 switch op {
                 case .sum:
                     var sums = [Double](repeating: 0, count: actualGroups)
-                    for i in 0..<n where validRow[i] && colData.mask[i] {
-                        sums[groupCodes[i]] += colData.data[i]
+                    for i in 0..<n {
+                        let g = groupCodes[i]
+                        if g >= 0 && colData.mask[i] { sums[g] += colData.data[i] }
                     }
                     values = sortedGroupIndices.map { sums[$0] }
                 case .mean:
                     var sums = [Double](repeating: 0, count: actualGroups)
                     var counts = [Int](repeating: 0, count: actualGroups)
-                    for i in 0..<n where validRow[i] && colData.mask[i] {
-                        sums[groupCodes[i]] += colData.data[i]
-                        counts[groupCodes[i]] += 1
+                    for i in 0..<n {
+                        let g = groupCodes[i]
+                        if g >= 0 && colData.mask[i] {
+                            sums[g] += colData.data[i]
+                            counts[g] += 1
+                        }
                     }
                     values = sortedGroupIndices.map { g in
                         counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
                     }
                 case .count:
                     var counts = [Int](repeating: 0, count: actualGroups)
-                    for i in 0..<n where validRow[i] && colData.mask[i] {
-                        counts[groupCodes[i]] += 1
+                    for i in 0..<n {
+                        let g = groupCodes[i]
+                        if g >= 0 && colData.mask[i] { counts[g] += 1 }
                     }
                     values = sortedGroupIndices.map { Double(counts[$0]) }
                 case .min:
                     var mins = [Double](repeating: .infinity, count: actualGroups)
-                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                    for i in 0..<n {
                         let g = groupCodes[i]
-                        if colData.data[i] < mins[g] { mins[g] = colData.data[i] }
+                        if g >= 0 && colData.mask[i] && colData.data[i] < mins[g] { mins[g] = colData.data[i] }
                     }
                     values = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
                 case .max:
                     var maxs = [Double](repeating: -.infinity, count: actualGroups)
-                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                    for i in 0..<n {
                         let g = groupCodes[i]
-                        if colData.data[i] > maxs[g] { maxs[g] = colData.data[i] }
+                        if g >= 0 && colData.mask[i] && colData.data[i] > maxs[g] { maxs[g] = colData.data[i] }
                     }
                     values = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
                 }

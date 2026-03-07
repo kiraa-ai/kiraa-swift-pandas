@@ -106,26 +106,73 @@ public struct StringArray {
     }
 
     public func factorize() -> (codes: [Int], uniques: StringArray) {
-        var mapping = [String: Int]()
-        var uniques = [String?]()
-        var codes = [Int]()
-        codes.reserveCapacity(count)
+        let n = count
+        guard n > 0 else { return ([], StringArray()) }
 
-        for s in storage {
-            if let s = s {
-                if let code = mapping[s] {
-                    codes.append(code)
-                } else {
-                    let code = uniques.count
-                    mapping[s] = code
-                    uniques.append(s)
-                    codes.append(code)
+        // Pre-allocate codes array (-1 = NA)
+        var codes = [Int](repeating: -1, count: n)
+        var uniqueKeys = [String?]()
+        uniqueKeys.reserveCapacity(128)
+
+        // Open-addressing hash table with FNV-1a (3-5x faster than SipHash for short strings)
+        var cap = 256
+        var mask = cap - 1
+        var table = UnsafeMutablePointer<Int32>.allocate(capacity: cap)
+        table.initialize(repeating: -1, count: cap)
+
+        for i in 0..<n {
+            guard let s = storage[i] else { continue }
+
+            // FNV-1a hash over UTF-8 bytes
+            var h: UInt = 14695981039346656037
+            for byte in s.utf8 {
+                h ^= UInt(byte)
+                h &*= 1099511628211
+            }
+
+            var pos = Int(bitPattern: h) & mask
+            while true {
+                let idx = Int(table[pos])
+                if idx < 0 {
+                    // New unique key — insert
+                    let code = uniqueKeys.count
+                    uniqueKeys.append(s)
+                    table[pos] = Int32(code)
+                    codes[i] = code
+                    // Resize at 70% load factor
+                    if uniqueKeys.count * 10 > cap * 7 {
+                        let oldCap = cap
+                        let oldTable = table
+                        cap *= 2
+                        mask = cap - 1
+                        table = .allocate(capacity: cap)
+                        table.initialize(repeating: -1, count: cap)
+                        for j in 0..<oldCap {
+                            let entry = oldTable[j]
+                            guard entry >= 0 else { continue }
+                            var rh: UInt = 14695981039346656037
+                            for byte in uniqueKeys[Int(entry)]!.utf8 {
+                                rh ^= UInt(byte)
+                                rh &*= 1099511628211
+                            }
+                            var p = Int(bitPattern: rh) & mask
+                            while table[p] >= 0 { p = (p + 1) & mask }
+                            table[p] = entry
+                        }
+                        oldTable.deallocate()
+                    }
+                    break
                 }
-            } else {
-                codes.append(-1)
+                if uniqueKeys[idx]! == s {
+                    codes[i] = idx
+                    break
+                }
+                pos = (pos + 1) & mask
             }
         }
-        return (codes, StringArray(uniques))
+
+        table.deallocate()
+        return (codes, StringArray(uniqueKeys))
     }
 
     public func fillNA(value: String) -> StringArray {

@@ -1,0 +1,88 @@
+name: SwiftPandas
+options:
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  bundleIdPrefix: com.swiftpandas
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+targets:
+  SwiftPandas:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/SwiftPandas
+      - path: Sources/CKHash
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+      - path: Sources/CSkipList
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+      - path: Sources/CUltraJSON
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.SwiftPandas
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCELERATE_AVAILABLE
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Sources/CKHash/include"
+          - "$(SRCROOT)/Sources/CSkipList/include"
+          - "$(SRCROOT)/Sources/CUltraJSON/include"
+        MTL_HEADER_SEARCH_PATHS: "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders"
+        DEFINES_MODULE: YES
+        SWIFT_VERSION: "5.9"
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          ENABLE_TESTABILITY: YES
+    scheme:
+      testTargets:
+        - SwiftPandasTests
+
+  SwiftPandasApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: SwiftPandasApp
+    dependencies:
+      - target: SwiftPandas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.app
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_CFBundleDisplayName: SwiftPandas Demo
+    resources:
+      - path: SwiftPandasApp/employees.csv
+
+  SwiftPandasTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/SwiftPandasTests
+        excludes:
+          - "SampleData/**"
+      - path: Tests/SwiftPandasTests/SampleData
+        buildPhase: resources
+    dependencies:
+      - target: SwiftPandas
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"

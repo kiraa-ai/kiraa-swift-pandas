@@ -1,0 +1,16 @@
+name,department,salary,age,years_experience,performance_score
+Alice,Engineering,95000,32,8,4.5
+Bob,Marketing,72000,28,4,3.8
+Charlie,Engineering,105000,35,12,4.7
+Diana,Sales,68000,26,3,4.1
+Eve,Engineering,115000,40,16,4.9
+Frank,Marketing,75000,31,6,3.5
+Grace,Sales,71000,29,5,4.3
+Hank,Engineering,98000,33,9,4.2
+Ivy,Marketing,80000,34,10,4.0
+Jack,Sales,65000,25,2,3.6
+Kate,Engineering,110000,38,14,4.8
+Leo,Sales,69000,27,4,3.9
+Mia,Marketing,78000,30,7,4.1
+Noah,Engineering,102000,36,11,4.6
+Olivia,Sales,73000,31,6,4.4

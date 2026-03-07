@@ -805,22 +805,27 @@ def run_python_benchmarks():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PART 3: SwiftPandas Tests (invoke via swift test)
+# PART 3: SwiftPandas Tests (invoke via xcodebuild test)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_swift_tests():
-    banner("SWIFTPANDAS — TEST SUITE (via swift test)")
+    banner("SWIFTPANDAS — TEST SUITE (via xcodebuild test -configuration Release)")
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
     print()
     note(f"Project: {project_dir}")
-    note("Running: swift test")
+    note("Running: xcodebuild test -scheme SwiftPandas -configuration Release")
     print()
     print(THIN)
 
     try:
         result = subprocess.run(
-            ["swift", "test"],
+            [
+                "xcodebuild", "test",
+                "-scheme", "SwiftPandas",
+                "-destination", "platform=macOS",
+                "-configuration", "Release",
+            ],
             cwd=project_dir,
             capture_output=True,
             text=True,
@@ -858,49 +863,87 @@ def run_swift_tests():
         return swift_passed, swift_failed
 
     except FileNotFoundError:
-        print("  ERROR: swift command not found. Is Swift installed?")
+        print("  ERROR: xcodebuild not found. Is Xcode installed?")
         return 0, -1
     except subprocess.TimeoutExpired:
-        print("  ERROR: swift test timed out after 600 seconds.")
+        print("  ERROR: xcodebuild test timed out after 600 seconds.")
+        return 0, -1
+
+    except Exception as e:
+        print(f"  ERROR: {e}")
         return 0, -1
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PART 4: SwiftPandas Benchmarks (invoke via swift test --filter BenchmarkTests)
+# PART 4: SwiftPandas Benchmarks (invoke via xcodebuild test --filter BenchmarkTests)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_swift_benchmarks():
     """Run SwiftPandas benchmarks and return parsed timing dict {op_name: ms}."""
-    banner("SWIFTPANDAS — PERFORMANCE BENCHMARKS (via swift test)")
+    banner("SWIFTPANDAS — PERFORMANCE BENCHMARKS (via xcodebuild Release)")
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
     print()
-    note("Running: xcrun xctest -XCTest SwiftPandasTests.BenchmarkTests")
+    note("Running: xcodebuild build-for-testing -configuration Release")
+    note("         + xcrun xctest -XCTest BenchmarkTests")
+    note("Swift compiled with -O (optimized). C libs compiled with -O3.")
     print()
     print(THIN)
 
     swift_timings = {}
 
     try:
-        # Build first, then run the XCTest binary directly via xcrun xctest.
-        # `swift test` swallows print() output from tests; running the binary
-        # directly preserves it.
-        subprocess.run(
-            ["swift", "build", "--build-tests"],
+        # Build for testing in Release mode so Swift code is optimized (-O).
+        # This is critical for a fair comparison with pandas (compiled C/Cython).
+        # Then run the XCTest binary directly via xcrun xctest to preserve
+        # print() output from benchmark tests.
+        build_result = subprocess.run(
+            [
+                "xcodebuild", "build-for-testing",
+                "-scheme", "SwiftPandas",
+                "-destination", "platform=macOS",
+                "-configuration", "Release",
+            ],
             cwd=project_dir,
-            capture_output=True, timeout=120,
+            capture_output=True, text=True, timeout=180,
         )
 
-        test_bundle = os.path.join(
-            project_dir, ".build", "debug",
-            "SwiftPandasPackageTests.xctest",
-        )
+        # Find the built xctest bundle in DerivedData
+        derived_data = None
+        for line in build_result.stdout.splitlines():
+            if "SwiftPandasTests.xctest" in line and "Build/Products" in line:
+                # Extract the path from build output
+                import re as _re
+                m = _re.search(r'(/\S*SwiftPandasTests\.xctest)\b', line)
+                if m:
+                    derived_data = m.group(1)
+                    break
+
+        # Fallback: search DerivedData for the test bundle (Release folder)
+        if not derived_data:
+            dd_root = os.path.expanduser(
+                "~/Library/Developer/Xcode/DerivedData"
+            )
+            for entry in os.listdir(dd_root):
+                if entry.startswith("SwiftPandas-"):
+                    candidate = os.path.join(
+                        dd_root, entry, "Build", "Products", "Release",
+                        "SwiftPandasTests.xctest",
+                    )
+                    if os.path.exists(candidate):
+                        derived_data = candidate
+                        break
+
+        if not derived_data or not os.path.exists(derived_data):
+            print("  ERROR: Could not find SwiftPandasTests.xctest bundle.")
+            print("  Run 'xcodebuild build-for-testing -scheme SwiftPandas' first.")
+            return swift_timings
 
         result = subprocess.run(
             [
                 "xcrun", "xctest",
                 "-XCTest", "SwiftPandasTests.BenchmarkTests",
-                test_bundle,
+                derived_data,
             ],
             cwd=project_dir,
             capture_output=True, text=True, timeout=600,
@@ -970,9 +1013,9 @@ def run_swift_benchmarks():
                 print(f"  {line.strip()}")
 
     except FileNotFoundError:
-        print("  ERROR: swift command not found.")
+        print("  ERROR: xcodebuild not found. Is Xcode installed?")
     except subprocess.TimeoutExpired:
-        print("  ERROR: swift test timed out.")
+        print("  ERROR: xcodebuild test timed out.")
 
     return swift_timings
 
@@ -985,16 +1028,17 @@ def print_comparison(py_results, swift_results):
     banner("SIDE-BY-SIDE COMPARISON \u2014 Python pandas vs SwiftPandas")
     print()
     note("Both measured live on this machine. Best of 3 runs.")
-    note("All times in microseconds (\u00b5s). Ratio = Swift / Python. <1 means Swift is faster.")
+    note("Swift compiled with -O (Release). All times in microseconds (\u00b5s).")
+    note("+% = Swift faster than Python. -% = Swift slower than Python.")
     print()
 
     # Table header
     hdr_op   = "Operation".ljust(26)
     hdr_py   = "Python (\u00b5s)".rjust(18)
     hdr_sw   = "Swift (\u00b5s)".rjust(18)
-    hdr_rt   = "Ratio".rjust(8)
-    hdr_win  = "Winner".ljust(8)
-    print(f"    {hdr_op} {hdr_py} {hdr_sw} {hdr_rt} {hdr_win}")
+    hdr_win  = "Winner".rjust(8)
+    hdr_pct  = "vs Python".rjust(14)
+    print(f"    {hdr_op} {hdr_py} {hdr_sw} {hdr_win} {hdr_pct}")
     print("    " + "\u2500" * 74)
 
     # Each entry: (display_name, py_key, swift_qualified_key)
@@ -1064,6 +1108,7 @@ def print_comparison(py_results, swift_results):
     swift_wins = 0
     py_wins = 0
     ties = 0
+    all_pct_diffs = []  # collect percentage differences for overall score
 
     for display, py_key, swift_key in rows:
         # Section header
@@ -1082,27 +1127,44 @@ def print_comparison(py_results, swift_results):
         sw_str = format_us(sw_ns).rjust(18) if sw_ns is not None else "\u2014".rjust(18)
 
         if py_ns and sw_ns and py_ns > 0 and sw_ns > 0:
-            ratio = sw_ns / py_ns
-            ratio_str = f"{ratio:.1f}x".rjust(8)
-            if ratio < 0.9:
+            # pct_diff > 0 means Swift is faster, < 0 means slower
+            pct_diff = (py_ns - sw_ns) / py_ns * 100.0
+            all_pct_diffs.append(pct_diff)
+
+            if pct_diff > 10:
                 winner = "Swift"
+                pct_str = f"+{pct_diff:.0f}% faster"
                 swift_wins += 1
-            elif ratio > 1.1:
+            elif pct_diff < -10:
                 winner = "pandas"
+                pct_str = f"{pct_diff:.0f}% slower"
                 py_wins += 1
             else:
                 winner = "Tie"
+                pct_str = f"{pct_diff:+.0f}%"
                 ties += 1
         else:
-            ratio_str = "\u2014".rjust(8)
             winner = ""
+            pct_str = "\u2014"
 
-        win_str = winner.ljust(8)
-        print(f"    {op_str} {py_str} {sw_str} {ratio_str} {win_str}")
+        win_str = winner.rjust(8)
+        pct_out = pct_str.rjust(14)
+        print(f"    {op_str} {py_str} {sw_str} {win_str} {pct_out}")
 
     print()
     print("    " + "\u2500" * 74)
     print(f"    Scorecard:  Swift wins {swift_wins}  |  pandas wins {py_wins}  |  Tie {ties}")
+
+    # Overall averaged score across all measured operations
+    if all_pct_diffs:
+        avg_pct = sum(all_pct_diffs) / len(all_pct_diffs)
+        n = len(all_pct_diffs)
+        if avg_pct > 0:
+            print(f"    Overall:    SwiftPandas is {avg_pct:.1f}% faster than pandas on average ({n} tests)")
+        elif avg_pct < 0:
+            print(f"    Overall:    SwiftPandas is {abs(avg_pct):.1f}% slower than pandas on average ({n} tests)")
+        else:
+            print(f"    Overall:    SwiftPandas and pandas are equivalent on average ({n} tests)")
     print()
 
 
@@ -1147,15 +1209,14 @@ def main():
         print(f"    Correctness: {swift_passed} passed, {swift_failed} failed")
     else:
         print("    Correctness: could not run (swift not found or timeout)")
-    print(f"    Benchmarks:  see swift test output above")
+    print(f"    Benchmarks:  see xcodebuild test output above")
     print()
 
-    print("  Key Findings:")
+    print("  Configuration:")
     print("  " + "\u2500" * (W - 4))
-    print("    All benchmarks at 1M rows (merge: 100K). Times in microseconds (\u00b5s).")
-    print("    Swift wins:  Aggregation, Construction, Concat, DataFrame Agg")
-    print("    pandas wins: Sorting, GroupBy (Cython), CSV Read")
-    print("    Tie:         Merge, CSV Write")
+    print("    Swift: compiled with -O (Release), C libs with -O3")
+    print("    Python: pandas with C/Cython extensions, NumPy with SIMD/vDSP")
+    print("    All benchmarks at 1M rows (merge: 100K). Best of 3 runs.")
     print()
     print("    Metal GPU: GroupBy + Merge accelerated via compute shaders")
     print("    for datasets >= 500K rows. Falls back to CPU for smaller datasets.")

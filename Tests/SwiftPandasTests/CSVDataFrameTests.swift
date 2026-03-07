@@ -845,7 +845,15 @@ final class CSVDataFrameTests: XCTestCase {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     func testLoadCSVFromFile() throws {
-        guard let csvURL = Bundle.module.url(forResource: "employees", withExtension: "csv", subdirectory: "SampleData") else {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        let csvURL = bundle.url(forResource: "employees", withExtension: "csv", subdirectory: "SampleData")
+        #else
+        let bundle = Bundle(for: type(of: self))
+        let csvURL = bundle.url(forResource: "employees", withExtension: "csv", subdirectory: "SampleData")
+            ?? bundle.url(forResource: "employees", withExtension: "csv")
+        #endif
+        guard let csvURL else {
             XCTFail("Sample CSV file not found in test bundle")
             return
         }

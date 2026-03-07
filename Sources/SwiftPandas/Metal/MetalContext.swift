@@ -8,13 +8,27 @@ internal final class MetalContext: @unchecked Sendable {
     static let shared: MetalContext? = {
         guard let device = MTLCreateSystemDefaultDevice() else { return nil }
         guard let queue = device.makeCommandQueue() else { return nil }
+
+        let library: MTLLibrary
+        #if SWIFT_PACKAGE
+        // SPM: compile shaders from embedded source strings at runtime
         do {
-            let library = try device.makeLibrary(source: MetalShaders.allSource, options: nil)
-            return MetalContext(device: device, queue: queue, library: library)
+            library = try device.makeLibrary(source: MetalShaders.allSource, options: nil)
         } catch {
             print("SwiftPandas: Metal shader compilation failed: \(error)")
             return nil
         }
+        #else
+        // Xcode: load precompiled .metallib from framework bundle
+        do {
+            library = try device.makeDefaultLibrary(bundle: Bundle(for: MetalContext.self))
+        } catch {
+            print("SwiftPandas: Failed to load Metal library from bundle: \(error)")
+            return nil
+        }
+        #endif
+
+        return MetalContext(device: device, queue: queue, library: library)
     }()
 
     let device: MTLDevice
