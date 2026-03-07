@@ -147,21 +147,68 @@ public struct NullableArray<T> {
 
     /// Take elements at specified indices. Indices of -1 produce NA.
     public func take(indices: [Int]) -> NullableArray<T> where T: ExpressibleByIntegerLiteral {
-        var values = ContiguousArray<T>()
-        values.reserveCapacity(indices.count)
-        var bools = [Bool]()
-        bools.reserveCapacity(indices.count)
+        let n = indices.count
+        let srcCount = count
 
-        for i in indices {
-            if i >= 0 && i < count && mask[i] {
-                values.append(data[i])
-                bools.append(true)
-            } else {
-                values.append(0)
-                bools.append(false)
+        // Fast path: allValid + all indices in range → pure gather
+        if mask.allValid {
+            let newData = data.take(indices: indices)
+            var allInRange = true
+            indices.withUnsafeBufferPointer { idx in
+                for i in 0..<n where idx[i] < 0 || idx[i] >= srcCount {
+                    allInRange = false; break
+                }
+            }
+            if allInRange {
+                return NullableArray(data: newData, mask: BitVector(repeating: true, count: n))
+            }
+            var resultMask = BitVector(repeating: true, count: n)
+            indices.withUnsafeBufferPointer { idx in
+                for i in 0..<n {
+                    if idx[i] < 0 || idx[i] >= srcCount { resultMask[i] = false }
+                }
+            }
+            return NullableArray(data: newData, mask: resultMask)
+        }
+
+        // Slow path: source has NAs, build mask per element
+        let newData = data.take(indices: indices)
+        var resultMask = BitVector(repeating: false, count: n)
+        indices.withUnsafeBufferPointer { idx in
+            for i in 0..<n {
+                let j = idx[i]
+                if j >= 0 && j < srcCount && mask[j] {
+                    resultMask[i] = true
+                }
             }
         }
-        return NullableArray(data: NativeArray(values), mask: BitVector(bools))
+        return NullableArray(data: newData, mask: resultMask)
+    }
+
+    /// Take elements where mask is true. `trueCount` must equal mask.filter({$0}).count.
+    public func take(mask filterMask: [Bool], trueCount: Int) -> NullableArray<T> {
+        if self.mask.allValid {
+            // Fast path: no NAs in source, just take data values
+            return NullableArray(data: data.take(mask: filterMask, trueCount: trueCount),
+                               mask: BitVector(repeating: true, count: trueCount))
+        }
+        // Slow path: source has NAs, copy both data and validity
+        var values = ContiguousArray<T>()
+        values.reserveCapacity(trueCount)
+        var resultMask = BitVector(repeating: false, count: trueCount)
+        var j = 0
+        data.withUnsafeBufferPointer { src in
+            filterMask.withUnsafeBufferPointer { m in
+                for i in 0..<m.count {
+                    if m[i] {
+                        values.append(src[i])
+                        resultMask[j] = self.mask[i]
+                        j += 1
+                    }
+                }
+            }
+        }
+        return NullableArray(data: NativeArray(values), mask: resultMask)
     }
 }
 
@@ -300,6 +347,102 @@ public extension NullableArray where T: FloatingPoint {
         let combinedMask = lhs.mask & rhs.mask
         let resultData = lhs.data / rhs.data
         return NullableArray(data: resultData, mask: combinedMask)
+    }
+}
+
+// MARK: - Accelerate-optimized Double arithmetic on NullableArray
+
+public extension NullableArray where T == Double {
+    /// Accelerate-optimized element-wise addition with NA propagation.
+    static func + (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
+        precondition(lhs.count == rhs.count)
+        let combinedMask = lhs.mask & rhs.mask
+        let resultData: NativeArray<Double> = lhs.data + rhs.data
+        return NullableArray(data: resultData, mask: combinedMask)
+    }
+
+    /// Accelerate-optimized element-wise subtraction with NA propagation.
+    static func - (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
+        precondition(lhs.count == rhs.count)
+        let combinedMask = lhs.mask & rhs.mask
+        let resultData: NativeArray<Double> = lhs.data - rhs.data
+        return NullableArray(data: resultData, mask: combinedMask)
+    }
+
+    /// Accelerate-optimized element-wise multiplication with NA propagation.
+    static func * (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
+        precondition(lhs.count == rhs.count)
+        let combinedMask = lhs.mask & rhs.mask
+        let resultData: NativeArray<Double> = lhs.data * rhs.data
+        return NullableArray(data: resultData, mask: combinedMask)
+    }
+
+    /// Accelerate-optimized element-wise division with NA propagation.
+    static func / (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
+        precondition(lhs.count == rhs.count)
+        let combinedMask = lhs.mask & rhs.mask
+        let resultData: NativeArray<Double> = lhs.data / rhs.data
+        return NullableArray(data: resultData, mask: combinedMask)
+    }
+}
+
+// MARK: - Accelerate-optimized Double aggregations on NullableArray
+
+public extension NullableArray where T == Double {
+    /// Accelerate-optimized sum. Fast-path when no NAs.
+    func sum() -> Double? {
+        guard validCount > 0 else { return nil }
+        if mask.allValid {
+            return data.withUnsafeBufferPointer { VectorOps.sum($0) }
+        }
+        // Masked path: compact valid values then sum
+        let valid = dropNA()
+        return valid.withUnsafeBufferPointer { VectorOps.sum($0) }
+    }
+
+    /// Accelerate-optimized min. Fast-path when no NAs.
+    func min() -> Double? {
+        guard validCount > 0 else { return nil }
+        if mask.allValid {
+            return data.withUnsafeBufferPointer { VectorOps.min($0) }
+        }
+        let valid = dropNA()
+        return valid.withUnsafeBufferPointer { VectorOps.min($0) }
+    }
+
+    /// Accelerate-optimized max. Fast-path when no NAs.
+    func max() -> Double? {
+        guard validCount > 0 else { return nil }
+        if mask.allValid {
+            return data.withUnsafeBufferPointer { VectorOps.max($0) }
+        }
+        let valid = dropNA()
+        return valid.withUnsafeBufferPointer { VectorOps.max($0) }
+    }
+
+    /// Accelerate-optimized mean. Fast-path when no NAs.
+    func mean() -> Double? {
+        guard validCount > 0 else { return nil }
+        if mask.allValid {
+            return data.withUnsafeBufferPointer { VectorOps.mean($0) }
+        }
+        let valid = dropNA()
+        return valid.withUnsafeBufferPointer { VectorOps.mean($0) }
+    }
+
+    /// Accelerate-optimized variance. Fast-path when no NAs.
+    func variance(ddof: Int = 1) -> Double? {
+        guard validCount > ddof else { return nil }
+        if mask.allValid {
+            return data.variance(ddof: ddof)
+        }
+        let valid = dropNA()
+        return valid.variance(ddof: ddof)
+    }
+
+    /// Accelerate-optimized standard deviation.
+    func std(ddof: Int = 1) -> Double? {
+        variance(ddof: ddof)?.squareRoot()
     }
 }
 

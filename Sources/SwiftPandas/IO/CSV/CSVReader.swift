@@ -50,21 +50,20 @@ public struct CSVReader: Sendable {
             return DataFrame(columns: columnNames.map { ($0, Column.fromDoubles([])) })
         }
 
-        // Build columns
+        // Build columns with fast type inference
         var resultColumns = [(String, Column)]()
+        resultColumns.reserveCapacity(columnNames.count)
         for (colIdx, name) in columnNames.enumerated() {
-            let rawValues = dataRows.map { colIdx < $0.count ? $0[colIdx] : "" }
-
             // Try to parse as numeric (Double)
             var allNumeric = true
             var doubleValues = [Double?]()
-            doubleValues.reserveCapacity(rawValues.count)
+            doubleValues.reserveCapacity(dataRows.count)
 
-            for val in rawValues {
-                let trimmed = val.trimmingCharacters(in: .whitespaces)
-                if naValues.contains(trimmed) {
+            for row in dataRows {
+                let val = colIdx < row.count ? row[colIdx] : ""
+                if val.isEmpty || naValues.contains(val) {
                     doubleValues.append(nil)
-                } else if let d = Double(trimmed) {
+                } else if let d = Double(val) {
                     doubleValues.append(d)
                 } else {
                     allNumeric = false
@@ -75,9 +74,11 @@ public struct CSVReader: Sendable {
             if allNumeric {
                 resultColumns.append((name, .fromOptionalDoubles(doubleValues)))
             } else {
-                let stringValues: [String?] = rawValues.map { val in
-                    let trimmed = val.trimmingCharacters(in: .whitespaces)
-                    return naValues.contains(trimmed) ? nil : trimmed
+                var stringValues = [String?]()
+                stringValues.reserveCapacity(dataRows.count)
+                for row in dataRows {
+                    let val = colIdx < row.count ? row[colIdx] : ""
+                    stringValues.append(val.isEmpty || naValues.contains(val) ? nil : val)
                 }
                 resultColumns.append((name, .fromOptionalStrings(stringValues)))
             }
@@ -100,8 +101,124 @@ public struct CSVReader: Sendable {
 
     // MARK: - Row parsing
 
-    /// Parse CSV text into rows of string fields, handling quoted fields.
+    /// Parse CSV text into rows of string fields using byte-level UTF-8 scanning.
+    /// Operates on raw bytes for speed — avoids Character conversion overhead.
     private func parseRows(_ text: String) -> [[String]] {
+        let sepByte = separator.asciiValue!
+
+        return text.utf8.withContiguousStorageIfAvailable { utf8Buf -> [[String]] in
+            let bytes = utf8Buf
+            let count = bytes.count
+            var rows = [[String]]()
+            rows.reserveCapacity(count / 40 + 1) // estimate ~40 bytes per row
+            var currentRow = [String]()
+            var fieldStart = 0
+            var inQuotes = false
+            var hasQuotes = false // whether current field contains escaped quotes
+            var i = 0
+
+            while i < count {
+                let b = bytes[i]
+
+                if inQuotes {
+                    if b == 0x22 { // "
+                        if i + 1 < count && bytes[i + 1] == 0x22 {
+                            // Escaped quote ""
+                            hasQuotes = true
+                            i += 2
+                            continue
+                        } else {
+                            inQuotes = false
+                        }
+                    }
+                    i += 1
+                    continue
+                }
+
+                if b == 0x22 && (i == fieldStart || (i == fieldStart + 1 && i > 0 && bytes[fieldStart] == 0x0D)) { // " at field start
+                    inQuotes = true
+                    i += 1
+                    continue
+                }
+
+                if b == sepByte {
+                    currentRow.append(extractField(bytes, from: fieldStart, to: i, hasEscapedQuotes: hasQuotes))
+                    fieldStart = i + 1
+                    hasQuotes = false
+                    i += 1
+                    continue
+                }
+
+                if b == 0x0A { // \n
+                    var end = i
+                    if end > fieldStart && bytes[end - 1] == 0x0D { end -= 1 } // \r\n
+                    currentRow.append(extractField(bytes, from: fieldStart, to: end, hasEscapedQuotes: hasQuotes))
+                    if !currentRow.allSatisfy({ $0.isEmpty }) || !rows.isEmpty {
+                        rows.append(currentRow)
+                    }
+                    currentRow = []
+                    fieldStart = i + 1
+                    hasQuotes = false
+                    i += 1
+                    continue
+                }
+
+                i += 1
+            }
+
+            // Handle last field/row
+            if fieldStart <= count {
+                var end = count
+                if end > fieldStart && bytes[end - 1] == 0x0D { end -= 1 }
+                let field = fieldStart < end ? extractField(bytes, from: fieldStart, to: end, hasEscapedQuotes: hasQuotes) : ""
+                if !field.isEmpty || !currentRow.isEmpty {
+                    currentRow.append(field)
+                    rows.append(currentRow)
+                }
+            }
+
+            return rows
+        } ?? parseRowsFallback(text)
+    }
+
+    /// Extract a field from byte range, handling quoted fields.
+    private func extractField(
+        _ bytes: UnsafeBufferPointer<UInt8>,
+        from start: Int, to end: Int,
+        hasEscapedQuotes: Bool
+    ) -> String {
+        var s = start
+        var e = end
+        // Strip surrounding quotes
+        if e > s && bytes[s] == 0x22 {
+            s += 1
+            if e > s && bytes[e - 1] == 0x22 { e -= 1 }
+        }
+        guard s < e else { return "" }
+
+        if hasEscapedQuotes {
+            // Replace "" with " in the field
+            var result = [UInt8]()
+            result.reserveCapacity(e - s)
+            var j = s
+            while j < e {
+                if bytes[j] == 0x22 && j + 1 < e && bytes[j + 1] == 0x22 {
+                    result.append(0x22)
+                    j += 2
+                } else {
+                    result.append(bytes[j])
+                    j += 1
+                }
+            }
+            return String(bytes: result, encoding: .utf8) ?? ""
+        }
+
+        // Fast path: no escaped quotes, just create string from byte range
+        return String(bytes: UnsafeBufferPointer(rebasing: bytes[s..<e]), encoding: .utf8) ?? ""
+    }
+
+    /// Fallback Character-based parser when contiguous UTF-8 storage is unavailable.
+    private func parseRowsFallback(_ text: String) -> [[String]] {
         var rows = [[String]]()
         var currentField = ""
         var currentRow = [String]()
@@ -109,22 +226,11 @@ public struct CSVReader: Sendable {
         var previousWasQuote = false
         let sep = separator
 
-        let chars = Array(text)
-        var i = 0
-        while i < chars.count {
-            let ch = chars[i]
-
+        for ch in text {
             if inQuotes {
                 if ch == "\"" {
-                    // Check for escaped quote ("")
-                    if i + 1 < chars.count && chars[i + 1] == "\"" {
-                        currentField.append("\"")
-                        i += 2
-                        continue
-                    } else {
-                        inQuotes = false
-                        previousWasQuote = true
-                    }
+                    inQuotes = false
+                    previousWasQuote = true
                 } else {
                     currentField.append(ch)
                 }
@@ -136,7 +242,6 @@ public struct CSVReader: Sendable {
                     currentField = ""
                     previousWasQuote = false
                 } else if ch == "\n" {
-                    // Handle \r\n
                     if !currentField.isEmpty && currentField.last == "\r" {
                         currentField.removeLast()
                     }
@@ -148,20 +253,16 @@ public struct CSVReader: Sendable {
                     currentField = ""
                     previousWasQuote = false
                 } else if ch == "\r" {
-                    // Skip standalone \r, will be handled with \n or end
+                    // skip
                 } else {
                     currentField.append(ch)
                     previousWasQuote = false
                 }
             }
-            i += 1
         }
 
-        // Handle last field/row
         if !currentField.isEmpty || !currentRow.isEmpty {
-            if currentField.hasSuffix("\r") {
-                currentField.removeLast()
-            }
+            if currentField.hasSuffix("\r") { currentField.removeLast() }
             currentRow.append(currentField)
             rows.append(currentRow)
         }

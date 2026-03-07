@@ -284,6 +284,16 @@ public struct Series: CustomStringConvertible, Sendable {
 
     public static func + (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
+        if a.mask.allValid {
+            // Fast path: no NAs, use Accelerate
+            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
+            a.data.withUnsafeBufferPointer { src in
+                resultData.withUnsafeMutableBufferPointer { dst in
+                    VectorOps.scalarAdd(src, rhs, result: dst)
+                }
+            }
+            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+        }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] + rhs
@@ -293,6 +303,15 @@ public struct Series: CustomStringConvertible, Sendable {
 
     public static func - (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
+        if a.mask.allValid {
+            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
+            a.data.withUnsafeBufferPointer { src in
+                resultData.withUnsafeMutableBufferPointer { dst in
+                    VectorOps.scalarSubtract(src, rhs, result: dst)
+                }
+            }
+            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+        }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] - rhs
@@ -302,6 +321,15 @@ public struct Series: CustomStringConvertible, Sendable {
 
     public static func * (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
+        if a.mask.allValid {
+            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
+            a.data.withUnsafeBufferPointer { src in
+                resultData.withUnsafeMutableBufferPointer { dst in
+                    VectorOps.scalarMultiply(src, rhs, result: dst)
+                }
+            }
+            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+        }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] * rhs
@@ -311,6 +339,15 @@ public struct Series: CustomStringConvertible, Sendable {
 
     public static func / (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
+        if a.mask.allValid {
+            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
+            a.data.withUnsafeBufferPointer { src in
+                resultData.withUnsafeMutableBufferPointer { dst in
+                    VectorOps.scalarDivide(src, rhs, result: dst)
+                }
+            }
+            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+        }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] / rhs
@@ -323,37 +360,91 @@ public struct Series: CustomStringConvertible, Sendable {
     /// Element-wise greater than. NA values produce false.
     public static func > (lhs: Series, rhs: Double) -> [Bool] {
         guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] > rhs }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] > rhs }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] > rhs }
+            }
+        }
+        return result
     }
 
     /// Element-wise greater than or equal. NA values produce false.
     public static func >= (lhs: Series, rhs: Double) -> [Bool] {
         guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] >= rhs }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] >= rhs }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] >= rhs }
+            }
+        }
+        return result
     }
 
     /// Element-wise less than. NA values produce false.
     public static func < (lhs: Series, rhs: Double) -> [Bool] {
         guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] < rhs }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] < rhs }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] < rhs }
+            }
+        }
+        return result
     }
 
     /// Element-wise less than or equal. NA values produce false.
     public static func <= (lhs: Series, rhs: Double) -> [Bool] {
         guard case .double(let a) = lhs.data else { return [Bool](repeating: false, count: lhs.count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] <= rhs }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] <= rhs }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] <= rhs }
+            }
+        }
+        return result
     }
 
     /// Element-wise equality. NA values produce false.
     public func eq(_ value: Double) -> [Bool] {
         guard case .double(let a) = data else { return [Bool](repeating: false, count: count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] == value }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] == value }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] == value }
+            }
+        }
+        return result
     }
 
     /// Element-wise inequality. NA values produce false.
     public func ne(_ value: Double) -> [Bool] {
         guard case .double(let a) = data else { return [Bool](repeating: false, count: count) }
-        return (0..<a.count).map { a.mask[$0] && a.data[$0] != value }
+        let n = a.count
+        var result = [Bool](repeating: false, count: n)
+        a.data.withUnsafeBufferPointer { buf in
+            if a.mask.allValid {
+                for i in 0..<n { result[i] = buf[i] != value }
+            } else {
+                for i in 0..<n { result[i] = a.mask[i] && buf[i] != value }
+            }
+        }
+        return result
     }
 
     /// Element-wise string equality. NA values produce false.
@@ -432,32 +523,60 @@ public struct Series: CustomStringConvertible, Sendable {
 
     // MARK: - Additional aggregations
 
-    /// Median of numeric values.
+    /// Median of numeric values. Uses O(n) quickselect instead of O(n log n) sort.
     public func median() -> Double? {
         guard case .double(let a) = data else { return nil }
-        let valid = a.dropNA()
-        guard valid.count > 0 else { return nil }
-        let sorted = valid.array.sorted()
-        let mid = sorted.count / 2
-        if sorted.count % 2 == 0 {
-            return (sorted[mid - 1] + sorted[mid]) / 2.0
+        // Fast-path: skip dropNA() when no NAs exist
+        var arr: NativeArray<Double>
+        if a.mask.allValid {
+            arr = a.data.copy()
+        } else {
+            arr = a.dropNA()
         }
-        return sorted[mid]
+        let n = arr.count
+        guard n > 0 else { return nil }
+        let mid = n / 2
+        arr.nthElement(mid)
+        if n % 2 == 0 {
+            let upper = arr[mid]
+            // After nthElement(mid), elements [0..mid-1] are all ≤ arr[mid].
+            // Max of left partition gives lower median — avoids second quickselect.
+            let lower = arr.withUnsafeBufferPointer { buf in
+                VectorOps.max(UnsafeBufferPointer(rebasing: buf[0..<mid]))
+            }
+            return (lower + upper) / 2.0
+        }
+        return arr[mid]
     }
 
-    /// Quantile (0.0 to 1.0) using linear interpolation.
+    /// Quantile (0.0 to 1.0) using linear interpolation with O(n) selection.
     public func quantile(_ q: Double) -> Double? {
         precondition(q >= 0.0 && q <= 1.0, "Quantile must be between 0 and 1")
         guard case .double(let a) = data else { return nil }
-        let valid = a.dropNA()
-        guard valid.count > 0 else { return nil }
-        let sorted = valid.array.sorted()
-        if sorted.count == 1 { return sorted[0] }
-        let pos = q * Double(sorted.count - 1)
+        var arr: NativeArray<Double>
+        if a.mask.allValid {
+            arr = a.data.copy()
+        } else {
+            arr = a.dropNA()
+        }
+        guard arr.count > 0 else { return nil }
+        if arr.count == 1 { return arr[0] }
+        let pos = q * Double(arr.count - 1)
         let lower = Int(pos)
-        let upper = Swift.min(lower + 1, sorted.count - 1)
+        let upper = Swift.min(lower + 1, arr.count - 1)
         let frac = pos - Double(lower)
-        return sorted[lower] + frac * (sorted[upper] - sorted[lower])
+        if lower == upper {
+            arr.nthElement(lower)
+            return arr[lower]
+        }
+        arr.nthElement(upper)
+        let upperVal = arr[upper]
+        // After nthElement(upper), elements [0..upper-1] are ≤ arr[upper].
+        // Max of left partition gives arr[lower] without second quickselect.
+        let lowerVal = arr.withUnsafeBufferPointer { buf in
+            VectorOps.max(UnsafeBufferPointer(rebasing: buf[0..<upper]))
+        }
+        return lowerVal + frac * (upperVal - lowerVal)
     }
 
     // MARK: - Unique / duplicated

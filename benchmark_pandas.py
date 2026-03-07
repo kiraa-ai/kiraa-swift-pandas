@@ -68,33 +68,28 @@ def note(text):
 
 def table_header():
     op = "Operation".ljust(26)
-    py = "Python pandas".ljust(14)
+    py = "Python (\u00b5s)".ljust(20)
     extra = "Details"
     print(f"    \u25B8 {op} {py} {extra}")
     print("    " + "\u2500" * (W - 8))
 
-def bench_row(op, ms, detail=""):
+def bench_row(op, ns, detail=""):
     name = op.ljust(26)
-    t = format_ms(ms).ljust(14)
+    t = format_us(ns).ljust(20)
     print(f"      {name} {t} {detail}")
 
-def format_ms(ms):
-    if ms < 0.1:
-        return f"{ms:.3f} ms"
-    elif ms < 10:
-        return f"{ms:.2f} ms"
-    elif ms < 1000:
-        return f"{ms:.1f} ms"
-    else:
-        return f"{ms / 1000:.2f} s"
+def format_us(ns):
+    """Format nanoseconds as microseconds with 3 decimal places."""
+    us = ns / 1000.0
+    return f"{us:,.3f} \u00b5s"
 
 def benchmark(fn, iterations=3):
-    """Run fn `iterations` times, return minimum time in milliseconds."""
+    """Run fn `iterations` times, return minimum time in nanoseconds."""
     best = float("inf")
     for _ in range(iterations):
-        start = time.perf_counter()
+        start = time.perf_counter_ns()
         fn()
-        elapsed = (time.perf_counter() - start) * 1000.0
+        elapsed = time.perf_counter_ns() - start
         best = min(best, elapsed)
     return best
 
@@ -617,18 +612,11 @@ def run_python_benchmarks():
     note("NumPy vectorized C/SIMD operations.")
 
     # ── 3. Series Sorting ─────────────────────────────────────────────
-    section("3", "Series Sorting")
-    d100k = random_doubles(100_000, seed=10)
+    section("3", "Series Sorting (1,000,000 elements)")
     d1m = random_doubles(1_000_000, seed=11)
-    s100k = pd.Series(d100k)
     s1m = pd.Series(d1m)
 
-    sub("Numeric sort_values (ascending)")
     table_header()
-    t = benchmark(lambda: s100k.sort_values())
-    bench_row("100K elements", t)
-    results["sort_100k"] = t
-
     t = benchmark(lambda: s1m.sort_values())
     bench_row("1M elements", t)
     results["sort_1m"] = t
@@ -637,35 +625,29 @@ def run_python_benchmarks():
     note("NumPy argsort (introsort/radixsort in C).")
 
     # ── 4. Series Statistics ──────────────────────────────────────────
-    section("4", "Series Statistics")
+    section("4", "Series Statistics (1,000,000 elements)")
     d1m_stat = random_doubles(1_000_000, seed=20)
     s1m_stat = pd.Series(d1m_stat)
-    d100k_stat = random_doubles(100_000, seed=21)
-    s100k_stat = pd.Series(d100k_stat)
 
     table_header()
     t = benchmark(lambda: s1m_stat.quantile(0.75))
-    bench_row("quantile(0.75) 1M", t)
+    bench_row("quantile(0.75)", t)
     results["quantile_1m"] = t
 
     t = benchmark(lambda: s1m_stat.cumsum())
-    bench_row("cumsum() 1M", t)
+    bench_row("cumsum()", t)
     results["cumsum_1m"] = t
 
-    t = benchmark(lambda: s100k_stat.value_counts())
-    bench_row("value_counts() 100K", t)
-    results["valuecounts_100k"] = t
+    t = benchmark(lambda: s1m_stat.value_counts())
+    bench_row("valueCounts()", t)
+    results["valuecounts_1m"] = t
 
     print()
     note("quantile uses O(n) partial sort (introselect).")
 
     # ── 5. DataFrame Construction ─────────────────────────────────────
-    section("5", "DataFrame Construction")
+    section("5", "DataFrame Construction (1M x 6 cols)")
     table_header()
-
-    t = benchmark(lambda: numeric_dataframe(100_000, 6, seed=30))
-    bench_row("100K rows x 6 cols", t)
-    results["df_construct_100k"] = t
 
     t = benchmark(lambda: numeric_dataframe(1_000_000, 6, seed=31))
     bench_row("1M rows x 6 cols", t)
@@ -675,16 +657,11 @@ def run_python_benchmarks():
     note("Includes LCG data generation + DataFrame construction.")
 
     # ── 6. DataFrame Filtering ────────────────────────────────────────
-    section("6", "DataFrame Filtering (Boolean Mask)")
-    df100k = numeric_dataframe(100_000, 6, seed=40)
+    section("6", "DataFrame Filtering (1M x 6 cols)")
     df1m = numeric_dataframe(1_000_000, 6, seed=41)
 
     sub("df[df['col0'] > 500.0]  (~50% selectivity)")
     table_header()
-
-    t = benchmark(lambda: df100k[df100k["col0"] > 500.0])
-    bench_row("100K rows x 6 cols", t)
-    results["filter_100k"] = t
 
     t = benchmark(lambda: df1m[df1m["col0"] > 500.0])
     bench_row("1M rows x 6 cols", t)
@@ -694,8 +671,8 @@ def run_python_benchmarks():
     note("NumPy vectorized comparison + fancy indexing in C.")
 
     # ── 7. DataFrame Sorting ──────────────────────────────────────────
-    section("7", "DataFrame Sorting (100,000 rows x 6 cols)")
-    df_sort = numeric_dataframe(100_000, 6, seed=50)
+    section("7", "DataFrame Sorting (1,000,000 rows x 6 cols)")
+    df_sort = numeric_dataframe(1_000_000, 6, seed=50)
 
     table_header()
 
@@ -711,8 +688,8 @@ def run_python_benchmarks():
     note("NumPy argsort + take along axis.")
 
     # ── 8. DataFrame Aggregation ──────────────────────────────────────
-    section("8", "DataFrame Aggregation (100,000 rows x 6 cols)")
-    df_agg = numeric_dataframe(100_000, 6, seed=60)
+    section("8", "DataFrame Aggregation (1,000,000 rows x 6 cols)")
+    df_agg = numeric_dataframe(1_000_000, 6, seed=60)
 
     table_header()
 
@@ -736,9 +713,9 @@ def run_python_benchmarks():
     note("NumPy reduction kernels per column.")
 
     # ── 9. GroupBy ────────────────────────────────────────────────────
-    section("9", "GroupBy (100,000 rows)")
-    df100g = groupable_dataframe(100_000, 100, seed=70)
-    df10kg = groupable_dataframe(100_000, 10_000, seed=71)
+    section("9", "GroupBy (1,000,000 rows)")
+    df100g = groupable_dataframe(1_000_000, 100, seed=70)
+    df10kg = groupable_dataframe(1_000_000, 10_000, seed=71)
 
     sub("100 groups")
     table_header()
@@ -768,82 +745,58 @@ def run_python_benchmarks():
     note("Cython hash table on raw integer codes (factorize).")
 
     # ── 10. Merge ─────────────────────────────────────────────────────
-    section("10", "Merge (Inner Join)")
+    section("10", "Merge (Inner Join, 100K rows)")
 
     rng = LCG(seed=80)
-    keys10k = [f"k{rng.next_int(5000)}" for _ in range(10_000)]
-    vals1 = [rng.next_float() * 100.0 for _ in range(10_000)]
-    vals2 = [rng.next_float() * 100.0 for _ in range(10_000)]
+    keys100k = [f"k{rng.next_int(50000)}" for _ in range(100_000)]
+    vals1 = [rng.next_float() * 100.0 for _ in range(100_000)]
+    vals2 = [rng.next_float() * 100.0 for _ in range(100_000)]
 
-    left10k = pd.DataFrame({"key": keys10k, "left_val": vals1})
-    right10k_keys = keys10k.copy()
+    left100k = pd.DataFrame({"key": keys100k, "left_val": vals1})
+    right100k_keys = keys100k.copy()
     np.random.seed(42)
-    np.random.shuffle(right10k_keys)
-    right10k = pd.DataFrame({"key": right10k_keys[:10_000], "right_val": vals2})
+    np.random.shuffle(right100k_keys)
+    right100k = pd.DataFrame({"key": right100k_keys[:100_000], "right_val": vals2})
 
     table_header()
-    t = benchmark(lambda: pd.merge(left10k, right10k, on="key", how="inner"))
-    bench_row("10K x 10K", t)
-    results["merge_10k"] = t
-
-    rng2 = LCG(seed=81)
-    keys50k = [f"k{rng2.next_int(25000)}" for _ in range(50_000)]
-    v50_1 = [rng2.next_float() * 100.0 for _ in range(50_000)]
-    v50_2 = [rng2.next_float() * 100.0 for _ in range(50_000)]
-
-    left50k = pd.DataFrame({"key": keys50k, "left_val": v50_1})
-    right50k_keys = keys50k.copy()
-    np.random.shuffle(right50k_keys)
-    right50k = pd.DataFrame({"key": right50k_keys[:50_000], "right_val": v50_2})
-
-    t = benchmark(lambda: pd.merge(left50k, right50k, on="key", how="inner"))
-    bench_row("50K x 50K", t)
-    results["merge_50k"] = t
+    t = benchmark(lambda: pd.merge(left100k, right100k, on="key", how="inner"))
+    bench_row("100K x 100K", t)
+    results["merge_100k"] = t
 
     print()
     note("C-level hash join on raw array values.")
 
     # ── 11. Concat ────────────────────────────────────────────────────
     section("11", "Concat (Vertical Stack)")
-    frames = [numeric_dataframe(10_000, 6, seed=90 + i) for i in range(10)]
+    frames = [numeric_dataframe(100_000, 6, seed=90 + i) for i in range(10)]
 
     table_header()
     t = benchmark(lambda: pd.concat(frames, ignore_index=True))
-    bench_row("10 x 10K rows", t)
-    results["concat_10x10k"] = t
+    bench_row("10 x 100K rows", t)
+    results["concat_10x100k"] = t
 
     print()
     note("BlockManager concat + reindex.")
 
     # ── 12. CSV I/O ───────────────────────────────────────────────────
-    section("12", "CSV I/O")
-    csv10k = csv_string(10_000, 6, seed=100)
-    csv50k = csv_string(50_000, 6, seed=101)
+    section("12", "CSV I/O (1M rows x 6 cols)")
+    csv1m = csv_string(1_000_000, 6, seed=100)
 
     sub("Read CSV (string -> DataFrame)")
     table_header()
 
-    t = benchmark(lambda: pd.read_csv(io.StringIO(csv10k)))
-    bench_row("10K rows x 6 cols", t)
-    results["csv_read_10k"] = t
+    t = benchmark(lambda: pd.read_csv(io.StringIO(csv1m)))
+    bench_row("1M rows x 6 cols", t)
+    results["csv_read_1m"] = t
 
-    t = benchmark(lambda: pd.read_csv(io.StringIO(csv50k)))
-    bench_row("50K rows x 6 cols", t)
-    results["csv_read_50k"] = t
-
-    df_csv10k = pd.read_csv(io.StringIO(csv10k))
-    df_csv50k = pd.read_csv(io.StringIO(csv50k))
+    df_csv1m = pd.read_csv(io.StringIO(csv1m))
 
     sub("Write CSV (DataFrame -> string)")
     table_header()
 
-    t = benchmark(lambda: df_csv10k.to_csv(index=False))
-    bench_row("10K rows x 6 cols", t)
-    results["csv_write_10k"] = t
-
-    t = benchmark(lambda: df_csv50k.to_csv(index=False))
-    bench_row("50K rows x 6 cols", t)
-    results["csv_write_50k"] = t
+    t = benchmark(lambda: df_csv1m.to_csv(index=False))
+    bench_row("1M rows x 6 cols", t)
+    results["csv_write_1m"] = t
 
     print()
     note("C-level tokenizer for reads; Python string formatting for writes.")
@@ -969,7 +922,7 @@ def run_swift_benchmarks():
 
         # Parse Swift timing lines with section context.
         # Section headers: "  │  1. Series Aggregation ..."
-        # Timing lines: "      sum()            142.7 ms       0.45 ms   317.1x"
+        # Timing lines: "      sum()                      92,000"
         current_section = ""
         for line in output.splitlines():
             # Detect section numbers from the benchmark output
@@ -996,19 +949,18 @@ def run_swift_benchmarks():
                 elif "write" in sub_text:
                     current_section = "csv_write"
 
-            # Match timing data lines
+            # Match timing data lines: "      op_name          123,456.789 µs"
             m = re.match(
-                r'\s{4,}(\S.*?)\s{2,}(\d+\.?\d*)\s*(ms|s)\s+(\d+\.?\d*)\s*(ms|s)',
+                r'\s{6,}(\S.*?)\s{2,}([\d,]+\.?\d*)\s*\u00b5s',
                 line,
             )
             if m:
                 op_name = m.group(1).strip()
-                val = float(m.group(2))
-                unit = m.group(3)
-                swift_ms = val * 1000.0 if unit == "s" else val
+                us_val = float(m.group(2).replace(',', ''))
+                swift_ns = us_val * 1000.0  # convert µs back to ns for comparison
                 # Use section-qualified key to avoid collisions
                 qualified = f"{current_section}:{op_name}"
-                swift_timings[qualified] = swift_ms
+                swift_timings[qualified] = swift_ns
 
         # Show summary
         print()
@@ -1030,31 +982,31 @@ def run_swift_benchmarks():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def print_comparison(py_results, swift_results):
-    banner("SIDE-BY-SIDE COMPARISON — Python pandas vs SwiftPandas")
+    banner("SIDE-BY-SIDE COMPARISON \u2014 Python pandas vs SwiftPandas")
     print()
     note("Both measured live on this machine. Best of 3 runs.")
-    note("Ratio = Swift / Python.  <1 means Swift is faster.")
+    note("All times in microseconds (\u00b5s). Ratio = Swift / Python. <1 means Swift is faster.")
     print()
 
     # Table header
     hdr_op   = "Operation".ljust(26)
-    hdr_py   = "Python".rjust(10)
-    hdr_sw   = "Swift".rjust(10)
+    hdr_py   = "Python (\u00b5s)".rjust(18)
+    hdr_sw   = "Swift (\u00b5s)".rjust(18)
     hdr_rt   = "Ratio".rjust(8)
     hdr_win  = "Winner".ljust(8)
     print(f"    {hdr_op} {hdr_py} {hdr_sw} {hdr_rt} {hdr_win}")
-    print("    " + "\u2500" * 68)
+    print("    " + "\u2500" * 74)
 
     # Each entry: (display_name, py_key, swift_qualified_key)
     # swift_qualified_key is "section:operation" matching the parsed output
     rows = [
         ("Series Aggregation",  None,               None),
-        ("  sum() 1M",          "agg_sum",          "series:sum()"),
-        ("  mean() 1M",         "agg_mean",         "series:mean()"),
-        ("  std() 1M",          "agg_std",          "series:std()"),
-        ("  min() 1M",          "agg_min",          "series:min()"),
-        ("  max() 1M",          "agg_max",          "series:max()"),
-        ("  median() 1M",       "agg_median",       "series:median()"),
+        ("  sum()",             "agg_sum",          "series:sum()"),
+        ("  mean()",            "agg_mean",         "series:mean()"),
+        ("  std()",             "agg_std",          "series:std()"),
+        ("  min()",             "agg_min",          "series:min()"),
+        ("  max()",             "agg_max",          "series:max()"),
+        ("  median()",          "agg_median",       "series:median()"),
         ("",                    None,               None),
         ("Series Arithmetic",   None,               None),
         ("  Series + Series",   "arith_add",        "series:Series + Series"),
@@ -1063,42 +1015,36 @@ def print_comparison(py_results, swift_results):
         ("  Series * scalar",   "arith_mul_scalar", "series:Series * scalar"),
         ("",                    None,               None),
         ("Series Sort/Stats",   None,               None),
-        ("  sort 100K",         "sort_100k",        "series:100K elements"),
         ("  sort 1M",           "sort_1m",          "series:1M elements"),
-        ("  quantile 1M",       "quantile_1m",      "series:quantile(0.75) 1M"),
-        ("  cumsum 1M",         "cumsum_1m",        "series:cumsum() 1M"),
-        ("  valueCounts 100K",  "valuecounts_100k", "series:valueCounts() 100K"),
+        ("  quantile(0.75)",    "quantile_1m",      "series:quantile(0.75)"),
+        ("  cumsum()",          "cumsum_1m",        "series:cumsum()"),
+        ("  valueCounts()",     "valuecounts_1m",   "series:valueCounts()"),
         ("",                    None,               None),
         ("DataFrame",           None,               None),
-        ("  construct 100K",    "df_construct_100k", "df_construct:100K rows \u00d7 6 cols"),
-        ("  construct 1M",      "df_construct_1m",   "df_construct:1M rows \u00d7 6 cols"),
-        ("  filter 100K",       "filter_100k",       "df_filter:100K rows \u00d7 6 cols"),
-        ("  filter 1M",         "filter_1m",         "df_filter:1M rows \u00d7 6 cols"),
-        ("  sort single",       "df_sort_single",    "df_sort:Single column"),
-        ("  sort multi",        "df_sort_multi",     "df_sort:Multi-column (2 keys)"),
-        ("  sum() 100K",        "df_sum",            "df_agg:sum()"),
-        ("  mean() 100K",       "df_mean",           "df_agg:mean()"),
-        ("  std() 100K",        "df_std",            "df_agg:std()"),
-        ("  describe() 100K",   "df_describe",       "df_agg:describe()"),
+        ("  construct 1M",      "df_construct_1m",  "df_construct:1M rows x 6 cols"),
+        ("  filter 1M",         "filter_1m",        "df_filter:1M rows x 6 cols"),
+        ("  sort single",       "df_sort_single",   "df_sort:Single column"),
+        ("  sort multi",        "df_sort_multi",    "df_sort:Multi-column (2 keys)"),
+        ("  sum()",             "df_sum",           "df_agg:sum()"),
+        ("  mean()",            "df_mean",          "df_agg:mean()"),
+        ("  std()",             "df_std",           "df_agg:std()"),
+        ("  describe()",        "df_describe",      "df_agg:describe()"),
         ("",                    None,               None),
-        ("GroupBy (100K rows)", None,               None),
-        ("  sum 100g",          "gb_sum_100g",       "gb_100g:sum()"),
-        ("  mean 100g",         "gb_mean_100g",      "gb_100g:mean()"),
-        ("  count 100g",        "gb_count_100g",     "gb_100g:count()"),
-        ("  sum 10Kg",          "gb_sum_10kg",       "gb_10kg:sum()"),
+        ("GroupBy (1M rows)",   None,               None),
+        ("  sum 100g",          "gb_sum_100g",      "gb_100g:sum()"),
+        ("  mean 100g",         "gb_mean_100g",     "gb_100g:mean()"),
+        ("  count 100g",        "gb_count_100g",    "gb_100g:count()"),
+        ("  sum 10Kg",          "gb_sum_10kg",      "gb_10kg:sum()"),
         ("",                    None,               None),
-        ("Merge",               None,               None),
-        ("  inner 10K",         "merge_10k",         "merge:10K \u00d7 10K"),
-        ("  inner 50K",         "merge_50k",         "merge:50K \u00d7 50K"),
+        ("Merge (100K)",        None,               None),
+        ("  inner 100K",        "merge_100k",       "merge:100K x 100K"),
         ("",                    None,               None),
         ("Concat",              None,               None),
-        ("  10 x 10K",          "concat_10x10k",     "concat:10 \u00d7 10K rows"),
+        ("  10 x 100K",         "concat_10x100k",   "concat:10 x 100K rows"),
         ("",                    None,               None),
-        ("CSV I/O",             None,               None),
-        ("  read 10K",          "csv_read_10k",      "csv_read:10K rows \u00d7 6 cols"),
-        ("  read 50K",          "csv_read_50k",      "csv_read:50K rows \u00d7 6 cols"),
-        ("  write 10K",         "csv_write_10k",     "csv_write:10K rows \u00d7 6 cols"),
-        ("  write 50K",         "csv_write_50k",     "csv_write:50K rows \u00d7 6 cols"),
+        ("CSV I/O (1M)",        None,               None),
+        ("  read 1M",           "csv_read_1m",      "csv_read:1M rows x 6 cols"),
+        ("  write 1M",          "csv_write_1m",     "csv_write:1M rows x 6 cols"),
     ]
 
     def find_swift(swift_key):
@@ -1128,15 +1074,15 @@ def print_comparison(py_results, swift_results):
                 print()
             continue
 
-        py_ms = py_results.get(py_key)
-        sw_ms = find_swift(swift_key)
+        py_ns = py_results.get(py_key)
+        sw_ns = find_swift(swift_key)
 
         op_str = display.ljust(26)
-        py_str = format_ms(py_ms).rjust(10) if py_ms is not None else "—".rjust(10)
-        sw_str = format_ms(sw_ms).rjust(10) if sw_ms is not None else "—".rjust(10)
+        py_str = format_us(py_ns).rjust(18) if py_ns is not None else "\u2014".rjust(18)
+        sw_str = format_us(sw_ns).rjust(18) if sw_ns is not None else "\u2014".rjust(18)
 
-        if py_ms and sw_ms and py_ms > 0 and sw_ms > 0:
-            ratio = sw_ms / py_ms
+        if py_ns and sw_ns and py_ns > 0 and sw_ns > 0:
+            ratio = sw_ns / py_ns
             ratio_str = f"{ratio:.1f}x".rjust(8)
             if ratio < 0.9:
                 winner = "Swift"
@@ -1148,14 +1094,14 @@ def print_comparison(py_results, swift_results):
                 winner = "Tie"
                 ties += 1
         else:
-            ratio_str = "—".rjust(8)
+            ratio_str = "\u2014".rjust(8)
             winner = ""
 
         win_str = winner.ljust(8)
         print(f"    {op_str} {py_str} {sw_str} {ratio_str} {win_str}")
 
     print()
-    print("    " + "\u2500" * 68)
+    print("    " + "\u2500" * 74)
     print(f"    Scorecard:  Swift wins {swift_wins}  |  pandas wins {py_wins}  |  Tie {ties}")
     print()
 
@@ -1206,12 +1152,13 @@ def main():
 
     print("  Key Findings:")
     print("  " + "\u2500" * (W - 4))
-    print("    Swift wins:  Aggregation, Boolean Filtering, Construction, Concat")
-    print("    pandas wins: SIMD Arithmetic, GroupBy (Cython), Merge (C hash-join), CSV Read")
-    print("    Tie:         Sorting, CSV Write")
+    print("    All benchmarks at 1M rows (merge: 100K). Times in microseconds (\u00b5s).")
+    print("    Swift wins:  Aggregation, Construction, Concat, DataFrame Agg")
+    print("    pandas wins: Sorting, GroupBy (Cython), CSV Read")
+    print("    Tie:         Merge, CSV Write")
     print()
-    print("    Metal GPU (implemented): GroupBy + Merge accelerated via compute shaders")
-    print("    on datasets >= 1,000 rows. Falls back to CPU for small datasets.")
+    print("    Metal GPU: GroupBy + Merge accelerated via compute shaders")
+    print("    for datasets >= 500K rows. Falls back to CPU for smaller datasets.")
     print()
     print("\u2550" * W)
     print("  Done.")

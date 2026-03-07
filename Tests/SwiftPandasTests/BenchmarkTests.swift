@@ -2,15 +2,16 @@ import XCTest
 @testable import SwiftPandas
 import Foundation
 
-/// Performance benchmarks comparing SwiftPandas vs Python pandas.
+/// Performance benchmarks — SwiftPandas measured live.
+/// All benchmarks at 1M rows (100K for merge). Times in nanoseconds.
 /// Run with: swift test --filter BenchmarkTests
 final class BenchmarkTests: XCTestCase {
 
     // ┌─────────────────────────────────────────────────────────────────────┐
-    // │  Formatting helpers (same style as CSVDataFrameTests)               │
+    // │  Formatting helpers                                                │
     // └─────────────────────────────────────────────────────────────────────┘
 
-    static let W = 78
+    static let W = 80
 
     static func banner(_ title: String) {
         let pad = max(0, W - title.count - 4)
@@ -39,59 +40,44 @@ final class BenchmarkTests: XCTestCase {
     }
 
     // ┌─────────────────────────────────────────────────────────────────────┐
-    // │  Benchmark table formatting                                         │
+    // │  Benchmark table — all times in microseconds (µs)                   │
     // └─────────────────────────────────────────────────────────────────────┘
 
     static func tableHeader() {
         let op = "Operation".padding(toLength: 26, withPad: " ", startingAt: 0)
-        let swift = "SwiftPandas".padding(toLength: 14, withPad: " ", startingAt: 0)
-        let py = "Python pandas".padding(toLength: 14, withPad: " ", startingAt: 0)
-        let ratio = "Ratio"
-        print("    \u{25B8} \(op) \(swift) \(py) \(ratio)")
+        let swift = "Swift (\u{00B5}s)".padding(toLength: 20, withPad: " ", startingAt: 0)
+        let extra = "Details"
+        print("    \u{25B8} \(op) \(swift) \(extra)")
         print("    " + String(repeating: "\u{2500}", count: W - 8))
     }
 
-    static func benchRow(_ op: String, swiftMs: Double, pandasMs: Double) {
+    static func benchRow(_ op: String, ns: Double, detail: String = "") {
         let name = op.padding(toLength: 26, withPad: " ", startingAt: 0)
-        let swiftStr = formatMs(swiftMs).padding(toLength: 14, withPad: " ", startingAt: 0)
-        let pyStr = formatMs(pandasMs).padding(toLength: 14, withPad: " ", startingAt: 0)
-        let ratio: String
-        if pandasMs > 0 && swiftMs > 0 {
-            let r = swiftMs / pandasMs
-            if r < 1.0 {
-                ratio = String(format: "%.1fx faster", 1.0 / r)
-            } else {
-                ratio = String(format: "%.1fx", r)
-            }
-        } else {
-            ratio = "—"
-        }
-        print("      \(name) \(swiftStr) \(pyStr) \(ratio)")
+        let t = formatUs(ns).padding(toLength: 20, withPad: " ", startingAt: 0)
+        print("      \(name) \(t) \(detail)")
     }
 
-    static func formatMs(_ ms: Double) -> String {
-        if ms < 0.1 {
-            return String(format: "%.3f ms", ms)
-        } else if ms < 10 {
-            return String(format: "%.2f ms", ms)
-        } else if ms < 1000 {
-            return String(format: "%.1f ms", ms)
-        } else {
-            return String(format: "%.2f s", ms / 1000.0)
-        }
+    static func formatUs(_ ns: Double) -> String {
+        let us = ns / 1000.0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 3
+        formatter.maximumFractionDigits = 3
+        formatter.groupingSeparator = ","
+        return (formatter.string(from: NSNumber(value: us)) ?? String(format: "%.3f", us)) + " \u{00B5}s"
     }
 
     // ┌─────────────────────────────────────────────────────────────────────┐
-    // │  Timing & data generation                                           │
+    // │  Timing & data generation                                          │
     // └─────────────────────────────────────────────────────────────────────┘
 
-    /// Time a block, running it `iterations` times and returning the minimum in milliseconds.
+    /// Time a block, running it `iterations` times and returning the minimum in nanoseconds.
     static func benchmark(_ iterations: Int = 3, _ block: () -> Void) -> Double {
         var best = Double.infinity
         for _ in 0..<iterations {
             let start = CFAbsoluteTimeGetCurrent()
             block()
-            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1_000_000_000.0
             best = Swift.min(best, elapsed)
         }
         return best
@@ -133,7 +119,7 @@ final class BenchmarkTests: XCTestCase {
         return DataFrame(columns: columns)
     }
 
-    /// Generate a DataFrame with a string "group" column (nGroups distinct values) and numeric columns.
+    /// Generate a DataFrame with a string "group" column and numeric columns.
     static func groupableDataFrame(rows: Int, nGroups: Int, seed: UInt64 = 42) -> DataFrame {
         var rng = LCG(seed: seed)
         let groups = (0..<rows).map { _ in "g\(rng.nextInt(nGroups))" }
@@ -159,108 +145,35 @@ final class BenchmarkTests: XCTestCase {
         return lines.joined(separator: "\n")
     }
 
-    // ┌─────────────────────────────────────────────────────────────────────┐
-    // │  Python pandas reference timings                                    │
-    // │  Measured on Apple M2, 16GB RAM                                     │
-    // │  Python 3.11, pandas 2.2, NumPy 1.26                               │
-    // └─────────────────────────────────────────────────────────────────────┘
-
-    struct PandasRef {
-        // Series aggregation — 1M elements (ms)
-        static let sum1M        = 0.45
-        static let mean1M       = 0.50
-        static let std1M        = 1.20
-        static let min1M        = 0.45
-        static let max1M        = 0.45
-        static let median1M     = 3.80
-
-        // Series arithmetic — 1M elements (ms)
-        static let addSeries1M  = 1.80
-        static let mulSeries1M  = 1.80
-        static let addScalar1M  = 0.90
-        static let mulScalar1M  = 0.90
-
-        // Series sorting (ms)
-        static let sort100K     = 3.50
-        static let sort1M       = 48.0
-
-        // Series statistics (ms)
-        static let quantile1M   = 4.00
-        static let cumsum1M     = 1.50
-        static let valueCounts100K = 3.50
-
-        // DataFrame construction (ms)
-        static let dictConstruct100K = 1.50
-        static let dictConstruct1M   = 15.0
-
-        // DataFrame filtering (ms)
-        static let filter100K   = 0.80
-        static let filter1M     = 6.50
-
-        // DataFrame sorting (ms)
-        static let dfSort100K   = 5.00
-        static let dfMultiSort100K = 12.0
-
-        // DataFrame aggregation (ms)
-        static let dfSum100K    = 0.50
-        static let dfMean100K   = 0.50
-        static let dfStd100K    = 0.80
-        static let dfDescribe100K = 3.00
-
-        // GroupBy (ms)
-        static let groupBySum100K_100g   = 4.00
-        static let groupByMean100K_100g  = 4.50
-        static let groupByCount100K_100g = 3.50
-        static let groupBySum100K_10Kg   = 8.00
-
-        // Merge (ms)
-        static let mergeInner10K  = 2.50
-        static let mergeInner50K  = 15.0
-
-        // Concat (ms)
-        static let concat10x10K   = 2.00
-
-        // CSV I/O (ms)
-        static let csvRead10K     = 12.0
-        static let csvRead50K     = 55.0
-        static let csvWrite10K    = 8.00
-        static let csvWrite50K    = 38.0
-    }
-
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Test Methods
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     func testAA_BenchmarkHeader() {
-        BenchmarkTests.banner("SWIFTPANDAS 0.1.0 — PERFORMANCE BENCHMARKS")
+        BenchmarkTests.banner("SWIFTPANDAS 0.1.0 \u{2014} PERFORMANCE BENCHMARKS")
 
         print("")
         print("  Methodology")
         print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
         BenchmarkTests.note("Each operation is run 3 times; the minimum time is reported.")
+        BenchmarkTests.note("All times in microseconds (\u{00B5}s). All benchmarks at 1M rows (merge: 100K).")
         BenchmarkTests.note("Data is generated deterministically (LCG seeded random).")
-        BenchmarkTests.note("SwiftPandas times are measured live on this machine.")
-        BenchmarkTests.note("Python pandas times are reference values from Apple M2, 16GB.")
-        BenchmarkTests.note("  Python 3.11 · pandas 2.2 · NumPy 1.26")
-        print("")
-        BenchmarkTests.note("Ratio < 1.0x means SwiftPandas is faster.")
-        BenchmarkTests.note("Ratio > 1.0x means Python pandas is faster.")
         print("")
 
         print("  Benchmark Sections")
         print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
-        BenchmarkTests.note("1. Series Aggregation    — sum, mean, std, min, max, median")
-        BenchmarkTests.note("2. Series Arithmetic     — element-wise +, *, scalar ops")
-        BenchmarkTests.note("3. Series Sorting        — sortValues at 100K and 1M")
-        BenchmarkTests.note("4. Series Statistics     — median, quantile, cumsum, valueCounts")
-        BenchmarkTests.note("5. DataFrame Construction — dict-based creation")
-        BenchmarkTests.note("6. DataFrame Filtering   — boolean mask at 100K and 1M")
-        BenchmarkTests.note("7. DataFrame Sorting     — single and multi-column")
-        BenchmarkTests.note("8. DataFrame Aggregation — sum, mean, std, describe")
-        BenchmarkTests.note("9. GroupBy               — sum, mean, count at varying group counts")
-        BenchmarkTests.note("10. Merge                — inner join at 10K and 50K")
-        BenchmarkTests.note("11. Concat               — vertical stacking")
-        BenchmarkTests.note("12. CSV I/O              — read and write")
+        BenchmarkTests.note("1. Series Aggregation    \u{2014} sum, mean, std, min, max, median")
+        BenchmarkTests.note("2. Series Arithmetic     \u{2014} element-wise +, *, scalar ops")
+        BenchmarkTests.note("3. Series Sorting        \u{2014} sortValues at 1M")
+        BenchmarkTests.note("4. Series Statistics     \u{2014} quantile, cumsum, valueCounts")
+        BenchmarkTests.note("5. DataFrame Construction \u{2014} dict-based creation at 1M")
+        BenchmarkTests.note("6. DataFrame Filtering   \u{2014} boolean mask at 1M")
+        BenchmarkTests.note("7. DataFrame Sorting     \u{2014} single and multi-column at 1M")
+        BenchmarkTests.note("8. DataFrame Aggregation \u{2014} sum, mean, std, describe at 1M")
+        BenchmarkTests.note("9. GroupBy               \u{2014} sum, mean, count at 1M rows")
+        BenchmarkTests.note("10. Merge                \u{2014} inner join at 100K")
+        BenchmarkTests.note("11. Concat               \u{2014} vertical stacking (10 x 100K)")
+        BenchmarkTests.note("12. CSV I/O              \u{2014} read and write at 1M")
     }
 
     // ─── 1. Series Aggregation ──────────────────────────────────────────
@@ -274,26 +187,26 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.tableHeader()
 
         let tSum = BenchmarkTests.benchmark { _ = series.sum() }
-        BenchmarkTests.benchRow("sum()", swiftMs: tSum, pandasMs: PandasRef.sum1M)
+        BenchmarkTests.benchRow("sum()", ns: tSum)
 
         let tMean = BenchmarkTests.benchmark { _ = series.mean() }
-        BenchmarkTests.benchRow("mean()", swiftMs: tMean, pandasMs: PandasRef.mean1M)
+        BenchmarkTests.benchRow("mean()", ns: tMean)
 
         let tStd = BenchmarkTests.benchmark { _ = series.std() }
-        BenchmarkTests.benchRow("std()", swiftMs: tStd, pandasMs: PandasRef.std1M)
+        BenchmarkTests.benchRow("std()", ns: tStd)
 
         let tMin = BenchmarkTests.benchmark { _ = series.min() }
-        BenchmarkTests.benchRow("min()", swiftMs: tMin, pandasMs: PandasRef.min1M)
+        BenchmarkTests.benchRow("min()", ns: tMin)
 
         let tMax = BenchmarkTests.benchmark { _ = series.max() }
-        BenchmarkTests.benchRow("max()", swiftMs: tMax, pandasMs: PandasRef.max1M)
+        BenchmarkTests.benchRow("max()", ns: tMax)
 
         let tMedian = BenchmarkTests.benchmark { _ = series.median() }
-        BenchmarkTests.benchRow("median()", swiftMs: tMedian, pandasMs: PandasRef.median1M)
+        BenchmarkTests.benchRow("median()", ns: tMedian)
 
         print("")
-        BenchmarkTests.note("Swift: tight loop over contiguous Double buffer with bitmask checks.")
-        BenchmarkTests.note("pandas: NumPy C kernels (vDSP-like SIMD). median uses partial sort (O(n)).")
+        BenchmarkTests.note("Accelerate vDSP SIMD on contiguous Double buffers.")
+        BenchmarkTests.note("median uses O(n) quickselect with raw pointer inner loop.")
     }
 
     // ─── 2. Series Arithmetic ───────────────────────────────────────────
@@ -309,180 +222,153 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.tableHeader()
 
         let tAdd = BenchmarkTests.benchmark { _ = s1 + s2 }
-        BenchmarkTests.benchRow("Series + Series", swiftMs: tAdd, pandasMs: PandasRef.addSeries1M)
+        BenchmarkTests.benchRow("Series + Series", ns: tAdd)
 
         let tMul = BenchmarkTests.benchmark { _ = s1 * s2 }
-        BenchmarkTests.benchRow("Series * Series", swiftMs: tMul, pandasMs: PandasRef.mulSeries1M)
+        BenchmarkTests.benchRow("Series * Series", ns: tMul)
 
         let tAddS = BenchmarkTests.benchmark { _ = s1 + 42.0 }
-        BenchmarkTests.benchRow("Series + scalar", swiftMs: tAddS, pandasMs: PandasRef.addScalar1M)
+        BenchmarkTests.benchRow("Series + scalar", ns: tAddS)
 
         let tMulS = BenchmarkTests.benchmark { _ = s1 * 2.5 }
-        BenchmarkTests.benchRow("Series * scalar", swiftMs: tMulS, pandasMs: PandasRef.mulScalar1M)
+        BenchmarkTests.benchRow("Series * scalar", ns: tMulS)
 
         print("")
-        BenchmarkTests.note("Swift: scalar for-loop over NullableArray (VectorOps not yet wired).")
-        BenchmarkTests.note("pandas: NumPy vectorized C/SIMD operations.")
+        BenchmarkTests.note("Accelerate vDSP vectorized operations via NullableArray<Double>.")
     }
 
     // ─── 3. Series Sorting ──────────────────────────────────────────────
 
     func testBC_SeriesSorting() {
-        BenchmarkTests.section("3", "Series Sorting")
+        BenchmarkTests.section("3", "Series Sorting (1,000,000 elements)")
 
-        let d100K = BenchmarkTests.randomDoubles(100_000, seed: 10)
         let d1M = BenchmarkTests.randomDoubles(1_000_000, seed: 11)
-        let s100K = Series(d100K, name: "s100k")
         let s1M = Series(d1M, name: "s1m")
 
-        BenchmarkTests.sub("Numeric sortValues (ascending)")
         BenchmarkTests.tableHeader()
 
-        let t100K = BenchmarkTests.benchmark { _ = s100K.sortValues() }
-        BenchmarkTests.benchRow("100K elements", swiftMs: t100K, pandasMs: PandasRef.sort100K)
-
         let t1M = BenchmarkTests.benchmark { _ = s1M.sortValues() }
-        BenchmarkTests.benchRow("1M elements", swiftMs: t1M, pandasMs: PandasRef.sort1M)
+        BenchmarkTests.benchRow("1M elements", ns: t1M)
 
         print("")
-        BenchmarkTests.note("Swift: stdlib TimSort on enumerated array + index rebuild.")
-        BenchmarkTests.note("pandas: NumPy argsort (introsort/radixsort in C).")
+        BenchmarkTests.note("stdlib TimSort on enumerated array + index rebuild.")
     }
 
-    // ─── 4. Series Statistics ───────────────────────────────────────────
+    // ─── 4. Series Statistics ─────────────────────────────────────────
 
     func testBD_SeriesStatistics() {
-        BenchmarkTests.section("4", "Series Statistics")
+        BenchmarkTests.section("4", "Series Statistics (1,000,000 elements)")
 
         let d1M = BenchmarkTests.randomDoubles(1_000_000, seed: 20)
         let s1M = Series(d1M, name: "stats")
-        let d100K = BenchmarkTests.randomDoubles(100_000, seed: 21)
-        let s100K = Series(d100K, name: "stats100k")
 
         BenchmarkTests.tableHeader()
 
         let tQ = BenchmarkTests.benchmark { _ = s1M.quantile(0.75) }
-        BenchmarkTests.benchRow("quantile(0.75) 1M", swiftMs: tQ, pandasMs: PandasRef.quantile1M)
+        BenchmarkTests.benchRow("quantile(0.75)", ns: tQ)
 
         let tCum = BenchmarkTests.benchmark { _ = s1M.cumsum() }
-        BenchmarkTests.benchRow("cumsum() 1M", swiftMs: tCum, pandasMs: PandasRef.cumsum1M)
+        BenchmarkTests.benchRow("cumsum()", ns: tCum)
 
-        let tVC = BenchmarkTests.benchmark { _ = s100K.valueCounts() }
-        BenchmarkTests.benchRow("valueCounts() 100K", swiftMs: tVC, pandasMs: PandasRef.valueCounts100K)
+        let tVC = BenchmarkTests.benchmark { _ = s1M.valueCounts() }
+        BenchmarkTests.benchRow("valueCounts()", ns: tVC)
 
         print("")
-        BenchmarkTests.note("quantile: Swift uses full sort O(n log n); pandas uses O(n) partial sort.")
-        BenchmarkTests.note("cumsum: both O(n) single pass; Swift overhead from NA mask checks.")
+        BenchmarkTests.note("quantile: O(n) quickselect with raw pointer inner loop.")
+        BenchmarkTests.note("cumsum: O(n) single pass.")
     }
 
     // ─── 5. DataFrame Construction ──────────────────────────────────────
 
     func testCA_DataFrameConstruction() {
-        BenchmarkTests.section("5", "DataFrame Construction")
+        BenchmarkTests.section("5", "DataFrame Construction (1M x 6 cols)")
 
         BenchmarkTests.tableHeader()
-
-        let t100K = BenchmarkTests.benchmark {
-            _ = BenchmarkTests.numericDataFrame(rows: 100_000, cols: 6, seed: 30)
-        }
-        BenchmarkTests.benchRow("100K rows × 6 cols", swiftMs: t100K, pandasMs: PandasRef.dictConstruct100K)
 
         let t1M = BenchmarkTests.benchmark {
             _ = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 31)
         }
-        BenchmarkTests.benchRow("1M rows × 6 cols", swiftMs: t1M, pandasMs: PandasRef.dictConstruct1M)
+        BenchmarkTests.benchRow("1M rows x 6 cols", ns: t1M)
 
         print("")
-        BenchmarkTests.note("Construction includes random data generation (deterministic LCG).")
-        BenchmarkTests.note("Swift: ContiguousArray allocation + Column enum wrapping.")
-        BenchmarkTests.note("pandas: NumPy array creation + BlockManager consolidation.")
+        BenchmarkTests.note("Includes LCG data generation + ContiguousArray allocation.")
     }
 
     // ─── 6. DataFrame Filtering ─────────────────────────────────────────
 
     func testCB_DataFrameFiltering() {
-        BenchmarkTests.section("6", "DataFrame Filtering (Boolean Mask)")
+        BenchmarkTests.section("6", "DataFrame Filtering (1M x 6 cols)")
 
-        let df100K = BenchmarkTests.numericDataFrame(rows: 100_000, cols: 6, seed: 40)
         let df1M = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 41)
 
         BenchmarkTests.sub("df[df[\"col0\"] > 500.0]  (~50% selectivity)")
         BenchmarkTests.tableHeader()
 
-        let t100K = BenchmarkTests.benchmark {
-            let mask = df100K["col0"] > 500.0
-            _ = df100K.filter(mask: mask)
-        }
-        BenchmarkTests.benchRow("100K rows × 6 cols", swiftMs: t100K, pandasMs: PandasRef.filter100K)
-
         let t1M = BenchmarkTests.benchmark {
             let mask = df1M["col0"] > 500.0
             _ = df1M.filter(mask: mask)
         }
-        BenchmarkTests.benchRow("1M rows × 6 cols", swiftMs: t1M, pandasMs: PandasRef.filter1M)
+        BenchmarkTests.benchRow("1M rows x 6 cols", ns: t1M)
 
         print("")
-        BenchmarkTests.note("Swift: comparison → [Bool] mask, then compactMap + takeRows.")
-        BenchmarkTests.note("pandas: NumPy vectorized comparison + fancy indexing in C.")
+        BenchmarkTests.note("comparison -> [Bool] mask, then reserveCapacity + takeRows.")
     }
 
     // ─── 7. DataFrame Sorting ───────────────────────────────────────────
 
     func testCC_DataFrameSorting() {
-        BenchmarkTests.section("7", "DataFrame Sorting (100,000 rows × 6 cols)")
+        BenchmarkTests.section("7", "DataFrame Sorting (1,000,000 rows x 6 cols)")
 
-        let df = BenchmarkTests.numericDataFrame(rows: 100_000, cols: 6, seed: 50)
+        let df = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 50)
 
         BenchmarkTests.tableHeader()
 
         let tSingle = BenchmarkTests.benchmark {
             _ = df.sortValues(by: "col0")
         }
-        BenchmarkTests.benchRow("Single column", swiftMs: tSingle, pandasMs: PandasRef.dfSort100K)
+        BenchmarkTests.benchRow("Single column", ns: tSingle)
 
         let tMulti = BenchmarkTests.benchmark {
             _ = df.sortValues(by: ["col0", "col1"])
         }
-        BenchmarkTests.benchRow("Multi-column (2 keys)", swiftMs: tMulti, pandasMs: PandasRef.dfMultiSort100K)
+        BenchmarkTests.benchRow("Multi-column (2 keys)", ns: tMulti)
 
         print("")
-        BenchmarkTests.note("Swift: stdlib TimSort + takeRows (allocates new columns).")
-        BenchmarkTests.note("pandas: NumPy argsort + take along axis.")
+        BenchmarkTests.note("stdlib TimSort + takeRows (allocates new columns).")
     }
 
     // ─── 8. DataFrame Aggregation ───────────────────────────────────────
 
     func testCD_DataFrameAggregation() {
-        BenchmarkTests.section("8", "DataFrame Aggregation (100,000 rows × 6 cols)")
+        BenchmarkTests.section("8", "DataFrame Aggregation (1,000,000 rows x 6 cols)")
 
-        let df = BenchmarkTests.numericDataFrame(rows: 100_000, cols: 6, seed: 60)
+        let df = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 60)
 
         BenchmarkTests.tableHeader()
 
         let tSum = BenchmarkTests.benchmark { _ = df.sum() }
-        BenchmarkTests.benchRow("sum()", swiftMs: tSum, pandasMs: PandasRef.dfSum100K)
+        BenchmarkTests.benchRow("sum()", ns: tSum)
 
         let tMean = BenchmarkTests.benchmark { _ = df.mean() }
-        BenchmarkTests.benchRow("mean()", swiftMs: tMean, pandasMs: PandasRef.dfMean100K)
+        BenchmarkTests.benchRow("mean()", ns: tMean)
 
         let tStd = BenchmarkTests.benchmark { _ = df.std() }
-        BenchmarkTests.benchRow("std()", swiftMs: tStd, pandasMs: PandasRef.dfStd100K)
+        BenchmarkTests.benchRow("std()", ns: tStd)
 
         let tDesc = BenchmarkTests.benchmark { _ = df.describe() }
-        BenchmarkTests.benchRow("describe()", swiftMs: tDesc, pandasMs: PandasRef.dfDescribe100K)
+        BenchmarkTests.benchRow("describe()", ns: tDesc)
 
         print("")
         BenchmarkTests.note("describe() computes count, mean, std, min, 25%, 50%, 75%, max per column.")
-        BenchmarkTests.note("Swift median/quantile uses full sort; pandas uses partial sort.")
     }
 
     // ─── 9. GroupBy ─────────────────────────────────────────────────────
 
     func testCE_DataFrameGroupBy() {
-        BenchmarkTests.section("9", "GroupBy (100,000 rows)")
+        BenchmarkTests.section("9", "GroupBy (1,000,000 rows)")
 
-        let df100 = BenchmarkTests.groupableDataFrame(rows: 100_000, nGroups: 100, seed: 70)
-        let df10K = BenchmarkTests.groupableDataFrame(rows: 100_000, nGroups: 10_000, seed: 71)
+        let df100 = BenchmarkTests.groupableDataFrame(rows: 1_000_000, nGroups: 100, seed: 70)
+        let df10K = BenchmarkTests.groupableDataFrame(rows: 1_000_000, nGroups: 10_000, seed: 71)
 
         BenchmarkTests.sub("100 groups")
         BenchmarkTests.tableHeader()
@@ -490,13 +376,13 @@ final class BenchmarkTests: XCTestCase {
         let gb100 = df100.groupBy("group")
 
         let tSum = BenchmarkTests.benchmark { _ = gb100.sum() }
-        BenchmarkTests.benchRow("sum()", swiftMs: tSum, pandasMs: PandasRef.groupBySum100K_100g)
+        BenchmarkTests.benchRow("sum()", ns: tSum)
 
         let tMean = BenchmarkTests.benchmark { _ = gb100.mean() }
-        BenchmarkTests.benchRow("mean()", swiftMs: tMean, pandasMs: PandasRef.groupByMean100K_100g)
+        BenchmarkTests.benchRow("mean()", ns: tMean)
 
         let tCount = BenchmarkTests.benchmark { _ = gb100.count() }
-        BenchmarkTests.benchRow("count()", swiftMs: tCount, pandasMs: PandasRef.groupByCount100K_100g)
+        BenchmarkTests.benchRow("count()", ns: tCount)
 
         BenchmarkTests.sub("10,000 groups")
         BenchmarkTests.tableHeader()
@@ -504,65 +390,41 @@ final class BenchmarkTests: XCTestCase {
         let gb10K = df10K.groupBy("group")
 
         let tSum10K = BenchmarkTests.benchmark { _ = gb10K.sum() }
-        BenchmarkTests.benchRow("sum()", swiftMs: tSum10K, pandasMs: PandasRef.groupBySum100K_10Kg)
+        BenchmarkTests.benchRow("sum()", ns: tSum10K)
 
         print("")
-        BenchmarkTests.note("Swift: groups computed via String-formatted keys + Dictionary<String,[Int]>.")
-        BenchmarkTests.note("pandas: Cython hash table on raw integer codes (factorize).")
-        BenchmarkTests.note("PLANNED: Metal GPU compute shaders for massively parallel group aggregation.")
+        BenchmarkTests.note("factorize + raw pointer accumulation (allValid fast-path).")
+        BenchmarkTests.note("Metal GPU active for >= 500K rows.")
     }
 
     // ─── 10. Merge ──────────────────────────────────────────────────────
 
     func testCF_DataFrameMerge() {
-        BenchmarkTests.section("10", "Merge (Inner Join)")
+        BenchmarkTests.section("10", "Merge (Inner Join, 100K rows)")
 
-        // 10K merge
         var rng1 = BenchmarkTests.LCG(seed: 80)
-        let keys10K = (0..<10_000).map { _ in "k\(rng1.nextInt(5000))" }
-        let vals1 = (0..<10_000).map { _ in rng1.next() * 100.0 }
-        let vals2 = (0..<10_000).map { _ in rng1.next() * 100.0 }
+        let keys = (0..<100_000).map { _ in "k\(rng1.nextInt(50_000))" }
+        let vals1 = (0..<100_000).map { _ in rng1.next() * 100.0 }
+        let vals2 = (0..<100_000).map { _ in rng1.next() * 100.0 }
 
-        let left10K = DataFrame(columns: [
-            ("key", Column.fromStrings(keys10K)),
+        let left = DataFrame(columns: [
+            ("key", Column.fromStrings(keys)),
             ("left_val", Column.fromDoubles(vals1)),
         ])
-        let right10K = DataFrame(columns: [
-            ("key", Column.fromStrings(Array(keys10K.shuffled().prefix(10_000)))),
+        let right = DataFrame(columns: [
+            ("key", Column.fromStrings(Array(keys.shuffled().prefix(100_000)))),
             ("right_val", Column.fromDoubles(vals2)),
         ])
 
         BenchmarkTests.tableHeader()
 
-        let t10K = BenchmarkTests.benchmark {
-            _ = left10K.merge(right10K, on: "key")
+        let t = BenchmarkTests.benchmark {
+            _ = left.merge(right, on: "key")
         }
-        BenchmarkTests.benchRow("10K × 10K", swiftMs: t10K, pandasMs: PandasRef.mergeInner10K)
-
-        // 50K merge
-        var rng2 = BenchmarkTests.LCG(seed: 81)
-        let keys50K = (0..<50_000).map { _ in "k\(rng2.nextInt(25000))" }
-        let v50_1 = (0..<50_000).map { _ in rng2.next() * 100.0 }
-        let v50_2 = (0..<50_000).map { _ in rng2.next() * 100.0 }
-
-        let left50K = DataFrame(columns: [
-            ("key", Column.fromStrings(keys50K)),
-            ("left_val", Column.fromDoubles(v50_1)),
-        ])
-        let right50K = DataFrame(columns: [
-            ("key", Column.fromStrings(Array(keys50K.shuffled().prefix(50_000)))),
-            ("right_val", Column.fromDoubles(v50_2)),
-        ])
-
-        let t50K = BenchmarkTests.benchmark {
-            _ = left50K.merge(right50K, on: "key")
-        }
-        BenchmarkTests.benchRow("50K × 50K", swiftMs: t50K, pandasMs: PandasRef.mergeInner50K)
+        BenchmarkTests.benchRow("100K x 100K", ns: t)
 
         print("")
-        BenchmarkTests.note("Swift: Dictionary<String,[Int]> lookup on formatted string keys.")
-        BenchmarkTests.note("pandas: C-level hash join on raw array values.")
-        BenchmarkTests.note("PLANNED: Metal GPU compute shaders for parallel hash-join on Apple Silicon.")
+        BenchmarkTests.note("typed hash on String keys (Dictionary<String,[Int]>).")
     }
 
     // ─── 11. Concat ─────────────────────────────────────────────────────
@@ -571,7 +433,7 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.section("11", "Concat (Vertical Stack)")
 
         let frames = (0..<10).map { i in
-            BenchmarkTests.numericDataFrame(rows: 10_000, cols: 6, seed: UInt64(90 + i))
+            BenchmarkTests.numericDataFrame(rows: 100_000, cols: 6, seed: UInt64(90 + i))
         }
 
         BenchmarkTests.tableHeader()
@@ -579,54 +441,40 @@ final class BenchmarkTests: XCTestCase {
         let tConcat = BenchmarkTests.benchmark {
             _ = DataFrame.concat(frames)
         }
-        BenchmarkTests.benchRow("10 × 10K rows", swiftMs: tConcat, pandasMs: PandasRef.concat10x10K)
+        BenchmarkTests.benchRow("10 x 100K rows", ns: tConcat)
 
         print("")
-        BenchmarkTests.note("Swift: per-column array concatenation + new DataFrame construction.")
-        BenchmarkTests.note("pandas: BlockManager concat + reindex.")
+        BenchmarkTests.note("per-column array concatenation + new DataFrame construction.")
     }
 
     // ─── 12. CSV I/O ────────────────────────────────────────────────────
 
     func testDA_CSVIO() {
-        BenchmarkTests.section("12", "CSV I/O")
+        BenchmarkTests.section("12", "CSV I/O (1M rows x 6 cols)")
 
-        let csv10K = BenchmarkTests.csvString(rows: 10_000, cols: 6, seed: 100)
-        let csv50K = BenchmarkTests.csvString(rows: 50_000, cols: 6, seed: 101)
+        let csv1M = BenchmarkTests.csvString(rows: 1_000_000, cols: 6, seed: 100)
 
-        BenchmarkTests.sub("Read CSV (string → DataFrame)")
+        BenchmarkTests.sub("Read CSV (string -> DataFrame)")
         BenchmarkTests.tableHeader()
 
-        let tRead10K = BenchmarkTests.benchmark {
-            _ = DataFrame.readCSV(csv10K)
+        let tRead = BenchmarkTests.benchmark {
+            _ = DataFrame.readCSV(csv1M)
         }
-        BenchmarkTests.benchRow("10K rows × 6 cols", swiftMs: tRead10K, pandasMs: PandasRef.csvRead10K)
+        BenchmarkTests.benchRow("1M rows x 6 cols", ns: tRead)
 
-        let tRead50K = BenchmarkTests.benchmark {
-            _ = DataFrame.readCSV(csv50K)
-        }
-        BenchmarkTests.benchRow("50K rows × 6 cols", swiftMs: tRead50K, pandasMs: PandasRef.csvRead50K)
+        // Build DataFrame for write benchmark
+        let df = DataFrame.readCSV(csv1M)
 
-        // Build DataFrames for write benchmarks
-        let df10K = DataFrame.readCSV(csv10K)
-        let df50K = DataFrame.readCSV(csv50K)
-
-        BenchmarkTests.sub("Write CSV (DataFrame → string)")
+        BenchmarkTests.sub("Write CSV (DataFrame -> string)")
         BenchmarkTests.tableHeader()
 
-        let tWrite10K = BenchmarkTests.benchmark {
-            _ = df10K.toCSV()
+        let tWrite = BenchmarkTests.benchmark {
+            _ = df.toCSV()
         }
-        BenchmarkTests.benchRow("10K rows × 6 cols", swiftMs: tWrite10K, pandasMs: PandasRef.csvWrite10K)
-
-        let tWrite50K = BenchmarkTests.benchmark {
-            _ = df50K.toCSV()
-        }
-        BenchmarkTests.benchRow("50K rows × 6 cols", swiftMs: tWrite50K, pandasMs: PandasRef.csvWrite50K)
+        BenchmarkTests.benchRow("1M rows x 6 cols", ns: tWrite)
 
         print("")
-        BenchmarkTests.note("Swift: Character-level state machine parser + Double(String) per cell.")
-        BenchmarkTests.note("pandas: C-level tokenizer (from pandas/_libs/src/parser/tokenizer.c).")
+        BenchmarkTests.note("byte-level UTF-8 state machine parser + Double(String) per cell.")
     }
 
     // ─── Summary ────────────────────────────────────────────────────────
@@ -635,69 +483,26 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.banner("BENCHMARK SUMMARY")
 
         print("")
-        print("  Winner by Category")
+        print("  Optimizations Applied")
         print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
+        BenchmarkTests.note("  + Accelerate/vDSP wired into NullableArray + NativeArray")
+        BenchmarkTests.note("  + Factorize-based GroupBy with direct accumulation")
+        BenchmarkTests.note("  + O(n) quickselect for median/quantile (raw pointer inner loop)")
+        BenchmarkTests.note("  + Byte-level UTF-8 CSV parser")
+        BenchmarkTests.note("  + Typed merge (Double/String hash, not String formatting)")
+        BenchmarkTests.note("  + Metal GPU compute shaders for GroupBy/Merge (>= 500K rows)")
         print("")
 
-        let header = "    Category".padding(toLength: 30, withPad: " ", startingAt: 0)
-            + "Winner".padding(toLength: 16, withPad: " ", startingAt: 0)
-            + "Reason"
-        print(header)
-        print("    " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 8))
-
-        let rows: [(String, String, String)] = [
-            ("Aggregation (sum/mean)",  "Swift",  "No interpreter overhead, tight loops"),
-            ("Boolean Filtering",       "Swift",  "Single-pass value types, no GIL"),
-            ("Sorting",                 "Tie",    "Both use O(n log n) TimSort variants"),
-            ("Scalar Arithmetic",       "pandas", "NumPy SIMD vectorized C kernels"),
-            ("Series Arithmetic",       "pandas", "NumPy SIMD ops vs Swift scalar loops"),
-            ("DataFrame Construction",  "Swift",  "Direct ContiguousArray, no BlockManager"),
-            ("GroupBy",                 "pandas", "Cython integer-coded hash tables"),
-            ("Merge/Join",              "pandas", "C hash-join on raw arrays"),
-            ("CSV Read",                "pandas", "C tokenizer vs Swift Character parsing"),
-            ("CSV Write",               "Tie",    "Both string-formatting bound"),
-            ("Median/Quantile",         "pandas", "O(n) introselect vs O(n log n) sort"),
-            ("Concat",                  "Swift",  "Simple array append, value semantics"),
-        ]
-
-        for (cat, winner, reason) in rows {
-            let c = cat.padding(toLength: 26, withPad: " ", startingAt: 0)
-            let w = winner.padding(toLength: 16, withPad: " ", startingAt: 0)
-            print("    \(c)\(w)\(reason)")
-        }
-
-        print("")
-        print("  Planned GPU Acceleration (Metal Compute Shaders)")
+        print("  Metal GPU Acceleration")
         print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
-        print("")
-        BenchmarkTests.note("GroupBy and Merge will be reimplemented as Metal compute shaders")
-        BenchmarkTests.note("for maximum performance on Apple Silicon GPUs:")
-        print("")
-        BenchmarkTests.note("  • GroupBy: parallel radix-sort + segmented reduction on GPU")
-        BenchmarkTests.note("    Expected: 10-100x speedup over CPU for 1M+ row datasets")
-        BenchmarkTests.note("    Eliminates String-key bottleneck with integer-coded GPU buffers")
-        print("")
-        BenchmarkTests.note("  • Merge: parallel hash-join with GPU hash tables")
-        BenchmarkTests.note("    Expected: 5-50x speedup for large join operations")
-        BenchmarkTests.note("    Metal shared memory for probe-phase parallelism")
-        print("")
-        BenchmarkTests.note("  • Apple M-series unified memory eliminates CPU↔GPU copies")
-        BenchmarkTests.note("  • Falls back to CPU path on non-Apple or simulator targets")
+        BenchmarkTests.note("  GroupBy: factorize -> GPU hash insert -> parallel reduction")
+        BenchmarkTests.note("  Merge: co-factorize -> GPU hash build -> probe")
+        BenchmarkTests.note("  Apple M-series unified memory eliminates CPU<->GPU copies")
+        BenchmarkTests.note("  Activates automatically for datasets >= 500K rows")
         print("")
 
-        print("  Other Optimization Roadmap")
-        print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
-        BenchmarkTests.note("  • Wire VectorOps/Accelerate into NullableArray arithmetic")
-        BenchmarkTests.note("  • Implement O(n) nth_element for median/quantile")
-        BenchmarkTests.note("  • Byte-level CSV parser instead of Character array conversion")
-        BenchmarkTests.note("  • Cache GroupBy.groups instead of recomputing per aggregation")
-        print("")
-
-        print("  Reference Hardware")
-        print("  " + String(repeating: "\u{2500}", count: BenchmarkTests.W - 4))
-        BenchmarkTests.note("Python pandas timings: Apple M2, 16GB RAM, Python 3.11, pandas 2.2")
-        BenchmarkTests.note("SwiftPandas timings: measured live on this machine")
-        BenchmarkTests.note("All times are best-of-3 runs to minimize noise.")
+        BenchmarkTests.note("All times in microseconds (\u{00B5}s), best-of-3 runs.")
+        BenchmarkTests.note("Run benchmark_pandas.py for side-by-side comparison with pandas.")
         print("")
     }
 }

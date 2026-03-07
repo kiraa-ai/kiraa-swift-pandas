@@ -95,6 +95,15 @@ internal enum MetalGroupBy {
         // Sort by group ID for stable output order
         let sortedGroupIds = (0..<actualNumGroups).sorted()
 
+        // Build firstRowForGroup in a single O(n) pass (not O(n*g))
+        var firstRowForGroup = [Int](repeating: -1, count: actualNumGroups)
+        for i in 0..<n {
+            let gid = Int(rowToGroupPtr[i])
+            if gid >= 0 && gid < actualNumGroups && firstRowForGroup[gid] < 0 {
+                firstRowForGroup[gid] = i
+            }
+        }
+
         // Add group key columns
         if groupColumns.count == 1 {
             let col = dataFrame.columns[groupColumns[0]]!
@@ -106,23 +115,11 @@ internal enum MetalGroupBy {
                 }
                 resultColumns.append((groupColumns[0], Column.fromStrings(keyStrings)))
             default:
-                // For numeric group columns, take the first row of each group
-                let firstIndices = sortedGroupIds.compactMap { gid -> Int? in
-                    for i in 0..<n {
-                        if Int(rowToGroupPtr[i]) == gid { return i }
-                    }
-                    return nil
-                }
+                let firstIndices = sortedGroupIds.map { firstRowForGroup[$0] }
                 resultColumns.append((groupColumns[0], col.take(indices: firstIndices)))
             }
         } else {
-            // Multi-column: take first row of each group
-            let firstIndices = sortedGroupIds.compactMap { gid -> Int? in
-                for i in 0..<n {
-                    if Int(rowToGroupPtr[i]) == gid { return i }
-                }
-                return nil
-            }
+            let firstIndices = sortedGroupIds.map { firstRowForGroup[$0] }
             for groupCol in groupColumns {
                 resultColumns.append((groupCol, dataFrame.columns[groupCol]!.take(indices: firstIndices)))
             }

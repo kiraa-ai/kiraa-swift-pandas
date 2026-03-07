@@ -7,7 +7,7 @@ public struct BitVector: Sendable, Equatable {
     internal var words: [UInt64]
 
     /// The number of bits (elements) this vector tracks.
-    public let bitCount: Int
+    public private(set) var bitCount: Int
 
     // MARK: - Initializers
 
@@ -114,6 +114,55 @@ public struct BitVector: Sendable, Equatable {
         if result.bitCount % 64 != 0 {
             let trailingBits = result.bitCount % 64
             result.words[result.words.count - 1] &= (1 << trailingBits) - 1
+        }
+        return result
+    }
+
+    // MARK: - Concatenation
+
+    /// Concatenate another BitVector, appending its bits after this one.
+    public mutating func append(contentsOf other: BitVector) {
+        let oldCount = bitCount
+        let newCount = oldCount + other.bitCount
+        let newWordCount = (newCount + 63) / 64
+
+        // Extend words array if needed
+        while words.count < newWordCount {
+            words.append(0)
+        }
+
+        // Copy bits from other — fast path when aligned on word boundary
+        let bitOffset = oldCount % 64
+        if bitOffset == 0 {
+            let startWord = oldCount / 64
+            for i in 0..<other.words.count {
+                words[startWord + i] = other.words[i]
+            }
+        } else {
+            let startWord = oldCount / 64
+            for i in 0..<other.words.count {
+                words[startWord + i] |= other.words[i] << bitOffset
+                if startWord + i + 1 < newWordCount {
+                    words[startWord + i + 1] |= other.words[i] >> (64 - bitOffset)
+                }
+            }
+        }
+        bitCount = newCount
+    }
+
+    /// Create a BitVector by concatenating multiple BitVectors.
+    public static func concat(_ vectors: [BitVector]) -> BitVector {
+        let totalBits = vectors.reduce(0) { $0 + $1.bitCount }
+        guard totalBits > 0 else { return BitVector(repeating: false, count: 0) }
+
+        // Fast path: all are allValid
+        if vectors.allSatisfy({ $0.allValid }) {
+            return BitVector(repeating: true, count: totalBits)
+        }
+
+        var result = vectors[0]
+        for i in 1..<vectors.count {
+            result.append(contentsOf: vectors[i])
         }
         return result
     }

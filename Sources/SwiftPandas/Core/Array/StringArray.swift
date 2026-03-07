@@ -63,9 +63,29 @@ public struct StringArray {
     }
 
     public func take(indices: [Int]) -> StringArray {
-        StringArray(indices.map { i in
-            (i >= 0 && i < count) ? storage[i] : nil
-        })
+        let n = indices.count
+        let srcCount = count
+        var result = [String?]()
+        result.reserveCapacity(n)
+        indices.withUnsafeBufferPointer { idx in
+            for i in 0..<n {
+                let j = idx[i]
+                result.append((j >= 0 && j < srcCount) ? storage[j] : nil)
+            }
+        }
+        return StringArray(result)
+    }
+
+    /// Take elements where mask is true. `trueCount` must equal mask.filter({$0}).count.
+    public func take(mask: [Bool], trueCount: Int) -> StringArray {
+        var result = [String?]()
+        result.reserveCapacity(trueCount)
+        mask.withUnsafeBufferPointer { m in
+            for i in 0..<m.count {
+                if m[i] { result.append(storage[i]) }
+            }
+        }
+        return StringArray(result)
     }
 
     public func unique() -> StringArray {

@@ -2,14 +2,14 @@ import Metal
 
 /// Threshold-based dispatch for GPU vs CPU execution paths.
 /// Metal is required on all supported platforms (macOS 13+, iOS 16+).
-/// Small datasets fall back to CPU to avoid GPU dispatch overhead (~50μs).
+/// CPU fast-path beats GPU for datasets under ~500K rows due to GPU dispatch overhead.
 public enum MetalDispatch {
 
     /// Minimum row count to use GPU for GroupBy operations.
-    public static var groupByThreshold = 1_000
+    public static var groupByThreshold = 500_000
 
     /// Minimum row count to use GPU for Merge operations.
-    public static var mergeThreshold = 1_000
+    public static var mergeThreshold = 500_000
 
     /// Whether Metal GPU is available on this device.
     public static var isAvailable: Bool {

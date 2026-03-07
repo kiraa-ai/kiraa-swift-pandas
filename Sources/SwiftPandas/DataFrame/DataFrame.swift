@@ -199,7 +199,24 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     /// Select rows by boolean mask.
     public func filter(mask: [Bool]) -> DataFrame {
         precondition(mask.count == rowCount, "Mask must have same length as DataFrame")
-        let indices = mask.enumerated().compactMap { $1 ? $0 : nil }
+        // Scan the branchy mask ONCE to build sorted indices.
+        // Reuse indices for all columns — avoids N+1 misprediction-heavy mask scans.
+        var trueCount = 0
+        mask.withUnsafeBufferPointer { m in
+            for i in 0..<m.count { if m[i] { trueCount += 1 } }
+        }
+        let indices = [Int](unsafeUninitializedCapacity: trueCount) { dst, count in
+            mask.withUnsafeBufferPointer { m in
+                var j = 0
+                for i in 0..<m.count {
+                    if m[i] {
+                        (dst.baseAddress! + j).initialize(to: i)
+                        j += 1
+                    }
+                }
+                count = j
+            }
+        }
         return takeRows(indices)
     }
 
@@ -211,10 +228,18 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     /// Take rows at specified integer positions.
     public func takeRows(_ indices: [Int]) -> DataFrame {
         var newColumns = [(String, Column)]()
+        newColumns.reserveCapacity(columnNames.count)
         for name in columnNames {
             newColumns.append((name, columns[name]!.take(indices: indices)))
         }
-        let newIndex = indices.map { indexLabels[$0] }
+        // Gather index labels with raw pointer access on indices
+        var newIndex = [String]()
+        newIndex.reserveCapacity(indices.count)
+        indices.withUnsafeBufferPointer { idx in
+            for i in 0..<idx.count {
+                newIndex.append(indexLabels[idx[i]])
+            }
+        }
         return DataFrame(columns: newColumns, index: newIndex)
     }
 
@@ -414,41 +439,57 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     public static func concat(_ frames: [DataFrame]) -> DataFrame {
         guard let first = frames.first else { return DataFrame() }
         let colNames = first.columnNames
+        let totalRows = frames.reduce(0) { $0 + $1.rowCount }
 
         var resultCols = [(String, Column)]()
         var resultIndex = [String]()
+        resultIndex.reserveCapacity(totalRows)
 
         for name in colNames {
             guard let firstCol = first.columns[name] else { continue }
             switch firstCol {
             case .double:
-                var allValues = [Double?]()
+                // Direct buffer concatenation — no [Double?] intermediary
+                var combinedData = NativeArray<Double>([])
+                var masks = [BitVector]()
+                masks.reserveCapacity(frames.count)
                 for frame in frames {
                     guard case .double(let arr) = frame.columns[name] else { continue }
-                    for i in 0..<arr.count { allValues.append(arr[i]) }
+                    combinedData.append(contentsOf: arr.data)
+                    masks.append(arr.mask)
                 }
-                resultCols.append((name, .fromOptionalDoubles(allValues)))
+                let combinedMask = BitVector.concat(masks)
+                resultCols.append((name, .double(NullableArray(data: combinedData, mask: combinedMask))))
             case .string:
                 var allValues = [String?]()
+                allValues.reserveCapacity(totalRows)
                 for frame in frames {
                     guard case .string(let arr) = frame.columns[name] else { continue }
                     allValues.append(contentsOf: arr.storage)
                 }
                 resultCols.append((name, .fromOptionalStrings(allValues)))
             case .int64:
-                var allValues = [Double?]()
+                var combinedData = NativeArray<Int64>([])
+                var masks = [BitVector]()
+                masks.reserveCapacity(frames.count)
                 for frame in frames {
-                    guard let arr = frame.columns[name]?.asDouble() else { continue }
-                    for i in 0..<arr.count { allValues.append(arr[i]) }
+                    guard case .int64(let arr) = frame.columns[name] else { continue }
+                    combinedData.append(contentsOf: arr.data)
+                    masks.append(arr.mask)
                 }
-                resultCols.append((name, .fromOptionalDoubles(allValues)))
+                let combinedMask = BitVector.concat(masks)
+                resultCols.append((name, .int64(NullableArray(data: combinedData, mask: combinedMask))))
             case .bool:
-                var allValues = [Bool]()
+                var combinedData = NativeArray<Bool>([])
+                var masks = [BitVector]()
+                masks.reserveCapacity(frames.count)
                 for frame in frames {
                     guard case .bool(let arr) = frame.columns[name] else { continue }
-                    for i in 0..<arr.count { allValues.append(arr.mask[i] ? arr.data[i] : false) }
+                    combinedData.append(contentsOf: arr.data)
+                    masks.append(arr.mask)
                 }
-                resultCols.append((name, .fromBools(allValues)))
+                let combinedMask = BitVector.concat(masks)
+                resultCols.append((name, .bool(NullableArray(data: combinedData, mask: combinedMask))))
             }
         }
 
@@ -481,27 +522,60 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             }
         }
 
-        // CPU path
-        // Build lookup from right key -> [row indices]
-        var rightLookup = [String: [Int]]()
-        for i in 0..<right.rowCount {
-            let k = rightCol.formattedValue(at: i)
-            rightLookup[k, default: []].append(i)
-        }
-
+        // CPU path — use typed hash matching for speed
+        // Pre-allocate with estimated capacity (assumes ~1:1 match ratio)
+        let estimatedMatches = Swift.max(rowCount, right.rowCount)
         var leftIndices = [Int]()
         var rightIndices = [Int]()
+        leftIndices.reserveCapacity(estimatedMatches)
+        rightIndices.reserveCapacity(estimatedMatches)
 
-        for i in 0..<rowCount {
-            let k = leftCol.formattedValue(at: i)
-            if let matches = rightLookup[k] {
-                for j in matches {
-                    leftIndices.append(i)
-                    rightIndices.append(j)
+        switch (leftCol, rightCol) {
+        case (.double(let la), .double(let ra)):
+            var rightLookup = [Double: [Int]](minimumCapacity: right.rowCount)
+            for i in 0..<right.rowCount where ra.mask[i] {
+                rightLookup[ra.data[i], default: []].append(i)
+            }
+            for i in 0..<rowCount {
+                guard la.mask[i] else {
+                    if how == .left || how == .outer { leftIndices.append(i); rightIndices.append(-1) }
+                    continue
                 }
-            } else if how == .left || how == .outer {
-                leftIndices.append(i)
-                rightIndices.append(-1)
+                if let matches = rightLookup[la.data[i]] {
+                    for j in matches { leftIndices.append(i); rightIndices.append(j) }
+                } else if how == .left || how == .outer {
+                    leftIndices.append(i); rightIndices.append(-1)
+                }
+            }
+        case (.string(let la), .string(let ra)):
+            var rightLookup = [String: [Int]](minimumCapacity: right.rowCount)
+            for i in 0..<right.rowCount {
+                if let k = ra[i] { rightLookup[k, default: []].append(i) }
+            }
+            for i in 0..<rowCount {
+                guard let k = la[i] else {
+                    if how == .left || how == .outer { leftIndices.append(i); rightIndices.append(-1) }
+                    continue
+                }
+                if let matches = rightLookup[k] {
+                    for j in matches { leftIndices.append(i); rightIndices.append(j) }
+                } else if how == .left || how == .outer {
+                    leftIndices.append(i); rightIndices.append(-1)
+                }
+            }
+        default:
+            var rightLookup = [String: [Int]](minimumCapacity: right.rowCount)
+            for i in 0..<right.rowCount {
+                let k = rightCol.formattedValue(at: i)
+                rightLookup[k, default: []].append(i)
+            }
+            for i in 0..<rowCount {
+                let k = leftCol.formattedValue(at: i)
+                if let matches = rightLookup[k] {
+                    for j in matches { leftIndices.append(i); rightIndices.append(j) }
+                } else if how == .left || how == .outer {
+                    leftIndices.append(i); rightIndices.append(-1)
+                }
             }
         }
 
@@ -612,13 +686,20 @@ public enum MergeHow: Sendable {
 
 // MARK: - GroupBy
 
+/// Aggregation operation type for optimized GroupBy.
+public enum GroupByAggOp: Sendable {
+    case sum, mean, count, min, max
+}
+
 /// GroupBy object for split-apply-combine operations.
 /// Supports grouping by one or more columns.
+/// Uses integer-coded factorize for fast hashing instead of string keys.
 public struct GroupBy: Sendable {
     public let dataFrame: DataFrame
     public let by: [String]
 
     /// The group keys (composite key string) and their row indices.
+    /// Retained for backward compatibility; internal fast paths use factorize.
     public var groups: [String: [Int]] {
         var result = [String: [Int]]()
         for i in 0..<dataFrame.rowCount {
@@ -633,31 +714,30 @@ public struct GroupBy: Sendable {
     /// Aggregate with sum.
     public func sum() -> DataFrame {
         if let result = gpuAggregate(.sum) { return result }
-        return aggregate { $0.sum() ?? .nan }
+        return fastAggregate(.sum)
     }
 
     /// Aggregate with mean.
     public func mean() -> DataFrame {
         if let result = gpuAggregate(.mean) { return result }
-        return aggregate { $0.mean() ?? .nan }
+        return fastAggregate(.mean)
     }
 
-    /// Aggregate with count.
+    /// Aggregate with count. CPU-only (no GPU overhead for simple counting).
     public func count() -> DataFrame {
-        if let result = gpuAggregate(.count) { return result }
-        return aggregate { Double($0.validCount) }
+        return fastAggregate(.count)
     }
 
     /// Aggregate with min.
     public func min() -> DataFrame {
         if let result = gpuAggregate(.min) { return result }
-        return aggregate { $0.min() ?? .nan }
+        return fastAggregate(.min)
     }
 
     /// Aggregate with max.
     public func max() -> DataFrame {
         if let result = gpuAggregate(.max) { return result }
-        return aggregate { $0.max() ?? .nan }
+        return fastAggregate(.max)
     }
 
     /// Try GPU-accelerated aggregation; returns nil if unavailable or below threshold.
@@ -669,42 +749,218 @@ public struct GroupBy: Sendable {
         return MetalGroupBy.aggregate(dataFrame: dataFrame, by: by, op: op)
     }
 
-    /// Generic aggregation.
-    private func aggregate(_ fn: (NullableArray<Double>) -> Double) -> DataFrame {
-        let grps = groups
-        let sortedKeys = grps.keys.sorted()
+    // MARK: - Fast integer-coded aggregation
+
+    /// Factorize group columns to integer codes, then aggregate with direct accumulation.
+    private func fastAggregate(_ op: GroupByAggOp) -> DataFrame {
+        let n = dataFrame.rowCount
+
+        // Step 1: Factorize group columns to integer codes
+        var groupCodes = [Int](repeating: 0, count: n)
+        var nGroups = 1
+        // Track which rows have NA keys (skip them)
+        var validRow = [Bool](repeating: true, count: n)
+
+        for colName in by {
+            guard let col = dataFrame.columns[colName] else { continue }
+            let (codes, nUnique): ([Int], Int)
+            switch col {
+            case .double(let a):
+                let f = a.factorize()
+                codes = f.codes
+                nUnique = f.uniques.count
+            case .string(let a):
+                let f = a.factorize()
+                codes = f.codes
+                nUnique = f.uniques.count
+            case .int64(let a):
+                let f = a.factorize()
+                codes = f.codes
+                nUnique = f.uniques.count
+            default:
+                codes = [Int](repeating: 0, count: n)
+                nUnique = 1
+            }
+            // Combine codes: composite key = existing * nUnique + newCode
+            for i in 0..<n {
+                if codes[i] < 0 {
+                    validRow[i] = false
+                } else {
+                    groupCodes[i] = groupCodes[i] * nUnique + codes[i]
+                }
+            }
+            nGroups *= nUnique
+        }
+
+        // Step 2: Compact group codes to dense range [0, actualGroups)
+        // (composite codes may be sparse)
+        var codeMap = [Int: Int]()
+        var denseCode = 0
+        var firstRowForGroup = [Int]() // first row index for each dense group (for key reconstruction)
+        for i in 0..<n {
+            guard validRow[i] else { continue }
+            let code = groupCodes[i]
+            if codeMap[code] == nil {
+                codeMap[code] = denseCode
+                firstRowForGroup.append(i)
+                denseCode += 1
+            }
+            groupCodes[i] = codeMap[code]!
+        }
+        let actualGroups = denseCode
+        guard actualGroups > 0 else {
+            return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
+        }
+
+        // Step 3: Sort groups by their key values for consistent output
+        let sortedGroupIndices: [Int]
+        if by.count == 1, let col = dataFrame.columns[by[0]] {
+            // Sort by native typed values to avoid String conversion
+            switch col {
+            case .string(let a):
+                let groupKeyValues = firstRowForGroup.map { a[$0] ?? "" }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            case .double(let a):
+                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            case .int64(let a):
+                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            default:
+                let groupKeyValues = firstRowForGroup.map { col.formattedValue(at: $0) }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            }
+        } else {
+            sortedGroupIndices = Array(0..<actualGroups)
+        }
+        // Build reverse mapping: sortedPosition[originalDenseCode] = position in output
+        var reverseSortMap = [Int](repeating: 0, count: actualGroups)
+        for (pos, origIdx) in sortedGroupIndices.enumerated() {
+            reverseSortMap[origIdx] = pos
+        }
+
+        // Step 4: Direct accumulation — single pass over data per column
         let numericCols = dataFrame.columnNames.filter {
             !by.contains($0) && dataFrame.columns[$0]!.isNumeric
         }
 
-        // Build group key columns
         var resultCols = [(String, Column)]()
+
+        // Build group key columns using sorted firstRowForGroup
+        let sortedFirstRows = sortedGroupIndices.map { firstRowForGroup[$0] }
         if by.count > 1 {
-            // For multi-column groupBy, include the group key columns in the result
             for groupCol in by {
-                let firstIndices = sortedKeys.map { grps[$0]!.first! }
-                resultCols.append((groupCol, dataFrame.columns[groupCol]!.take(indices: firstIndices)))
+                resultCols.append((groupCol, dataFrame.columns[groupCol]!.take(indices: sortedFirstRows)))
             }
         }
+
+        // Check if all rows have valid keys (common case: no NA in group columns)
+        let allRowsValid = validRow.allSatisfy { $0 }
 
         for colName in numericCols {
             guard let colData = dataFrame.columns[colName]!.asDouble() else { continue }
-            var values = [Double]()
-            for key in sortedKeys {
-                let indices = grps[key]!
-                let groupValues: [Double?] = indices.map { colData[$0] }
-                let groupArray = NullableArray<Double>(groupValues)
-                values.append(fn(groupArray))
+            let values: [Double]
+
+            // Fast-path: no NA keys AND no NA values → skip all validity checks
+            let allColValid = colData.mask.allValid
+            let fullyValid = allRowsValid && allColValid
+
+            if fullyValid {
+                // Fastest path: raw pointer access, no validity checks
+                values = colData.data.withUnsafeBufferPointer { dataBuf in
+                    groupCodes.withUnsafeBufferPointer { codesBuf in
+                        switch op {
+                        case .sum:
+                            var sums = [Double](repeating: 0, count: actualGroups)
+                            for i in 0..<n { sums[codesBuf[i]] += dataBuf[i] }
+                            return sortedGroupIndices.map { sums[$0] }
+                        case .mean:
+                            var sums = [Double](repeating: 0, count: actualGroups)
+                            var counts = [Int](repeating: 0, count: actualGroups)
+                            for i in 0..<n {
+                                sums[codesBuf[i]] += dataBuf[i]
+                                counts[codesBuf[i]] += 1
+                            }
+                            return sortedGroupIndices.map { g in
+                                counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
+                            }
+                        case .count:
+                            var counts = [Int](repeating: 0, count: actualGroups)
+                            for i in 0..<n { counts[codesBuf[i]] += 1 }
+                            return sortedGroupIndices.map { Double(counts[$0]) }
+                        case .min:
+                            var mins = [Double](repeating: .infinity, count: actualGroups)
+                            for i in 0..<n {
+                                let g = codesBuf[i]
+                                if dataBuf[i] < mins[g] { mins[g] = dataBuf[i] }
+                            }
+                            return sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                        case .max:
+                            var maxs = [Double](repeating: -.infinity, count: actualGroups)
+                            for i in 0..<n {
+                                let g = codesBuf[i]
+                                if dataBuf[i] > maxs[g] { maxs[g] = dataBuf[i] }
+                            }
+                            return sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                        }
+                    }
+                }
+            } else {
+                // Slow path: check validity per element
+                switch op {
+                case .sum:
+                    var sums = [Double](repeating: 0, count: actualGroups)
+                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                        sums[groupCodes[i]] += colData.data[i]
+                    }
+                    values = sortedGroupIndices.map { sums[$0] }
+                case .mean:
+                    var sums = [Double](repeating: 0, count: actualGroups)
+                    var counts = [Int](repeating: 0, count: actualGroups)
+                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                        sums[groupCodes[i]] += colData.data[i]
+                        counts[groupCodes[i]] += 1
+                    }
+                    values = sortedGroupIndices.map { g in
+                        counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
+                    }
+                case .count:
+                    var counts = [Int](repeating: 0, count: actualGroups)
+                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                        counts[groupCodes[i]] += 1
+                    }
+                    values = sortedGroupIndices.map { Double(counts[$0]) }
+                case .min:
+                    var mins = [Double](repeating: .infinity, count: actualGroups)
+                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                        let g = groupCodes[i]
+                        if colData.data[i] < mins[g] { mins[g] = colData.data[i] }
+                    }
+                    values = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                case .max:
+                    var maxs = [Double](repeating: -.infinity, count: actualGroups)
+                    for i in 0..<n where validRow[i] && colData.mask[i] {
+                        let g = groupCodes[i]
+                        if colData.data[i] > maxs[g] { maxs[g] = colData.data[i] }
+                    }
+                    values = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                }
             }
+
             resultCols.append((colName, .fromDoubles(values)))
         }
 
-        // For single-column groupBy, use the group keys as the index
+        // For single-column groupBy, use the group key values as the index
         let index: [String]
-        if by.count == 1 {
-            index = sortedKeys
+        if by.count == 1, let col = dataFrame.columns[by[0]] {
+            switch col {
+            case .string(let a):
+                index = sortedFirstRows.map { a[$0] ?? "NA" }
+            default:
+                index = sortedFirstRows.map { col.formattedValue(at: $0) }
+            }
         } else {
-            index = (0..<sortedKeys.count).map { "\($0)" }
+            index = (0..<actualGroups).map { "\($0)" }
         }
 
         return DataFrame(columns: resultCols, index: index)

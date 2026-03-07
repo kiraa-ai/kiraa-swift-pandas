@@ -151,4 +151,78 @@ public enum VectorOps {
         for i in 0..<a.count { result[i] = a[i] + scalar }
         #endif
     }
+
+    /// Subtract a scalar from all elements: result[i] = a[i] - scalar
+    public static func scalarSubtract(
+        _ a: UnsafeBufferPointer<Double>,
+        _ scalar: Double,
+        result: UnsafeMutableBufferPointer<Double>
+    ) {
+        precondition(a.count == result.count)
+        #if ACCELERATE_AVAILABLE
+        var s = -scalar
+        vDSP_vsaddD(a.baseAddress!, 1, &s, result.baseAddress!, 1, vDSP_Length(a.count))
+        #else
+        for i in 0..<a.count { result[i] = a[i] - scalar }
+        #endif
+    }
+
+    /// Divide all elements by a scalar: result[i] = a[i] / scalar
+    public static func scalarDivide(
+        _ a: UnsafeBufferPointer<Double>,
+        _ scalar: Double,
+        result: UnsafeMutableBufferPointer<Double>
+    ) {
+        precondition(a.count == result.count)
+        #if ACCELERATE_AVAILABLE
+        var s = scalar
+        vDSP_vsdivD(a.baseAddress!, 1, &s, result.baseAddress!, 1, vDSP_Length(a.count))
+        #else
+        for i in 0..<a.count { result[i] = a[i] / scalar }
+        #endif
+    }
+
+    // MARK: - Variance / Standard Deviation
+
+    /// Sum of squared differences from mean: Σ(a[i] - mean)²
+    public static func sumOfSquaredDifferences(
+        _ a: UnsafeBufferPointer<Double>,
+        mean: Double
+    ) -> Double {
+        #if ACCELERATE_AVAILABLE
+        // Subtract mean, then compute sum of squares
+        var m = -mean
+        var result = [Double](repeating: 0, count: a.count)
+        // a[i] - mean
+        vDSP_vsaddD(a.baseAddress!, 1, &m, &result, 1, vDSP_Length(a.count))
+        // sum of squares
+        var sumSq: Double = 0
+        vDSP_svesqD(result, 1, &sumSq, vDSP_Length(a.count))
+        return sumSq
+        #else
+        var sumSq: Double = 0
+        for i in 0..<a.count {
+            let diff = a[i] - mean
+            sumSq += diff * diff
+        }
+        return sumSq
+        #endif
+    }
+
+    // MARK: - Sorting
+
+    /// In-place sort using Accelerate's vDSP_vsortD.
+    public static func sort(_ a: UnsafeMutableBufferPointer<Double>, ascending: Bool = true) {
+        guard a.count > 1 else { return }
+        #if ACCELERATE_AVAILABLE
+        // vDSP_vsortD sorts in ascending (1) or descending (-1) order
+        var order: Int32 = ascending ? 1 : -1
+        vDSP_vsortD(a.baseAddress!, vDSP_Length(a.count), order)
+        #else
+        let sorted = ascending
+            ? Array(UnsafeBufferPointer(a)).sorted()
+            : Array(UnsafeBufferPointer(a)).sorted(by: >)
+        _ = a.update(from: sorted)
+        #endif
+    }
 }

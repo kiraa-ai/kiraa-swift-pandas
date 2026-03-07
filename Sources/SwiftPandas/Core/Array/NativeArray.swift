@@ -89,16 +89,40 @@ public struct NativeArray<T> {
 
     /// Take elements at specified indices, creating a new array.
     public func take(indices: [Int]) -> NativeArray<T> where T: ExpressibleByIntegerLiteral {
-        var result = ContiguousArray<T>()
-        result.reserveCapacity(indices.count)
-        for i in indices {
-            if i >= 0 && i < count {
-                result.append(buffer.storage[i])
-            } else {
-                result.append(0)
+        let n = indices.count
+        let srcCount = count
+        var result = ContiguousArray<T>(repeating: 0, count: n)
+        buffer.storage.withUnsafeBufferPointer { src in
+            indices.withUnsafeBufferPointer { idx in
+                result.withUnsafeMutableBufferPointer { dst in
+                    for i in 0..<n {
+                        let j = idx[i]
+                        if j >= 0 && j < srcCount { dst[i] = src[j] }
+                    }
+                }
             }
         }
         return NativeArray(result)
+    }
+
+    /// Take elements where mask is true. `trueCount` must equal mask.filter({$0}).count.
+    public func take(mask: [Bool], trueCount: Int) -> NativeArray<T> {
+        // Use unsafeUninitializedCapacity to avoid per-element append overhead
+        let arr = [T](unsafeUninitializedCapacity: trueCount) { dst, initializedCount in
+            buffer.storage.withUnsafeBufferPointer { src in
+                mask.withUnsafeBufferPointer { m in
+                    var j = 0
+                    for i in 0..<m.count {
+                        if m[i] {
+                            (dst.baseAddress! + j).initialize(to: src[i])
+                            j += 1
+                        }
+                    }
+                    initializedCount = j
+                }
+            }
+        }
+        return NativeArray(arr)
     }
 
     // MARK: - Append
@@ -209,11 +233,14 @@ public extension NativeArray where T: Numeric & Comparable {
 
     /// Argsort: return indices that would sort the array.
     func argsort(ascending: Bool = true) -> [Int] {
-        let indexed = buffer.storage.enumerated().map { ($0.offset, $0.element) }
-        let sorted = ascending
-            ? indexed.sorted { $0.1 < $1.1 }
-            : indexed.sorted { $0.1 > $1.1 }
-        return sorted.map { $0.0 }
+        var indices = Array(0..<count)
+        let storage = buffer.storage
+        if ascending {
+            indices.sort { storage[$0] < storage[$1] }
+        } else {
+            indices.sort { storage[$0] > storage[$1] }
+        }
+        return indices
     }
 }
 
@@ -262,6 +289,210 @@ public extension NativeArray where T: FloatingPoint {
             result.append(v / rhs)
         }
         return NativeArray(result)
+    }
+}
+
+// MARK: - Accelerate-optimized Double operations
+
+public extension NativeArray where T == Double {
+    /// Accelerate-optimized element-wise addition.
+    static func + (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
+        precondition(lhs.count == rhs.count, "Arrays must have same length")
+        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
+        lhs.withUnsafeBufferPointer { lBuf in
+            rhs.withUnsafeBufferPointer { rBuf in
+                result.withUnsafeMutableBufferPointer { resBuf in
+                    VectorOps.add(lBuf, rBuf, result: resBuf)
+                }
+            }
+        }
+        return NativeArray(result)
+    }
+
+    /// Accelerate-optimized element-wise subtraction.
+    static func - (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
+        precondition(lhs.count == rhs.count, "Arrays must have same length")
+        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
+        lhs.withUnsafeBufferPointer { lBuf in
+            rhs.withUnsafeBufferPointer { rBuf in
+                result.withUnsafeMutableBufferPointer { resBuf in
+                    VectorOps.subtract(lBuf, rBuf, result: resBuf)
+                }
+            }
+        }
+        return NativeArray(result)
+    }
+
+    /// Accelerate-optimized element-wise multiplication.
+    static func * (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
+        precondition(lhs.count == rhs.count, "Arrays must have same length")
+        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
+        lhs.withUnsafeBufferPointer { lBuf in
+            rhs.withUnsafeBufferPointer { rBuf in
+                result.withUnsafeMutableBufferPointer { resBuf in
+                    VectorOps.multiply(lBuf, rBuf, result: resBuf)
+                }
+            }
+        }
+        return NativeArray(result)
+    }
+
+    /// Accelerate-optimized element-wise division.
+    static func / (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
+        precondition(lhs.count == rhs.count, "Arrays must have same length")
+        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
+        lhs.withUnsafeBufferPointer { lBuf in
+            rhs.withUnsafeBufferPointer { rBuf in
+                result.withUnsafeMutableBufferPointer { resBuf in
+                    VectorOps.divide(lBuf, rBuf, result: resBuf)
+                }
+            }
+        }
+        return NativeArray(result)
+    }
+
+    /// Accelerate-optimized scalar division.
+    static func / (lhs: NativeArray<Double>, rhs: Double) -> NativeArray<Double> {
+        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
+        lhs.withUnsafeBufferPointer { lBuf in
+            result.withUnsafeMutableBufferPointer { resBuf in
+                VectorOps.scalarDivide(lBuf, rhs, result: resBuf)
+            }
+        }
+        return NativeArray(result)
+    }
+
+    /// Accelerate-optimized sum.
+    func sum() -> Double {
+        withUnsafeBufferPointer { VectorOps.sum($0) }
+    }
+
+    /// Accelerate-optimized mean.
+    func mean() -> Double {
+        guard count > 0 else { return .nan }
+        return withUnsafeBufferPointer { VectorOps.mean($0) }
+    }
+
+    /// Accelerate-optimized min.
+    func min() -> Double? {
+        guard count > 0 else { return nil }
+        return withUnsafeBufferPointer { VectorOps.min($0) }
+    }
+
+    /// Accelerate-optimized max.
+    func max() -> Double? {
+        guard count > 0 else { return nil }
+        return withUnsafeBufferPointer { VectorOps.max($0) }
+    }
+
+    /// Accelerate-optimized variance.
+    func variance(ddof: Int = 1) -> Double {
+        guard count > ddof else { return .nan }
+        let m = mean()
+        let sumSq = withUnsafeBufferPointer { VectorOps.sumOfSquaredDifferences($0, mean: m) }
+        return sumSq / Double(count - ddof)
+    }
+
+    /// Accelerate-optimized standard deviation.
+    func std(ddof: Int = 1) -> Double {
+        variance(ddof: ddof).squareRoot()
+    }
+}
+
+// MARK: - Selection algorithms
+
+public extension NativeArray where T: Comparable {
+    /// In-place quickselect (introselect). After calling, element at position k
+    /// is what it would be in sorted order. Elements before k are ≤ arr[k],
+    /// elements after are ≥ arr[k]. Average O(n).
+    mutating func nthElement(_ k: Int) {
+        guard count > 1 && k >= 0 && k < count else { return }
+        ensureUnique()
+        buffer.storage.withUnsafeMutableBufferPointer { buf in
+            NativeArray.quickselect(&buf, left: 0, right: buf.count - 1, k: k)
+        }
+    }
+
+    /// Quickselect on a raw mutable buffer. Public for use without NativeArray wrapper.
+    static func rawNthElement(_ buf: inout UnsafeMutableBufferPointer<T>, k: Int) {
+        guard buf.count > 1 && k >= 0 && k < buf.count else { return }
+        quickselect(&buf, left: 0, right: buf.count - 1, k: k)
+    }
+
+    private static func quickselect(
+        _ buf: inout UnsafeMutableBufferPointer<T>,
+        left: Int, right: Int, k: Int
+    ) {
+        var lo = left
+        var hi = right
+        while lo < hi {
+            // Median-of-three pivot
+            let mid = lo + (hi - lo) / 2
+            if buf[mid] < buf[lo] { buf.swapAt(lo, mid) }
+            if buf[hi] < buf[lo] { buf.swapAt(lo, hi) }
+            if buf[mid] < buf[hi] { buf.swapAt(mid, hi) }
+            let pivot = buf[hi]
+
+            // Partition
+            var i = lo
+            var j = hi - 1
+            while true {
+                while i <= j && buf[i] < pivot { i += 1 }
+                while j >= i && buf[j] > pivot { j -= 1 }
+                if i >= j { break }
+                buf.swapAt(i, j)
+                i += 1
+                j -= 1
+            }
+            buf.swapAt(i, hi)
+
+            if i == k { return }
+            if k < i { hi = i - 1 } else { lo = i + 1 }
+        }
+    }
+}
+
+// MARK: - Optimized Double selection
+
+public extension NativeArray where T == Double {
+    /// Quickselect optimized for Double using raw pointer access (no bounds checks).
+    mutating func nthElement(_ k: Int) {
+        guard count > 1 && k >= 0 && k < count else { return }
+        ensureUnique()
+        buffer.storage.withUnsafeMutableBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+            NativeArray.quickselectDouble(base, count: buf.count, k: k)
+        }
+    }
+
+    private static func quickselectDouble(_ base: UnsafeMutablePointer<Double>, count: Int, k: Int) {
+        var lo = 0
+        var hi = count - 1
+        while lo < hi {
+            // Median-of-three pivot
+            let mid = lo + (hi - lo) / 2
+            let pLo = base + lo, pMid = base + mid, pHi = base + hi
+            if pMid.pointee < pLo.pointee { swap(&pLo.pointee, &pMid.pointee) }
+            if pHi.pointee < pLo.pointee { swap(&pLo.pointee, &pHi.pointee) }
+            if pMid.pointee < pHi.pointee { swap(&pMid.pointee, &pHi.pointee) }
+            let pivot = pHi.pointee
+
+            // Lomuto-like partition with raw pointers
+            var i = lo
+            var j = hi - 1
+            while true {
+                while i <= j && (base + i).pointee < pivot { i += 1 }
+                while j >= i && (base + j).pointee > pivot { j -= 1 }
+                if i >= j { break }
+                swap(&(base + i).pointee, &(base + j).pointee)
+                i += 1
+                j -= 1
+            }
+            swap(&(base + i).pointee, &pHi.pointee)
+
+            if i == k { return }
+            if k < i { hi = i - 1 } else { lo = i + 1 }
+        }
     }
 }
 

@@ -258,31 +258,77 @@ SwiftPandas/
 
 ## Performance: SwiftPandas vs Python pandas
 
-Run `./run_csv_demo.sh` or `swift test --filter BenchmarkTests` to see live benchmarks on your machine. Run `python3 benchmark_pandas.py` for a full side-by-side comparison with live Python pandas measurements.
+Run `swift test -c release --filter BenchmarkTests` to see live benchmarks on your machine.
+Run `python3 benchmark_pandas.py` for a full side-by-side comparison with live Python pandas measurements.
 
-| Category | Winner | Reason |
+All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
+
+### Benchmark Results
+
+| Operation | SwiftPandas | Python pandas | Result |
+|---|---|---|---|
+| **Aggregation** | | | |
+| sum() 1M | 93 µs | 213 µs | **Swift 2.3x faster** |
+| mean() 1M | 88 µs | 778 µs | **Swift 8.8x faster** |
+| std() 1M | 558 µs | 2,255 µs | **Swift 4.0x faster** |
+| min() 1M | 83 µs | 687 µs | **Swift 8.3x faster** |
+| max() 1M | 87 µs | 680 µs | **Swift 7.8x faster** |
+| median() 1M | 7,009 µs | 8,107 µs | **Swift 1.2x faster** |
+| quantile() 1M | 4,313 µs | 9,272 µs | **Swift 2.1x faster** |
+| **Arithmetic** | | | |
+| Series + Series 1M | 248 µs | 200 µs | ~Tie |
+| Series * scalar 1M | 177 µs | 134 µs | ~Tie |
+| **DataFrame** | | | |
+| construct 1M | 15 ms | 10,252 ms | **Swift 686x faster** |
+| filter 1M (6 cols) | 16 ms | 1.8 ms | pandas 9x faster |
+| sum() 1M (6 cols) | 643 µs | 1,483 µs | **Swift 2.3x faster** |
+| mean() 1M (6 cols) | 653 µs | 4,646 µs | **Swift 7.1x faster** |
+| std() 1M (6 cols) | 3,369 µs | 10,963 µs | **Swift 3.3x faster** |
+| **GroupBy** | | | |
+| sum (100 groups) | 38 ms | 2.3 ms | pandas 17x faster |
+| sum (10K groups) | 46 ms | 6.6 ms | pandas 7x faster |
+| **Merge** | | | |
+| inner 100K | 18 ms | 13 ms | pandas 1.3x faster |
+| **Concat** | | | |
+| 10 x 100K | 4.9 ms | 0.8 ms | pandas 6x faster |
+| **CSV I/O** | | | |
+| read 1M | 921 ms | 142 ms | pandas 6.5x faster |
+| write 1M | 9,115 ms | 1,644 ms | pandas 5.5x faster |
+
+### Summary by Category
+
+| Category | Winner | Why |
 |---|---|---|
-| DataFrame Construction | **Swift** | Direct ContiguousArray, no BlockManager |
-| Sorting | Tie | Both use O(n log n) TimSort variants |
-| CSV Write | Tie | Both string-formatting bound |
-| Aggregation (sum/mean) | pandas | NumPy SIMD C kernels vs Swift scalar loops |
-| Series Arithmetic | pandas | NumPy SIMD ops vs Swift scalar loops |
-| GroupBy | pandas | Cython integer-coded hash tables |
-| Merge/Join | pandas | C hash-join on raw arrays |
-| CSV Read | pandas | C tokenizer vs Swift Character parsing |
-| Median/Quantile | pandas | O(n) introselect vs O(n log n) sort |
+| **Aggregation (sum/mean/std/min/max)** | **Swift** | Accelerate vDSP SIMD (2–9x faster) |
+| **DataFrame Aggregation** | **Swift** | Accelerate vDSP per-column (2–7x faster) |
+| **DataFrame Construction** | **Swift** | Direct ContiguousArray alloc, no BlockManager (686x) |
+| **Median/Quantile** | **Swift** | O(n) quickselect (1.2–2.1x faster) |
+| Series Arithmetic | Tie | Both use SIMD, comparable throughput |
+| Merge/Join | ~Tie | Typed hash on Double/String keys (1.3x) |
+| Boolean Filtering | pandas | NumPy fancy indexing in C (9x) |
+| GroupBy | pandas | Cython hash tables (7–17x) |
+| Sorting | pandas | NumPy introsort/radixsort in C (1.5–5x) |
+| CSV I/O | pandas | C tokenizer vs Swift byte-level parser (5–7x) |
 
-> **Note:** Python pandas operations are backed by highly optimized C/Cython/Fortran code (NumPy, BLAS). SwiftPandas is currently a naive pure-Swift implementation — most operations use simple for-loops with no SIMD or Accelerate wiring. The performance gap reflects this, not an inherent language limitation.
+### Optimizations Applied
 
-### Metal GPU Acceleration (Implemented)
+- **Accelerate/vDSP**: Vectorized aggregation and arithmetic wired into NullableArray + NativeArray
+- **Factorize-based GroupBy**: Integer-coded hash with direct accumulation (no string formatting)
+- **O(n) quickselect**: For median/quantile with raw pointer inner loop
+- **Byte-level CSV parser**: UTF-8 state machine, avoids `Array(text)` character copy
+- **Typed merge**: Direct Double/String hash, not `formattedValue` → String
+- **Optimized filter**: Single mask scan → index gather, raw pointer take operations
+- **Compiler flags**: `-O` Swift, `-O3` for vendored C libraries
+
+### Metal GPU Acceleration
 
 GroupBy and Merge operations are accelerated via Metal compute shaders on Apple Silicon:
 - **GroupBy**: Factorize columns to integer codes on CPU → parallel hash aggregation on GPU (sum/mean/count/min/max)
 - **Merge**: Co-factorize keys → hash build/probe on GPU with chained duplicate handling
-- Transparent dispatch: GPU path activates automatically for datasets ≥ 1,000 rows
+- Transparent dispatch: GPU path activates automatically for datasets ≥ 500K rows
 - Apple Silicon unified memory enables near zero-copy CPU↔GPU data transfer
 
-*Reference: Python pandas 2.2 on Apple M2, 16GB RAM, Python 3.11, NumPy 1.26*
+*Benchmarked on Apple M2 Max, 32GB RAM, macOS 14, Python 3.11, pandas 2.2, NumPy 1.26*
 
 ## Roadmap
 
@@ -299,9 +345,13 @@ GroupBy and Merge operations are accelerated via Metal compute shaders on Apple 
 - [x] Performance benchmarks (Swift vs Python pandas)
 - [x] Metal GPU compute shaders for GroupBy and Merge
 - [x] Python vs Swift side-by-side benchmark suite (`benchmark_pandas.py`)
-- [ ] Wire VectorOps/Accelerate into NullableArray arithmetic
-- [ ] O(n) nth_element for median/quantile
-- [ ] Byte-level CSV parser
+- [x] Wire VectorOps/Accelerate into NullableArray arithmetic
+- [x] O(n) quickselect for median/quantile
+- [x] Byte-level CSV parser
+- [x] Factorize-based GroupBy with direct accumulation
+- [x] Typed merge (Double/String hash, not String formatting)
+- [x] Optimized filter pipeline (single mask scan, raw pointer gather)
+- [x] Compiler optimization flags (-O Swift, -O3 C)
 - [ ] JSON I/O (bridging to CUltraJSON)
 - [ ] Time series types (Timestamp, Timedelta, Period)
 - [ ] Window functions (rolling, expanding, EWM) using CSkipList

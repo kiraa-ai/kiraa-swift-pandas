@@ -192,6 +192,34 @@ public enum Column: CustomStringConvertible, Sendable {
         }
     }
 
+    /// Take elements where mask is true. `trueCount` must equal the number of true values in mask.
+    public func take(mask: [Bool], trueCount: Int) -> Column {
+        switch self {
+        case .double(let a): return .double(a.take(mask: mask, trueCount: trueCount))
+        case .string(let a): return .string(a.take(mask: mask, trueCount: trueCount))
+        case .bool(let a):
+            var values = ContiguousArray<Bool>()
+            var bools = [Bool]()
+            values.reserveCapacity(trueCount)
+            bools.reserveCapacity(trueCount)
+            mask.withUnsafeBufferPointer { m in
+                for i in 0..<m.count {
+                    if m[i] {
+                        if a.mask[i] {
+                            values.append(a.data[i])
+                            bools.append(true)
+                        } else {
+                            values.append(false)
+                            bools.append(false)
+                        }
+                    }
+                }
+            }
+            return .bool(NullableArray(data: NativeArray(values), mask: BitVector(bools)))
+        case .int64(let a): return .int64(a.take(mask: mask, trueCount: trueCount))
+        }
+    }
+
     // MARK: - Copy
 
     public func copy() -> Column {

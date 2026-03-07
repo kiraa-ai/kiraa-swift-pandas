@@ -13,21 +13,30 @@ let package = Package(
             name: "CSkipList",
             path: "Sources/CSkipList",
             publicHeadersPath: "include",
-            cSettings: [.headerSearchPath("include")]
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags(["-O3"]),
+            ]
         ),
         // C target: klib hash tables (khash)
         .target(
             name: "CKHash",
             path: "Sources/CKHash",
             publicHeadersPath: "include",
-            cSettings: [.headerSearchPath("include")]
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags(["-O3"]),
+            ]
         ),
         // C target: UltraJSON core encoder/decoder
         .target(
             name: "CUltraJSON",
             path: "Sources/CUltraJSON",
             publicHeadersPath: "include",
-            cSettings: [.headerSearchPath("include")]
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags(["-O3"]),
+            ]
         ),
         // Primary Swift library target
         .target(
@@ -36,6 +45,7 @@ let package = Package(
             path: "Sources/SwiftPandas",
             swiftSettings: [
                 .define("ACCELERATE_AVAILABLE", .when(platforms: [.macOS, .iOS])),
+                .unsafeFlags(["-O"]),
             ]
         ),
         // Tests
@@ -43,7 +53,10 @@ let package = Package(
             name: "SwiftPandasTests",
             dependencies: ["SwiftPandas"],
             path: "Tests/SwiftPandasTests",
-            resources: [.copy("SampleData")]
+            resources: [.copy("SampleData")],
+            swiftSettings: [
+                .unsafeFlags(["-O"]),
+            ]
         ),
     ]
 )
