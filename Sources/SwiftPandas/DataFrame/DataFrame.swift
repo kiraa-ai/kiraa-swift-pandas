@@ -471,6 +471,17 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             fatalError("Key column '\(key)' not found in both DataFrames")
         }
 
+        // GPU fast path for inner joins on large datasets
+        if how == .inner && MetalDispatch.shouldUseGPU(
+            rowCount: Swift.max(rowCount, right.rowCount),
+            threshold: MetalDispatch.mergeThreshold
+        ) {
+            if let result = MetalMerge.innerJoin(left: self, right: right, on: key) {
+                return result
+            }
+        }
+
+        // CPU path
         // Build lookup from right key -> [row indices]
         var rightLookup = [String: [Int]]()
         for i in 0..<right.rowCount {
@@ -621,27 +632,41 @@ public struct GroupBy: Sendable {
 
     /// Aggregate with sum.
     public func sum() -> DataFrame {
-        aggregate { $0.sum() ?? .nan }
+        if let result = gpuAggregate(.sum) { return result }
+        return aggregate { $0.sum() ?? .nan }
     }
 
     /// Aggregate with mean.
     public func mean() -> DataFrame {
-        aggregate { $0.mean() ?? .nan }
+        if let result = gpuAggregate(.mean) { return result }
+        return aggregate { $0.mean() ?? .nan }
     }
 
     /// Aggregate with count.
     public func count() -> DataFrame {
-        aggregate { Double($0.validCount) }
+        if let result = gpuAggregate(.count) { return result }
+        return aggregate { Double($0.validCount) }
     }
 
     /// Aggregate with min.
     public func min() -> DataFrame {
-        aggregate { $0.min() ?? .nan }
+        if let result = gpuAggregate(.min) { return result }
+        return aggregate { $0.min() ?? .nan }
     }
 
     /// Aggregate with max.
     public func max() -> DataFrame {
-        aggregate { $0.max() ?? .nan }
+        if let result = gpuAggregate(.max) { return result }
+        return aggregate { $0.max() ?? .nan }
+    }
+
+    /// Try GPU-accelerated aggregation; returns nil if unavailable or below threshold.
+    private func gpuAggregate(_ op: MetalGroupBy.AggOp) -> DataFrame? {
+        guard MetalDispatch.shouldUseGPU(
+            rowCount: dataFrame.rowCount,
+            threshold: MetalDispatch.groupByThreshold
+        ) else { return nil }
+        return MetalGroupBy.aggregate(dataFrame: dataFrame, by: by, op: op)
     }
 
     /// Generic aggregation.

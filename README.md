@@ -68,7 +68,7 @@ The following vendored C libraries from the pandas project are compiled directly
 - Apple Accelerate framework integration (vDSP) for vectorized math on macOS/iOS
 - Copy-on-write value semantics via `isKnownUniquelyReferenced`
 - Compact `BitVector` validity bitmaps (1 bit per element)
-- **Planned**: Metal GPU compute shaders for GroupBy and Merge on Apple Silicon
+- **Metal GPU compute shaders** for GroupBy and Merge on Apple Silicon (implemented)
 
 ### Swift Idioms
 - Value types (structs) with copy-on-write — no SettingWithCopyWarning
@@ -206,20 +206,28 @@ SwiftPandas/
 │       ├── Index/               # Index types (RangeIndex, StringIndex, Int64Index)
 │       ├── Series/              # Series type + arithmetic + comparison + apply
 │       ├── DataFrame/           # DataFrame type with GroupBy, Merge, Concat
+│       ├── Metal/               # Metal GPU compute shaders
+│       │   ├── MetalContext.swift    # Singleton device/queue/library
+│       │   ├── MetalShaders.swift   # MSL kernel source (7 kernels)
+│       │   ├── MetalGroupBy.swift   # GPU GroupBy: factorize → hash → reduce
+│       │   ├── MetalMerge.swift     # GPU Merge: hash build → hash probe
+│       │   └── MetalDispatch.swift  # Threshold-based GPU/CPU routing
 │       ├── IO/
 │       │   └── CSV/             # CSV reader/writer with type inference
 │       └── Numeric/             # VectorOps with Accelerate support
-└── Tests/
-    └── SwiftPandasTests/        # 147 tests covering all components
-        ├── CSVDataFrameTests.swift    # Comprehensive API documentation tests
-        ├── BenchmarkTests.swift       # Performance benchmarks (Swift vs Python pandas)
-        ├── NewFeaturesTests.swift     # Comparison, apply, groupby, concat tests
-        └── SampleData/employees.csv   # 15-row sample dataset
+├── Tests/
+│   └── SwiftPandasTests/        # 163 tests covering all components
+│       ├── CSVDataFrameTests.swift    # Comprehensive API documentation tests
+│       ├── BenchmarkTests.swift       # Performance benchmarks (Swift vs Python pandas)
+│       ├── MetalTests.swift           # GPU correctness tests (GroupBy, Merge, dispatch)
+│       ├── NewFeaturesTests.swift     # Comparison, apply, groupby, concat tests
+│       └── SampleData/employees.csv   # 15-row sample dataset
+└── benchmark_pandas.py          # Python vs Swift side-by-side benchmark suite
 ```
 
 ## Test Suite
 
-147 tests across all components:
+163 tests across all components:
 
 | Category | Tests | Coverage |
 |---|---|---|
@@ -242,6 +250,7 @@ SwiftPandas/
 | Multi-Column Sort | 2 | Multi-key sorting |
 | Multi-Column GroupBy | 2 | Composite key groupby |
 | Concat | 2 | Vertical stacking with mixed types |
+| Metal GPU | 16 | GPU GroupBy (sum/mean/count/min/max), GPU Merge, dispatch |
 | Integration | 1 | End-to-end pandas-style workflow |
 | VectorOps | 4 | Accelerate/scalar math operations |
 | Benchmarks | 14 | Performance comparison vs Python pandas |
@@ -249,24 +258,29 @@ SwiftPandas/
 
 ## Performance: SwiftPandas vs Python pandas
 
-Run `./run_csv_demo.sh` or `swift test --filter BenchmarkTests` to see live benchmarks on your machine.
+Run `./run_csv_demo.sh` or `swift test --filter BenchmarkTests` to see live benchmarks on your machine. Run `python3 benchmark_pandas.py` for a full side-by-side comparison with live Python pandas measurements.
 
 | Category | Winner | Reason |
 |---|---|---|
-| Aggregation (sum/mean) | **Swift** | No interpreter overhead, tight loops |
-| Boolean Filtering | **Swift** | Single-pass value types, no GIL |
-| Sorting | Tie | Both use O(n log n) TimSort variants |
-| Scalar Arithmetic | pandas | NumPy SIMD vectorized C kernels |
-| Series Arithmetic | pandas | NumPy SIMD ops vs Swift scalar loops |
 | DataFrame Construction | **Swift** | Direct ContiguousArray, no BlockManager |
+| Sorting | Tie | Both use O(n log n) TimSort variants |
+| CSV Write | Tie | Both string-formatting bound |
+| Aggregation (sum/mean) | pandas | NumPy SIMD C kernels vs Swift scalar loops |
+| Series Arithmetic | pandas | NumPy SIMD ops vs Swift scalar loops |
 | GroupBy | pandas | Cython integer-coded hash tables |
 | Merge/Join | pandas | C hash-join on raw arrays |
 | CSV Read | pandas | C tokenizer vs Swift Character parsing |
-| CSV Write | Tie | Both string-formatting bound |
 | Median/Quantile | pandas | O(n) introselect vs O(n log n) sort |
-| Concat | **Swift** | Simple array append, value semantics |
 
-**Planned GPU Acceleration:** GroupBy and Merge will be reimplemented as Metal compute shaders for massively parallel execution on Apple Silicon GPUs, leveraging unified memory for zero-copy CPU↔GPU data transfer.
+> **Note:** Python pandas operations are backed by highly optimized C/Cython/Fortran code (NumPy, BLAS). SwiftPandas is currently a naive pure-Swift implementation — most operations use simple for-loops with no SIMD or Accelerate wiring. The performance gap reflects this, not an inherent language limitation.
+
+### Metal GPU Acceleration (Implemented)
+
+GroupBy and Merge operations are accelerated via Metal compute shaders on Apple Silicon:
+- **GroupBy**: Factorize columns to integer codes on CPU → parallel hash aggregation on GPU (sum/mean/count/min/max)
+- **Merge**: Co-factorize keys → hash build/probe on GPU with chained duplicate handling
+- Transparent dispatch: GPU path activates automatically for datasets ≥ 1,000 rows
+- Apple Silicon unified memory enables near zero-copy CPU↔GPU data transfer
 
 *Reference: Python pandas 2.2 on Apple M2, 16GB RAM, Python 3.11, NumPy 1.26*
 
@@ -283,7 +297,8 @@ Run `./run_csv_demo.sh` or `swift test --filter BenchmarkTests` to see live benc
 - [x] Concat with mixed column types
 - [x] Pretty-printed table output with box drawing
 - [x] Performance benchmarks (Swift vs Python pandas)
-- [ ] Metal GPU compute shaders for GroupBy and Merge
+- [x] Metal GPU compute shaders for GroupBy and Merge
+- [x] Python vs Swift side-by-side benchmark suite (`benchmark_pandas.py`)
 - [ ] Wire VectorOps/Accelerate into NullableArray arithmetic
 - [ ] O(n) nth_element for median/quantile
 - [ ] Byte-level CSV parser
