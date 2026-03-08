@@ -1,16 +1,50 @@
+// MARK: - CSVDataFrameTests.swift
+// MARK: Comprehensive API Documentation Tests
+//
+// This file serves as both a test suite and a living API reference for the
+// SwiftPandas library. Each test method demonstrates and verifies a major
+// area of the API, producing formatted console output that reads like
+// documentation. Topics covered:
+//
+//   0. Table of Contents  - Full API overview with section index
+//   1. Series             - 1D labeled arrays: construction, indexing, NA handling,
+//                           aggregations, arithmetic, comparisons, apply/map,
+//                           cumulative ops, unique/duplicates, sorting
+//   2. DataFrame          - 2D labeled tables: construction, properties, column/row
+//                           access, boolean filtering, sorting, aggregations,
+//                           duplicates, apply
+//   3. GroupBy            - Split-apply-combine: single-column and multi-column
+//                           grouping with sum/mean/count/min/max
+//   4. Merge & Concat     - Combining DataFrames via inner/left joins and
+//                           vertical concatenation
+//   5. CSV I/O            - Reading and writing CSV from strings and files,
+//                           custom parser/writer configuration, round-trip
+//   6. Core Types         - Column storage, DType system, BitVector, NativeArray,
+//                           NullableArray, StringArray
+//   7. Index Types        - RangeIndex, StringIndex, Int64Index
+//   8. Full Pipeline Demo - End-to-end workflow: load, describe, groupby, filter,
+//                           sort, transform, merge, concat, CSV round-trip
+//
+// Run with: ./run_csv_demo.sh
+
 import XCTest
 @testable import SwiftPandas
 
-/// Comprehensive documentation and demo of SwiftPandas — a pandas-like library for Swift.
-/// Run with: ./run_csv_demo.sh
+/// Comprehensive documentation and demo test suite for the SwiftPandas library.
+///
+/// Each test method documents and exercises a specific API area, producing
+/// formatted console output suitable for use as an API reference. Assertions
+/// at the end of each test verify correctness of the demonstrated operations.
 final class CSVDataFrameTests: XCTestCase {
 
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │  Helper: section / subsection / note printers                       │
     // └─────────────────────────────────────────────────────────────────────┘
 
+    /// The fixed character width used for formatting output banners and sections.
     static let W = 78  // output width
 
+    /// Prints a top-level banner with a double-line box around the title.
     static func banner(_ title: String) {
         let pad = max(0, W - title.count - 4)
         let left = pad / 2
@@ -21,6 +55,7 @@ final class CSVDataFrameTests: XCTestCase {
         print("\u{255A}" + String(repeating: "\u{2550}", count: W) + "\u{255D}")
     }
 
+    /// Prints a numbered section header with a single-line box.
     static func section(_ num: String, _ title: String) {
         print("")
         print("  \u{250C}" + String(repeating: "\u{2500}", count: W - 4) + "\u{2510}")
@@ -28,15 +63,18 @@ final class CSVDataFrameTests: XCTestCase {
         print("  \u{2514}" + String(repeating: "\u{2500}", count: W - 4) + "\u{2518}")
     }
 
+    /// Prints a subsection header with a triangle marker and horizontal rule.
     static func sub(_ title: String) {
         print("\n  \u{25B6} \(title)")
         print("  " + String(repeating: "\u{2500}", count: W - 4))
     }
 
+    /// Prints a code example label with an arrow marker.
     static func code(_ label: String) {
         print("    \u{25B8} \(label)")
     }
 
+    /// Prints an indented note line with a vertical bar prefix.
     static func note(_ text: String) {
         print("    \u{2502} \(text)")
     }
@@ -45,6 +83,9 @@ final class CSVDataFrameTests: XCTestCase {
     // │  Sample data                                                        │
     // └─────────────────────────────────────────────────────────────────────┘
 
+    /// Sample CSV data representing a 15-row employee dataset with columns:
+    /// name, department, salary, age, years_experience, and performance_score.
+    /// Used throughout the test suite as the primary test fixture.
     let employeeCSV = """
     name,department,salary,age,years_experience,performance_score
     Alice,Engineering,95000,32,8,4.5
@@ -68,6 +109,8 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 0. TABLE OF CONTENTS
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Prints the full API table of contents covering all SwiftPandas modules.
+    /// Named with "AA" prefix to ensure it runs first alphabetically.
     func testAA_TableOfContents() {
         Self.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} API REFERENCE")
 
@@ -140,6 +183,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 1. SERIES — 1D Labeled Array
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests the Series API: construction, properties, indexing,
+    /// NA handling, aggregations, arithmetic, comparisons, apply/map, cumulative
+    /// operations, unique/duplicate handling, and sorting.
     func testSeriesDocumentation() {
         Self.section("1", "Series \u{2014} 1D Labeled Array")
 
@@ -346,6 +392,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 2. DATAFRAME — 2D Labeled Table
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests the DataFrame API: construction from dictionaries,
+    /// typed columns, records, and CSV; properties; column/row access; boolean
+    /// filtering; sorting (single and multi-column); aggregations; duplicates; and apply.
     func testDataFrameDocumentation() {
         Self.section("2", "DataFrame \u{2014} 2D Labeled Table")
 
@@ -511,6 +560,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 3. GROUPBY — Split-Apply-Combine
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests GroupBy split-apply-combine operations: single-column
+    /// grouping with all five aggregation functions, group inspection via `.groups`,
+    /// and multi-column grouping with composite keys.
     func testGroupByDocumentation() {
         Self.section("3", "GroupBy \u{2014} Split-Apply-Combine")
         let df = DataFrame.readCSV(employeeCSV)
@@ -561,6 +613,8 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 4. MERGE & CONCAT
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests merge (inner/left join) and concat (vertical stack)
+    /// operations for combining multiple DataFrames.
     func testMergeConcatDocumentation() {
         Self.section("4", "Merge & Concat \u{2014} Combining DataFrames")
 
@@ -610,6 +664,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 5. CSV I/O
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests CSV I/O: reading from strings and files, custom parser
+    /// configuration (separators, headers, NA values), writing to strings and files,
+    /// custom writer settings, and round-trip data integrity verification.
     func testCSVDocumentation() {
         Self.section("5", "CSV I/O \u{2014} Read & Write")
 
@@ -658,6 +715,11 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 6. CORE TYPES
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests core storage types: Column (type-erased storage with
+    /// factory methods), DType system (numeric, boolean, string types), BitVector
+    /// (1-bit validity bitmap with bitwise operators), NativeArray (contiguous
+    /// typed storage with CoW), NullableArray (NativeArray + BitVector for NA),
+    /// and StringArray (string storage with NA support).
     func testCoreTypesDocumentation() {
         Self.section("6", "Core Types \u{2014} Storage & Type System")
 
@@ -749,6 +811,8 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 7. INDEX TYPES
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Documents and tests index types: RangeIndex (memory-efficient integer range),
+    /// StringIndex (hash-backed string label lookup), and Int64Index (integer label lookup).
     func testIndexDocumentation() {
         Self.section("7", "Index Types \u{2014} Label Management")
 
@@ -778,6 +842,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - 8. FULL PIPELINE DEMO
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Runs an end-to-end pipeline demo: load CSV, inspect, describe, GroupBy,
+    /// filter, sort, transform (salary per year), merge with department budgets,
+    /// concat quarterly reports, and CSV round-trip verification.
     func testFullPipelineDocumentation() {
         Self.section("8", "End-to-End Pipeline Demo")
         let df = DataFrame.readCSV(employeeCSV)
@@ -844,6 +911,9 @@ final class CSVDataFrameTests: XCTestCase {
     // MARK: - File I/O test (kept for resource bundle validation)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Tests loading a CSV file from the test resource bundle to validate
+    /// that file-based CSV reading works with both Swift Package Manager
+    /// and Xcode bundle resource layouts.
     func testLoadCSVFromFile() throws {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module

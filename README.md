@@ -1,8 +1,18 @@
-# SwiftPandas v0.3.1
+# SwiftPandas v0.4.0-beta
+
+> **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
 A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library, targeting **macOS** with **Metal GPU acceleration** for compute-heavy operations and a **Polars-style lazy evaluation engine** with query optimization.
 
 SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, Metal compute shaders for GPU-accelerated GroupBy and Merge, and a lazy evaluation engine with filter fusion, predicate pushdown, and projection pushdown.
+
+## Status
+
+This library is in **beta**. The core API is stabilizing but may still change. We are actively:
+- Expanding test coverage across all subsystems
+- Profiling and optimizing performance bottlenecks
+- Validating correctness against Python pandas on real-world datasets
+- Documenting all public APIs with comprehensive Swift doc comments
 
 ## Authors
 
@@ -223,7 +233,10 @@ try df.toCSV(path: "/path/to/output.csv")
 SwiftPandas/
 ├── project.yml                     # XcodeGen project spec
 ├── SwiftPandas.xcodeproj/          # Generated Xcode project
-├── benchmark_pandas.py             # Python vs Swift side-by-side benchmark suite
+├── benchmarks/
+│   ├── benchmark_pandas.py         # Python vs Swift side-by-side benchmark suite
+│   ├── run_all.py                  # Run all 30 individual benchmarks
+│   └── tests/                      # 30 individual benchmark scripts (01-30)
 ├── Sources/
 │   ├── CSkipList/                  # C: skiplist for windowed median (-O3)
 │   ├── CKHash/                     # C: klib hash tables (-O3)
@@ -264,12 +277,12 @@ SwiftPandas/
 │       ├── GroupByDemoView.swift   # GroupBy sum/mean/count/min/max
 │       └── BenchmarkView.swift     # CPU vs GPU benchmark with configurable size
 ├── Tests/
-│   └── SwiftPandasTests/           # 208 tests covering all components
-│       ├── CSVDataFrameTests.swift     # Comprehensive API documentation tests
+│   └── SwiftPandasTests/           # 206 tests covering all components
+│       ├── SwiftPandasTests.swift      # Core unit tests (types, Series, DataFrame, GroupBy, Merge)
+│       ├── CSVDataFrameTests.swift     # Comprehensive API documentation & demo tests
 │       ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
 │       ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
 │       ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
-│       ├── NewFeaturesTests.swift      # Comparison, apply, groupby, concat tests
 │       └── SampleData/employees.csv    # 15-row sample dataset
 └── Package.swift                   # SPM manifest (legacy/backward compatibility)
 ```
@@ -280,7 +293,7 @@ SwiftPandas/
 |---|---|---|
 | **SwiftPandas** | macOS Framework | Core library with Metal shaders precompiled to `default.metallib` |
 | **SwiftPandasApp** | macOS Application | SwiftUI demo app with DataFrame, GroupBy, and Benchmark views |
-| **SwiftPandasTests** | Unit Test Bundle | 208 tests including GPU correctness, lazy evaluation, and performance benchmarks |
+| **SwiftPandasTests** | Unit Test Bundle | 206 tests including GPU correctness, lazy evaluation, and performance benchmarks |
 
 The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. Build settings:
 
@@ -338,7 +351,7 @@ CPU (Swift)                          GPU (Metal Compute Shaders)
 
 ```swift
 public enum MetalDispatch {
-    public static var groupByThreshold = 500_000
+    public static var groupByThreshold = 10_000_000
     public static var mergeThreshold   = 500_000
 
     public static var isAvailable: Bool {
@@ -359,56 +372,97 @@ public enum MetalDispatch {
 | **Xcode** | `.metal` files precompiled to `default.metallib` at build time | Instant load |
 | **SPM** | MSL source strings compiled at runtime via `device.makeLibrary(source:)` | ~100ms first-call overhead |
 
-## Test Suite
+## Testing
 
-208 tests across all components:
+### Running Tests
 
-| Category | Tests | Coverage |
+208 tests across 5 test files. All tests use XCTest.
+
+```bash
+# Run all tests (Debug, via Swift Package Manager)
+swift test
+
+# Run all tests (Release optimized, via Xcode — recommended)
+xcodebuild test -scheme SwiftPandas -configuration Release \
+    -destination 'platform=macOS'
+
+# Run a specific test file
+swift test --filter SwiftPandasTests       # core unit tests
+swift test --filter CSVDataFrameTests      # CSV & API demos
+swift test --filter LazyDataFrameTests     # lazy evaluation engine
+swift test --filter MetalTests             # GPU compute shaders
+swift test --filter BenchmarkTests         # performance benchmarks
+```
+
+> **Note:** `swift test` runs in Debug mode by default. Use the `xcodebuild`
+> command with `-configuration Release` for accurate benchmark timings, as
+> Swift's `-O` optimization flag makes a significant difference for numeric code.
+
+### Test Files
+
+| File | Tests | Coverage |
 |---|---|---|
-| BitVector | 8 | Bitmap operations, bitwise AND/OR/NOT |
-| NativeArray | 10 | CoW, arithmetic, sorting, unique |
-| NullableArray | 8 | NA handling, aggregations, factorize |
-| StringArray | 5 | String storage, NA, unique, sort |
-| Index Types | 3 | RangeIndex, StringIndex, Int64Index |
-| DType | 3 | Type system validation |
-| Column | 6 | Column type operations |
-| Series | 12 | Construction, aggregation, describe |
-| DataFrame | 15 | Construction, access, filter, sort, merge |
-| CSV I/O | 10 | Read, write, round-trip, file I/O, documentation |
-| Comparisons | 12 | >, >=, <, <=, eq, ne, strContains |
-| Apply & Map | 5 | apply, map (Double & String) |
-| Scalar Arithmetic | 3 | +, -, *, / with scalars |
-| Statistics | 8 | median, quantile, cumsum |
-| Duplicates | 8 | unique, duplicated, dropDuplicates |
-| Loc/iloc | 3 | Label-based row access |
-| Boolean Mask | 2 | df[mask] subscript |
-| Multi-Column Sort | 2 | Multi-key sorting |
-| Multi-Column GroupBy | 2 | Composite key groupby |
-| GroupBy | 3 | GroupBy aggregation |
-| Merge | 1 | SQL-style joins |
-| Concat | 2 | Vertical stacking with mixed types |
-| Metal GPU | 16 | GPU GroupBy (sum/mean/count/min/max), GPU Merge, dispatch |
-| **Lazy Evaluation** | **44** | **Predicates, LazyDataFrame ops, chained queries, optimizer, explain, edge cases** |
-| Integration | 1 | End-to-end pandas-style workflow |
-| Benchmarks | 15 | Performance comparison vs Python pandas |
+| **SwiftPandasTests.swift** | ~90 | Core types (DType, NativeArray, BitVector, NullableArray, StringArray, Column, Index), Series (construction, aggregation, statistics, NA handling, arithmetic, comparison, apply/map, cumsum, unique/duplicated, sorting), DataFrame (construction, column access, row access, loc, filtering, mask subscript, single/multi-column sorting, aggregation, describe, duplicates, concat, rename), GroupBy (single/multi-column), Merge (inner, left), integration workflow |
+| **CSVDataFrameTests.swift** | ~10 | API documentation demos covering Series, DataFrame, GroupBy, Merge, Concat, CSV I/O, Core Types, Index Types, full pipeline; CSV file round-trip |
+| **LazyDataFrameTests.swift** | ~44 | Predicates (comparison, string, AND/OR/NOT), LazyDataFrame ops (filter, select, drop, sort, head, groupBy, merge), chained operations, query optimizer (filter fusion, predicate pushdown, limit elimination, identity select removal), explain output, edge cases (empty, single-row, all-filtered, NA values) |
+| **MetalTests.swift** | ~16 | Metal dispatch threshold logic, GPU GroupBy correctness (sum/mean/count/min/max, large dataset 100K), GPU Merge (inner join, no-matches, duplicate keys, column naming), GPU/CPU integration |
+| **BenchmarkTests.swift** | ~15 | Performance benchmarks at 1M rows: Series aggregation/arithmetic/sorting/statistics, DataFrame construction/filtering/sorting/aggregation, GroupBy, Merge, Concat, CSV I/O, Lazy vs Eager |
+
+### Python Benchmarks
+
+30 individual Python benchmark scripts provide detailed, per-operation analysis
+with configurable parameters, correctness checks, throughput analysis, and
+scaling comparisons. Requires `pandas` and `numpy`.
+
+```bash
+# Install Python dependencies
+pip install pandas numpy
+
+# Full side-by-side comparison (Python pandas + SwiftPandas via xcodebuild)
+python3 benchmarks/benchmark_pandas.py
+
+# List all 30 individual benchmarks
+python3 benchmarks/run_all.py --list
+
+# Run all 30 individual benchmarks sequentially
+python3 benchmarks/run_all.py
+
+# Run specific benchmarks by number
+python3 benchmarks/run_all.py 1 6 29
+
+# Run a single benchmark with custom parameters
+python3 benchmarks/tests/01_series_sum.py                    # defaults: 1M rows, 5 iters
+python3 benchmarks/tests/01_series_sum.py -n 5000000 -i 10   # 5M rows, 10 iterations
+python3 benchmarks/tests/27_merge_inner.py -n 200000 -w 3    # 200K rows, 3 warmup rounds
+```
+
+Each individual benchmark script accepts these flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `-n`, `--rows` | 1,000,000 | Number of rows (100,000 for merge/concat) |
+| `-i`, `--iterations` | 5 | Number of timed iterations |
+| `-w`, `--warmup` | 1 | Number of warmup iterations (not timed) |
+| `--seed` | 42 | LCG seed for deterministic data generation |
+
+The 30 benchmarks cover every operation measured in the Swift benchmark suite:
+
+| # | Script | Operation |
+|---|---|---|
+| 1-6 | `01_series_sum.py` — `06_series_median.py` | Series aggregations (sum, mean, std, min, max, median) |
+| 7-10 | `07_series_add.py` — `10_series_multiply_scalar.py` | Series arithmetic (element-wise and scalar) |
+| 11-14 | `11_series_sort.py` — `14_series_value_counts.py` | Series sort, quantile, cumsum, valueCounts |
+| 15-22 | `15_dataframe_construct.py` — `22_dataframe_describe.py` | DataFrame construction, filter, sort, aggregation, describe |
+| 23-26 | `23_groupby_sum_100g.py` — `26_groupby_sum_10k.py` | GroupBy sum/mean/count at 100 and 10K groups |
+| 27 | `27_merge_inner.py` | Inner join (merge) at 100K rows |
+| 28 | `28_concat.py` | Vertical concatenation (10 x 100K) |
+| 29-30 | `29_csv_read.py` — `30_csv_write.py` | CSV read and write at 1M x 6 |
 
 ## Performance: SwiftPandas vs Python pandas
 
 Both Swift and Python benchmarks are compiled with full optimizations:
 - **Swift**: `-O` (Release configuration), C libraries with `-O3`
 - **Python**: pandas with C/Cython extensions, NumPy with SIMD/vDSP
-
-Run benchmarks:
-```bash
-# Swift benchmarks (Release optimized)
-xcodebuild test -scheme SwiftPandas -configuration Release -destination 'platform=macOS' \
-    -only-testing:SwiftPandasTests/BenchmarkTests
-
-# Full side-by-side comparison (Python + Swift)
-python3 benchmark_pandas.py
-```
-
-All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 
 ### Benchmark Results
 
@@ -501,7 +555,8 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 - [x] Performance benchmarks (Swift vs Python pandas)
 - [x] Metal GPU compute shaders for GroupBy and Merge (7 kernels)
 - [x] Precompiled Metal shaders via Xcode (`.metal` → `default.metallib`)
-- [x] Python vs Swift side-by-side benchmark suite (`benchmark_pandas.py`)
+- [x] Python vs Swift side-by-side benchmark suite (`benchmarks/benchmark_pandas.py`)
+- [x] 30 individual detailed benchmark scripts (`benchmarks/tests/`)
 - [x] Wire VectorOps/Accelerate into NullableArray arithmetic
 - [x] O(n) quickselect for median/quantile
 - [x] Byte-level CSV parser

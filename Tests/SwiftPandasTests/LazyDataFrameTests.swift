@@ -1,8 +1,76 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// LazyDataFrameTests.swift
+// SwiftPandasTests
+//
+// Tests for the lazy evaluation engine introduced in SwiftPandas v0.3.0. The
+// lazy API lets users build a chain of DataFrame operations (filter, select,
+// drop, sort, head, groupBy, merge) without materializing intermediate results.
+// Internally each call appends a node to a `QueryPlan` tree. When `.collect()`
+// is called the `QueryOptimizer` rewrites the tree (filter fusion, predicate
+// pushdown, redundant limit elimination, identity select removal) and then
+// `QueryExecutor` walks the optimized tree to produce the final DataFrame.
+//
+// Test classes in this file:
+//
+//   - PredicateTests          — column predicate DSL: comparison operators
+//                               (>, >=, <, <=, ==, !=), string equality,
+//                               string contains, boolean combinators (&, |, !),
+//                               referenced-column introspection, and
+//                               description formatting.
+//
+//   - LazyDataFrameTests      — one-to-one correctness checks: each lazy
+//                               operation (filter, select, drop, sort, head,
+//                               groupBy sum/mean/count/min/max, merge) is
+//                               compared cell-by-cell against the equivalent
+//                               eager (non-lazy) operation to ensure identical
+//                               output.
+//
+//   - LazyChainedTests        — multi-step operation chains: filter-then-select,
+//                               filter-then-groupBy, filter-select-groupBy,
+//                               multiple consecutive filters (testing filter
+//                               fusion), and sort-then-head.
+//
+//   - QueryOptimizerTests     — unit tests for individual optimizer passes:
+//                               filter fusion (two nested filters -> AND),
+//                               predicate pushdown below sort, redundant limit
+//                               elimination, identity select removal, and an
+//                               end-to-end correctness check proving the
+//                               optimized plan produces the same result as the
+//                               unoptimized plan.
+//
+//   - ExplainTests            — tests for the `.explain()` and `.explainRaw()`
+//                               introspection APIs that return human-readable
+//                               plan descriptions.
+//
+//   - LazyEdgeCaseTests       — boundary conditions: empty DataFrame, single-row
+//                               DataFrame, filter that removes all rows, head(0),
+//                               head larger than the DataFrame, and NA values
+//                               in filter predicates.
+// ──────────────────────────────────────────────────────────────────────────────
+
 import XCTest
 @testable import SwiftPandas
 
 // MARK: - Predicate Tests
 
+/// Tests for the `ColumnPredicate` DSL used by the lazy evaluation engine.
+///
+/// `ColumnPredicate` is a value type that represents a boolean condition over
+/// DataFrame columns. It is built using the `col("name")` free function and
+/// comparison operators (`>`, `>=`, `<`, `<=`, `==`, `!=`), plus string-specific
+/// helpers like `.contains(_:)`. Predicates can be combined with `&` (AND),
+/// `|` (OR), and `!` (NOT). Each predicate can `evaluate(on:)` a DataFrame to
+/// produce a `[Bool]` mask, and exposes `.referencedColumns` for use by the
+/// query optimizer's projection pushdown pass.
+///
+/// Coverage includes:
+/// - Numeric comparisons (GT, GE, LT, LE, EQ, NE) against Double literals.
+/// - Integer literal comparison (auto-converted to Double).
+/// - String equality and inequality.
+/// - String `.contains(_:)` substring match.
+/// - Boolean AND, OR, NOT combinators.
+/// - `.referencedColumns` introspection.
+/// - `.description` formatting.
 final class PredicateTests: XCTestCase {
     let df = DataFrame([
         "name": [String](),
@@ -124,6 +192,16 @@ final class PredicateTests: XCTestCase {
 
 // MARK: - LazyDataFrame Basic Tests
 
+/// One-to-one correctness tests comparing each lazy operation against its eager equivalent.
+///
+/// For every supported lazy operation (filter, select, drop, sort, head, groupBy
+/// with each aggregation, and merge), this class builds the result both eagerly
+/// (using the standard DataFrame API) and lazily (using `df.lazy()...collect()`),
+/// then compares the two results cell-by-cell. This ensures the lazy engine
+/// produces bit-identical output to the eager path.
+///
+/// The sample DataFrame used across tests contains 5 rows with columns: name
+/// (String), revenue (Double), region (String), and cost (Double).
 final class LazyDataFrameTests: XCTestCase {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
@@ -284,6 +362,21 @@ final class LazyDataFrameTests: XCTestCase {
 
 // MARK: - Chained Operations Tests
 
+/// Tests for multi-step lazy operation chains that exercise the query optimizer.
+///
+/// These tests combine two or more lazy operations in a single pipeline and
+/// verify that the final result matches the equivalent eager computation. They
+/// are particularly important for validating optimizer passes like filter fusion
+/// (two consecutive `.filter()` calls merged into a single AND predicate) and
+/// predicate pushdown (filter pushed below sort so fewer rows are sorted).
+///
+/// Coverage includes:
+/// - **Filter then select**: filter rows, then project columns.
+/// - **Filter then groupBy sum**: filter rows, then aggregate.
+/// - **Filter, select, groupBy chain**: the full three-step pipeline.
+/// - **Multiple filters**: two consecutive `.filter()` calls that the optimizer
+///   should fuse into a single AND predicate.
+/// - **Sort then head**: sort all rows, then take the top N.
 final class LazyChainedTests: XCTestCase {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
@@ -389,6 +482,24 @@ final class LazyChainedTests: XCTestCase {
 
 // MARK: - Query Optimizer Tests
 
+/// Unit tests for individual `QueryOptimizer` rewrite passes.
+///
+/// The query optimizer transforms a `QueryPlan` tree to reduce work at execution
+/// time. Each test constructs a specific plan shape, runs the optimizer, and
+/// inspects the resulting tree structure (via pattern matching on the `QueryPlan`
+/// enum) to confirm the expected rewrite was applied.
+///
+/// Optimizer passes tested:
+/// - **Filter fusion**: two nested `.filter` nodes are collapsed into a single
+///   `.filter` with an `.and` predicate.
+/// - **Predicate pushdown below sort**: a `.filter` above a `.sort` is pushed
+///   below the `.sort` so that fewer rows need to be sorted.
+/// - **Redundant limit elimination**: nested `.limit(5, .limit(10, ...))` is
+///   simplified to `.limit(5, ...)` (the smaller limit wins).
+/// - **Identity select removal**: a `.select` that lists all columns of the
+///   source DataFrame is removed entirely, leaving a bare `.scan`.
+/// - **End-to-end correctness**: an optimized plan produces the same DataFrame
+///   as the unoptimized plan, verified cell-by-cell.
 final class QueryOptimizerTests: XCTestCase {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
@@ -490,6 +601,18 @@ final class QueryOptimizerTests: XCTestCase {
 
 // MARK: - Explain Tests
 
+/// Tests for the `.explain()` and `.explainRaw()` plan introspection APIs.
+///
+/// These methods return human-readable string representations of the query plan
+/// tree — `.explainRaw()` shows the plan before optimization, and `.explain()`
+/// shows the plan after optimization. They are useful for debugging and for
+/// verifying that the optimizer is actually transforming the plan as expected.
+///
+/// Coverage includes:
+/// - **explain output**: a multi-step pipeline produces a string containing
+///   expected node names like "GroupBy", "Filter", "Select", or "Scan".
+/// - **Raw vs optimized**: a pipeline with two consecutive filters should show
+///   two Filter nodes in the raw plan and a fused Filter in the optimized plan.
 final class ExplainTests: XCTestCase {
     func testExplainOutput() {
         let df = DataFrame(columns: [
@@ -531,6 +654,19 @@ final class ExplainTests: XCTestCase {
 
 // MARK: - Edge Cases
 
+/// Boundary-condition tests for the lazy evaluation engine.
+///
+/// These tests ensure the lazy pipeline handles degenerate inputs gracefully
+/// without crashing or producing incorrect results.
+///
+/// Coverage includes:
+/// - **Empty DataFrame**: `DataFrame().lazy().collect()` should return 0 rows.
+/// - **Single-row DataFrame**: a filter that matches the only row should return 1.
+/// - **Filter removes all rows**: a filter with an impossible condition yields 0.
+/// - **head(0)**: requesting zero rows should return an empty DataFrame.
+/// - **head larger than DataFrame**: requesting more rows than exist returns all.
+/// - **NA values in filter**: NA positions in the predicate column are treated as
+///   `false`, so they are excluded from the result.
 final class LazyEdgeCaseTests: XCTestCase {
     func testEmptyDataFrame() {
         let df = DataFrame()

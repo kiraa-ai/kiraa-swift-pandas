@@ -1,9 +1,31 @@
+// MARK: - DataFrameDemoView.swift
+// MARK: DataFrame Creation and Manipulation Demo
+//
+// This file provides an interactive SwiftUI view that demonstrates core
+// DataFrame operations from the SwiftPandas library. When the user taps
+// "Run Demo", it executes a sequence of operations and displays the
+// results in a scrollable monospaced text view. Demonstrated operations:
+//   - DataFrame construction from typed columns (strings, doubles)
+//   - Boolean filtering using equality masks (e.g., department == "Engineering")
+//   - Sorting by a numeric column in descending order
+//   - Aggregation statistics: sum, mean, min, max, median
+//   - The `describe()` summary statistics method
+//   - CSV serialization round-trip via `toCSV()`
+
 import SwiftUI
 import SwiftPandas
 
+/// A view that demonstrates DataFrame creation, filtering, sorting,
+/// aggregation, and CSV output using the SwiftPandas library.
+///
+/// The view displays a "Run Demo" button and a scrollable output area.
+/// Tapping the button executes all demo operations synchronously and
+/// renders the results as monospaced text for easy inspection.
 struct DataFrameDemoView: View {
+    /// The accumulated output text from the most recent demo run.
     @State private var output = "Press 'Run Demo' to start..."
 
+    /// The view layout: a title, action button, and scrollable output area.
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DataFrame Demo")
@@ -22,9 +44,16 @@ struct DataFrameDemoView: View {
         .padding()
     }
 
+    /// Executes the full DataFrame demo and updates the `output` state.
+    ///
+    /// Constructs a sample employee DataFrame with name, department, salary,
+    /// and years columns, then runs filtering, sorting, aggregation,
+    /// describe, and CSV export operations, collecting all output into
+    /// a single string for display.
     private func runDemo() {
         var lines = [String]()
 
+        // Construct a sample employee DataFrame with mixed column types
         let df = DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie", "Diana", "Eve"])),
             ("department", Column.fromStrings(["Engineering", "Sales", "Engineering", "Sales", "Engineering"])),
@@ -46,7 +75,7 @@ struct DataFrameDemoView: View {
         lines.append("\n=== Sorted by Salary (desc) ===")
         lines.append(sorted.description)
 
-        // Aggregation
+        // Aggregation: compute summary statistics on the salary column
         let salaries = df["salary"]
         lines.append("\n=== Salary Statistics ===")
         lines.append("Sum:    \(salaries.sum())")
@@ -55,11 +84,11 @@ struct DataFrameDemoView: View {
         lines.append("Max:    \(salaries.max())")
         lines.append("Median: \(salaries.median())")
 
-        // Describe
+        // Describe: full summary statistics for all numeric columns
         lines.append("\n=== describe() ===")
         lines.append(df.describe().description)
 
-        // CSV round-trip
+        // CSV round-trip: serialize to CSV string
         let csv = df.toCSV()
         lines.append("\n=== CSV Output ===")
         lines.append(csv)

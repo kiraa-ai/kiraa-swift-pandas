@@ -1,18 +1,73 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// BenchmarkTests.swift
+// SwiftPandasTests
+//
+// Performance benchmark suite for SwiftPandas.
+//
+// Methodology
+// -----------
+// Each benchmark follows a consistent protocol:
+//   1. Data is generated deterministically using a Linear Congruential Generator
+//      (LCG) seeded with a fixed value, so results are reproducible across runs.
+//   2. The operation under test is executed 3 times (configurable via the
+//      `iterations` parameter of the `benchmark` helper).
+//   3. The **minimum** wall-clock time across the 3 iterations is reported, to
+//      reduce noise from GC pauses, scheduling jitter, and thermal throttling.
+//   4. Times are reported in microseconds (converted from nanosecond-resolution
+//      `CFAbsoluteTimeGetCurrent` measurements).
+//
+// Default dataset sizes
+// ---------------------
+//   - Series / DataFrame operations: 1 000 000 rows (1M).
+//   - Merge (inner join): 100 000 rows per side (100K), because the Cartesian
+//     product of matching keys can explode row count.
+//   - Concat: 10 DataFrames of 100 000 rows each (total 1M).
+//   - CSV I/O: 1 000 000 rows x 6 columns.
+//
+// Benchmark sections
+// ------------------
+//   1.  Series aggregation      — sum, mean, std, min, max, median
+//   2.  Series arithmetic       — element-wise +, *, scalar +, scalar *
+//   3.  Series sorting          — sortValues at 1M
+//   4.  Series statistics       — quantile, cumsum, valueCounts
+//   5.  DataFrame construction  — dict-based creation at 1M x 6
+//   6.  DataFrame filtering     — boolean mask at 1M x 6
+//   7.  DataFrame sorting       — single and multi-column at 1M x 6
+//   8.  DataFrame aggregation   — sum, mean, std, describe at 1M x 6
+//   9.  GroupBy                 — sum, mean, count at 1M rows (100 and 10K groups)
+//   10. Merge                   — inner join at 100K x 100K
+//   11. Concat                  — vertical stacking (10 x 100K)
+//   12. CSV I/O                 — read and write at 1M x 6
+//   13. Lazy vs Eager           — filter+groupBy chains comparing lazy and eager
+//
+// The final test (`testZZ_BenchmarkSummary`) prints a summary of all
+// optimizations applied by the library (Accelerate/vDSP, factorize-based
+// GroupBy, quickselect median, byte-level CSV parser, Metal GPU, lazy engine).
+//
+// Run with: swift test --filter BenchmarkTests
+// ──────────────────────────────────────────────────────────────────────────────
+
 import XCTest
 @testable import SwiftPandas
 import Foundation
 
-/// Performance benchmarks — SwiftPandas measured live.
-/// All benchmarks at 1M rows (100K for merge). Times in nanoseconds.
-/// Run with: swift test --filter BenchmarkTests
+/// Performance benchmark suite for SwiftPandas.
+///
+/// All benchmarks use deterministic LCG-generated data at 1M rows (100K for merge).
+/// Each operation is run 3 times; the minimum wall-clock time is reported in
+/// microseconds. Test methods are alphabetically prefixed (`testAA_`, `testBA_`,
+/// etc.) to control execution order so that the header prints first and the
+/// summary prints last.
 final class BenchmarkTests: XCTestCase {
 
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │  Formatting helpers                                                │
     // └─────────────────────────────────────────────────────────────────────┘
 
+    /// The fixed character width used for formatting output banners and tables.
     static let W = 80
 
+    /// Prints a top-level banner with a double-line box around the title.
     static func banner(_ title: String) {
         let pad = max(0, W - title.count - 4)
         let left = pad / 2
@@ -23,6 +78,7 @@ final class BenchmarkTests: XCTestCase {
         print("\u{255A}" + String(repeating: "\u{2550}", count: W) + "\u{255D}")
     }
 
+    /// Prints a numbered section header with a single-line box.
     static func section(_ num: String, _ title: String) {
         print("")
         print("  \u{250C}" + String(repeating: "\u{2500}", count: W - 4) + "\u{2510}")
@@ -30,11 +86,13 @@ final class BenchmarkTests: XCTestCase {
         print("  \u{2514}" + String(repeating: "\u{2500}", count: W - 4) + "\u{2518}")
     }
 
+    /// Prints a subsection header with a triangle marker and horizontal rule.
     static func sub(_ title: String) {
         print("\n  \u{25B6} \(title)")
         print("  " + String(repeating: "\u{2500}", count: W - 4))
     }
 
+    /// Prints an indented note line with a vertical bar prefix.
     static func note(_ text: String) {
         print("    \u{2502} \(text)")
     }
@@ -43,6 +101,7 @@ final class BenchmarkTests: XCTestCase {
     // │  Benchmark table — all times in microseconds (µs)                   │
     // └─────────────────────────────────────────────────────────────────────┘
 
+    /// Prints the column header row for a benchmark results table.
     static func tableHeader() {
         let op = "Operation".padding(toLength: 26, withPad: " ", startingAt: 0)
         let swift = "Swift (\u{00B5}s)".padding(toLength: 20, withPad: " ", startingAt: 0)
@@ -51,27 +110,40 @@ final class BenchmarkTests: XCTestCase {
         print("    " + String(repeating: "\u{2500}", count: W - 8))
     }
 
+    /// Prints a single benchmark result row with operation name, time, and optional detail.
     static func benchRow(_ op: String, ns: Double, detail: String = "") {
         let name = op.padding(toLength: 26, withPad: " ", startingAt: 0)
         let t = formatUs(ns).padding(toLength: 20, withPad: " ", startingAt: 0)
         print("      \(name) \(t) \(detail)")
     }
 
+    /// Converts a nanosecond measurement to a formatted microsecond string (e.g. "1,234 us").
     static func formatUs(_ ns: Double) -> String {
         let us = ns / 1000.0
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 3
-        formatter.maximumFractionDigits = 3
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 0
         formatter.groupingSeparator = ","
-        return (formatter.string(from: NSNumber(value: us)) ?? String(format: "%.3f", us)) + " \u{00B5}s"
+        return (formatter.string(from: NSNumber(value: us)) ?? String(format: "%.0f", us)) + " \u{00B5}s"
     }
 
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │  Timing & data generation                                          │
     // └─────────────────────────────────────────────────────────────────────┘
 
-    /// Time a block, running it `iterations` times and returning the minimum in nanoseconds.
+    /// Measures the wall-clock execution time of a block, returning the best (minimum) result.
+    ///
+    /// The block is executed `iterations` times (default 3). Each iteration is timed
+    /// individually using `CFAbsoluteTimeGetCurrent`, which provides sub-microsecond
+    /// resolution. The minimum time is returned to reduce the impact of system noise
+    /// (GC, scheduling, thermal throttling). The result is in **nanoseconds**.
+    ///
+    /// - Parameters:
+    ///   - iterations: Number of times to run the block (default: 3).
+    ///   - block: The closure to benchmark. It should perform the operation under test
+    ///     and discard the result (use `_ =` to prevent dead-code elimination).
+    /// - Returns: The minimum elapsed time in nanoseconds across all iterations.
     static func benchmark(_ iterations: Int = 3, _ block: () -> Void) -> Double {
         var best = Double.infinity
         for _ in 0..<iterations {
@@ -83,32 +155,72 @@ final class BenchmarkTests: XCTestCase {
         return best
     }
 
-    /// Simple LCG for deterministic pseudo-random doubles in [0, 1).
+    /// A minimal Linear Congruential Generator (LCG) for deterministic pseudo-random numbers.
+    ///
+    /// This generator uses the same multiplier and increment as the PCG family's
+    /// default constants (`6364136223846793005` and `1442695040888963407`). It
+    /// produces uniformly distributed `Double` values in [0, 1) via `next()` and
+    /// bounded non-negative integers via `nextInt(_:)`.
+    ///
+    /// The LCG is used instead of `SystemRandomNumberGenerator` so that every
+    /// benchmark run produces identical data, making results reproducible and
+    /// comparable across machines and Swift versions.
+    ///
+    /// - Note: This is **not** cryptographically secure and is intended solely
+    ///   for generating test/benchmark data.
     struct LCG {
+        /// The internal 64-bit state, advanced on every call to `next()` or `nextInt(_:)`.
         var state: UInt64
 
+        /// Creates an LCG with the given seed. The default seed is 42.
         init(seed: UInt64 = 42) {
             state = seed
         }
 
+        /// Advances the state and returns a pseudo-random `Double` in [0, 1).
+        ///
+        /// The top 53 bits of the state are used to fill the significand of a
+        /// Double, giving a resolution of 2^-53 (~1.1e-16).
         mutating func next() -> Double {
             state = state &* 6364136223846793005 &+ 1442695040888963407
             return Double(state >> 11) / Double(UInt64(1) << 53)
         }
 
+        /// Advances the state and returns a pseudo-random non-negative `Int` in [0, bound).
+        ///
+        /// Uses the top 31 bits of the state and reduces modulo `bound`. The modulo
+        /// bias is negligible for the benchmark use cases (bound << 2^31).
         mutating func nextInt(_ bound: Int) -> Int {
             state = state &* 6364136223846793005 &+ 1442695040888963407
             return Int(state >> 33) % bound
         }
     }
 
-    /// Generate an array of random doubles.
+    /// Generates an array of deterministic pseudo-random doubles in [0, 1000).
+    ///
+    /// Each value is `LCG.next() * 1000.0`, giving a uniform distribution over
+    /// the range [0, 1000). The fixed seed ensures reproducibility.
+    ///
+    /// - Parameters:
+    ///   - count: Number of doubles to generate.
+    ///   - seed: LCG seed (default 42).
+    /// - Returns: An array of `count` doubles.
     static func randomDoubles(_ count: Int, seed: UInt64 = 42) -> [Double] {
         var rng = LCG(seed: seed)
         return (0..<count).map { _ in rng.next() * 1000.0 }
     }
 
-    /// Generate a numeric DataFrame with `cols` columns of `rows` random doubles.
+    /// Generates a purely numeric DataFrame with the specified number of rows and columns.
+    ///
+    /// Each column is named `"col0"`, `"col1"`, ..., `"col{cols-1}"` and contains
+    /// `rows` pseudo-random doubles in [0, 1000). A single LCG instance is used
+    /// across all columns so the data is fully deterministic given the seed.
+    ///
+    /// - Parameters:
+    ///   - rows: Number of rows.
+    ///   - cols: Number of columns.
+    ///   - seed: LCG seed (default 42).
+    /// - Returns: A DataFrame with `cols` float64 columns and `rows` rows.
     static func numericDataFrame(rows: Int, cols: Int, seed: UInt64 = 42) -> DataFrame {
         var rng = LCG(seed: seed)
         var columns: [(String, Column)] = []
@@ -119,7 +231,19 @@ final class BenchmarkTests: XCTestCase {
         return DataFrame(columns: columns)
     }
 
-    /// Generate a DataFrame with a string "group" column and numeric columns.
+    /// Generates a DataFrame suitable for GroupBy benchmarks.
+    ///
+    /// The resulting DataFrame has three columns:
+    ///   - `"group"` (String): group labels `"g0"` through `"g{nGroups-1}"`,
+    ///     assigned round-robin via `LCG.nextInt`.
+    ///   - `"value1"` (Double): random doubles in [0, 1000).
+    ///   - `"value2"` (Double): random doubles in [0, 500).
+    ///
+    /// - Parameters:
+    ///   - rows: Number of rows.
+    ///   - nGroups: Number of distinct group labels.
+    ///   - seed: LCG seed (default 42).
+    /// - Returns: A DataFrame with 1 string column and 2 float64 columns.
     static func groupableDataFrame(rows: Int, nGroups: Int, seed: UInt64 = 42) -> DataFrame {
         var rng = LCG(seed: seed)
         let groups = (0..<rows).map { _ in "g\(rng.nextInt(nGroups))" }
@@ -132,7 +256,17 @@ final class BenchmarkTests: XCTestCase {
         ])
     }
 
-    /// Generate a CSV string with numeric data.
+    /// Generates a CSV-formatted string with numeric data for I/O benchmarks.
+    ///
+    /// The output has a header row (`col0,col1,...`) followed by `rows` data rows.
+    /// Each cell is formatted to 2 decimal places. The entire string is returned
+    /// in memory (not written to disk) so that `readCSV` can parse it directly.
+    ///
+    /// - Parameters:
+    ///   - rows: Number of data rows (excluding the header).
+    ///   - cols: Number of columns.
+    ///   - seed: LCG seed (default 42).
+    /// - Returns: A multi-line CSV string.
     static func csvString(rows: Int, cols: Int, seed: UInt64 = 42) -> String {
         var rng = LCG(seed: seed)
         var lines: [String] = []
@@ -149,8 +283,10 @@ final class BenchmarkTests: XCTestCase {
     // MARK: - Test Methods
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    /// Prints the benchmark suite header, methodology description, and section index.
+    /// Runs first due to the `AA` prefix.
     func testAA_BenchmarkHeader() {
-        BenchmarkTests.banner("SWIFTPANDAS 0.1.0 \u{2014} PERFORMANCE BENCHMARKS")
+        BenchmarkTests.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} PERFORMANCE BENCHMARKS")
 
         print("")
         print("  Methodology")
@@ -178,6 +314,10 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 1. Series Aggregation ──────────────────────────────────────────
 
+    /// Benchmarks Series aggregation functions (sum, mean, std, min, max, median) at 1M elements.
+    ///
+    /// These are backed by Accelerate vDSP on contiguous Double buffers. Median
+    /// uses an O(n) quickselect algorithm with a raw-pointer inner loop.
     func testBA_SeriesAggregation() {
         BenchmarkTests.section("1", "Series Aggregation (1,000,000 elements)")
 
@@ -211,6 +351,11 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 2. Series Arithmetic ───────────────────────────────────────────
 
+    /// Benchmarks element-wise and scalar arithmetic on 1M-element Series pairs.
+    ///
+    /// Operations tested: `Series + Series`, `Series * Series`, `Series + scalar`,
+    /// `Series * scalar`. All are vectorized via Accelerate vDSP through the
+    /// underlying `NullableArray<Double>`.
     func testBB_SeriesArithmetic() {
         BenchmarkTests.section("2", "Series Arithmetic (1,000,000 elements)")
 
@@ -239,6 +384,9 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 3. Series Sorting ──────────────────────────────────────────────
 
+    /// Benchmarks `Series.sortValues()` at 1M elements.
+    ///
+    /// Uses stdlib TimSort on an enumerated array followed by index rebuild.
     func testBC_SeriesSorting() {
         BenchmarkTests.section("3", "Series Sorting (1,000,000 elements)")
 
@@ -256,6 +404,11 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 4. Series Statistics ─────────────────────────────────────────
 
+    /// Benchmarks extended statistics (quantile, cumsum, valueCounts) at 1M elements.
+    ///
+    /// - `quantile(0.75)`: O(n) quickselect with raw pointer inner loop.
+    /// - `cumsum()`: single-pass O(n) accumulation.
+    /// - `valueCounts()`: hash-based frequency counting.
     func testBD_SeriesStatistics() {
         BenchmarkTests.section("4", "Series Statistics (1,000,000 elements)")
 
@@ -280,6 +433,10 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 5. DataFrame Construction ──────────────────────────────────────
 
+    /// Benchmarks DataFrame construction from 1M rows x 6 columns of random doubles.
+    ///
+    /// Includes both LCG data generation and `ContiguousArray` allocation, so the
+    /// reported time is an upper bound on pure construction cost.
     func testCA_DataFrameConstruction() {
         BenchmarkTests.section("5", "DataFrame Construction (1M x 6 cols)")
 
@@ -296,6 +453,11 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 6. DataFrame Filtering ─────────────────────────────────────────
 
+    /// Benchmarks boolean-mask filtering on a 1M x 6 DataFrame with ~50% selectivity.
+    ///
+    /// The filter `df["col0"] > 500.0` selects roughly half the rows. The benchmark
+    /// includes both mask generation (comparison -> `[Bool]`) and row extraction
+    /// (`reserveCapacity` + `takeRows`).
     func testCB_DataFrameFiltering() {
         BenchmarkTests.section("6", "DataFrame Filtering (1M x 6 cols)")
 
@@ -316,6 +478,10 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 7. DataFrame Sorting ───────────────────────────────────────────
 
+    /// Benchmarks single-column and multi-column (2-key) DataFrame sorting at 1M x 6.
+    ///
+    /// Uses stdlib TimSort to compute a permutation array, then `takeRows` to
+    /// allocate new columns in sorted order.
     func testCC_DataFrameSorting() {
         BenchmarkTests.section("7", "DataFrame Sorting (1,000,000 rows x 6 cols)")
 
@@ -339,6 +505,10 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 8. DataFrame Aggregation ───────────────────────────────────────
 
+    /// Benchmarks column-wise aggregation (sum, mean, std, describe) on a 1M x 6 DataFrame.
+    ///
+    /// `describe()` computes 8 statistics per column (count, mean, std, min, 25%,
+    /// 50%, 75%, max), so it is significantly more expensive than a single reduction.
     func testCD_DataFrameAggregation() {
         BenchmarkTests.section("8", "DataFrame Aggregation (1,000,000 rows x 6 cols)")
 
@@ -364,6 +534,12 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 9. GroupBy ─────────────────────────────────────────────────────
 
+    /// Benchmarks GroupBy aggregation (sum, mean, count) at 1M rows with 100 and 10 000 groups.
+    ///
+    /// The GroupBy engine uses a fused factorize+accumulate strategy with FNV-1a
+    /// hashing and raw-pointer accumulators. The Metal GPU path is reserved for
+    /// datasets >= 10M rows; at 1M rows the CPU fast-path is faster due to lower
+    /// dispatch overhead.
     func testCE_DataFrameGroupBy() {
         BenchmarkTests.section("9", "GroupBy (1,000,000 rows)")
 
@@ -399,6 +575,11 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 10. Merge ──────────────────────────────────────────────────────
 
+    /// Benchmarks inner join (merge) on 100K-row DataFrames with ~50K distinct string keys.
+    ///
+    /// The merge implementation uses a typed `Dictionary<String, [Int]>` hash index
+    /// on the right-side keys, then probes it for each left-side row. Key generation
+    /// is deterministic but shuffled on the right side to simulate realistic join patterns.
     func testCF_DataFrameMerge() {
         BenchmarkTests.section("10", "Merge (Inner Join, 100K rows)")
 
@@ -429,6 +610,10 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 11. Concat ─────────────────────────────────────────────────────
 
+    /// Benchmarks vertical concatenation of 10 DataFrames, each 100K rows x 6 columns.
+    ///
+    /// Concat performs per-column array concatenation followed by new DataFrame
+    /// construction. The total result is 1M rows.
     func testCG_DataFrameConcat() {
         BenchmarkTests.section("11", "Concat (Vertical Stack)")
 
@@ -449,6 +634,11 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── 12. CSV I/O ────────────────────────────────────────────────────
 
+    /// Benchmarks CSV reading (string -> DataFrame) and writing (DataFrame -> string) at 1M x 6.
+    ///
+    /// The CSV reader uses a byte-level UTF-8 state machine parser with per-cell
+    /// `Double(String)` conversion. The writer formats each cell and joins with
+    /// separators. Both operate entirely in memory (no disk I/O).
     func testDA_CSVIO() {
         BenchmarkTests.section("12", "CSV I/O (1M rows x 6 cols)")
 
@@ -479,6 +669,15 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── Lazy vs Eager ─────────────────────────────────────────────────
 
+    /// Benchmarks lazy vs. eager execution for multi-step pipelines at 1M rows.
+    ///
+    /// Three pipeline patterns are compared:
+    ///   1. Filter -> GroupBy -> Sum
+    ///   2. Filter -> Select -> GroupBy -> Sum
+    ///   3. Multi-filter chain (two consecutive filters)
+    ///
+    /// The lazy engine eliminates intermediate DataFrame allocations and applies
+    /// optimizer passes (filter fusion, predicate pushdown, projection pushdown).
     func testEA_LazyVsEager() {
         BenchmarkTests.section("13", "Lazy vs Eager (1M rows)")
 
@@ -548,6 +747,8 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── Summary ────────────────────────────────────────────────────────
 
+    /// Prints a summary of all optimizations applied by SwiftPandas and Metal GPU details.
+    /// Runs last due to the `ZZ` prefix.
     func testZZ_BenchmarkSummary() {
         BenchmarkTests.banner("BENCHMARK SUMMARY")
 
@@ -572,7 +773,7 @@ final class BenchmarkTests: XCTestCase {
         print("")
 
         BenchmarkTests.note("All times in microseconds (\u{00B5}s), best-of-3 runs.")
-        BenchmarkTests.note("Run benchmark_pandas.py for side-by-side comparison with pandas.")
+        BenchmarkTests.note("Run benchmarks/benchmark_pandas.py for side-by-side comparison with pandas.")
         print("")
     }
 }

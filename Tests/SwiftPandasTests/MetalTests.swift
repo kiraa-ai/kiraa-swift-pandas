@@ -1,8 +1,51 @@
+// ──────────────────────────────────────────────────────────────────────────────
+// MetalTests.swift
+// SwiftPandasTests
+//
+// GPU correctness tests for SwiftPandas' Metal acceleration layer. SwiftPandas
+// optionally offloads GroupBy aggregation and inner-join Merge to Metal compute
+// shaders on Apple Silicon (and other Metal-capable) hardware. These tests
+// verify that the GPU code path produces results identical (within floating-
+// point tolerance) to the CPU reference implementation.
+//
+// The test strategy is:
+//   1. For each GPU operation, compute the result via the CPU-only path by
+//      temporarily raising the Metal dispatch threshold to `Int.max`.
+//   2. Compute the result via the explicit GPU entry point (`MetalGroupBy`,
+//      `MetalMerge`).
+//   3. Compare the two results element-by-element with a tolerance that
+//      accounts for float32 accumulation rounding in the GPU shaders.
+//
+// Test classes in this file:
+//   - MetalDispatchTests   — threshold logic and availability flag.
+//   - MetalGroupByTests    — GPU GroupBy sum/mean/count/min/max correctness
+//                            at small (5 rows), medium (2 000 rows), and
+//                            large (100 000 rows) scale.
+//   - MetalMergeTests      — GPU inner join correctness including small joins,
+//                            large many-to-many joins, no-match edge case,
+//                            duplicate keys, integration with the transparent
+//                            dispatch path, and column naming with suffix.
+//
+// NOTE: These tests require a Metal-capable device. On CI runners without a
+// GPU, `MetalDispatch.isAvailable` may be false and GPU entry points may
+// return nil — the tests handle this gracefully.
+// ──────────────────────────────────────────────────────────────────────────────
+
 import XCTest
 @testable import SwiftPandas
 
 // MARK: - Metal Dispatch Tests
 
+/// Tests for the `MetalDispatch` utility that decides when to offload work to the GPU.
+///
+/// `MetalDispatch` provides a static `isAvailable` flag (true on Metal-capable
+/// hardware), configurable thresholds for GroupBy and Merge, and a
+/// `shouldUseGPU(rowCount:threshold:)` predicate. These tests verify:
+/// - That Metal is reported as available on macOS / Apple Silicon test hosts.
+/// - That the threshold comparison correctly returns false below threshold and
+///   true at or above threshold.
+/// - That custom thresholds can be set and are respected, and that the original
+///   value is restored via `defer`.
 final class MetalDispatchTests: XCTestCase {
     func testIsAvailable() {
         // On Apple Silicon / macOS, Metal should be available
@@ -27,9 +70,41 @@ final class MetalDispatchTests: XCTestCase {
 
 // MARK: - Metal GroupBy Tests
 
+/// Tests for `MetalGroupBy`, the GPU-accelerated GroupBy aggregation engine.
+///
+/// Metal GroupBy works by factorizing the group-key column into integer codes on
+/// the CPU, uploading the codes and value arrays to a Metal buffer, then
+/// dispatching a compute shader that performs parallel per-group reduction
+/// (sum, mean, count, min, or max). Results are read back from the GPU buffer
+/// and assembled into a DataFrame.
+///
+/// Each test compares the GPU result against a CPU reference computed by
+/// temporarily disabling the GPU path (threshold set to `Int.max`). A tolerance
+/// of up to 100.0 is used for large float32 accumulations to account for
+/// rounding differences between GPU float32 and CPU float64 arithmetic.
+///
+/// Coverage includes:
+/// - **Small sum** (5 rows, 2 groups): basic smoke test.
+/// - **Sum correctness** (2 000 rows, 5 groups): CPU vs GPU comparison.
+/// - **Mean correctness** (2 000 rows, 2 groups).
+/// - **Count correctness** (2 000 rows, 10 groups).
+/// - **Min/Max correctness** (2 000 rows, 5 groups).
+/// - **Large dataset stress test** (100 000 rows, 50 groups).
+/// - **Integration**: verifying that `df.groupBy().sum()` transparently uses
+///   the GPU path when the threshold is lowered.
 final class MetalGroupByTests: XCTestCase {
 
-    /// Helper: build a CPU reference GroupBy result for comparison.
+    /// Builds a CPU-only reference GroupBy result for comparison against the GPU path.
+    ///
+    /// This helper temporarily sets `MetalDispatch.groupByThreshold` to `Int.max`
+    /// so that the standard `df.groupBy(_:)` API is forced onto the CPU code path.
+    /// The original threshold is restored via `defer` when the helper returns.
+    ///
+    /// - Parameters:
+    ///   - df: The input DataFrame to group.
+    ///   - by: Array of column names to group by.
+    ///   - op: Aggregation operation name — one of "sum", "mean", "count", "min", "max".
+    /// - Returns: A DataFrame containing the CPU-computed aggregation result.
     private func cpuGroupBy(_ df: DataFrame, by: [String], op: String) -> DataFrame {
         // Force CPU path by using low threshold
         let oldThreshold = MetalDispatch.groupByThreshold
@@ -47,8 +122,21 @@ final class MetalGroupByTests: XCTestCase {
         }
     }
 
-    /// Helper: compare two GroupBy result DataFrames with tolerance for float precision.
-    /// Sorts both by index (group key) before comparing, since GPU and CPU may produce different orderings.
+    /// Compares two GroupBy result DataFrames element-by-element with floating-point tolerance.
+    ///
+    /// Because GPU and CPU code paths may produce groups in different orders, this
+    /// helper builds a key-to-row mapping from the index labels of each DataFrame
+    /// and then walks the GPU result row by row, looking up the corresponding CPU
+    /// row by key. For each numeric column it asserts that the GPU and CPU values
+    /// are equal within the specified `tolerance`. NA-vs-NA matches are accepted;
+    /// NA-vs-non-NA mismatches are flagged. NaN-vs-NaN is also accepted.
+    ///
+    /// - Parameters:
+    ///   - gpu: The GPU-computed GroupBy result.
+    ///   - cpu: The CPU-computed reference result.
+    ///   - tolerance: Maximum allowed absolute difference between GPU and CPU values.
+    ///   - file: Source file for XCTAssert reporting (auto-filled).
+    ///   - line: Source line for XCTAssert reporting (auto-filled).
     private func assertGroupByResultsClose(
         _ gpu: DataFrame, _ cpu: DataFrame,
         tolerance: Double = 0.01,
@@ -269,6 +357,27 @@ final class MetalGroupByTests: XCTestCase {
 
 // MARK: - Metal Merge Tests
 
+/// Tests for `MetalMerge`, the GPU-accelerated inner join implementation.
+///
+/// Metal Merge performs an inner join by co-factorizing the key columns of both
+/// DataFrames (mapping string keys to integer codes via a shared dictionary),
+/// uploading the code arrays to Metal buffers, dispatching a compute shader that
+/// builds a hash table and probes it, then reading back the matched row-index
+/// pairs and assembling the result DataFrame on the CPU.
+///
+/// Coverage includes:
+/// - **Small inner join** (3 rows each): basic smoke test with 2 matching keys.
+///   Returns early if the GPU declines small datasets (returns nil).
+/// - **Large correctness** (2 000 rows, 100 keys): verifies the expected Cartesian
+///   product size (each of 100 keys has 20 left * 20 right = 400 matches = 40 000
+///   total) and checks that both value columns are present.
+/// - **No matches**: disjoint key sets should produce 0 result rows.
+/// - **Duplicate keys (many-to-many)**: 2 left "x" rows * 2 right "x" rows = 4
+///   matches, plus 1 "y" match = 5 total.
+/// - **Integration**: verifying that `df.merge(right, on:)` transparently uses the
+///   GPU path when the merge threshold is lowered.
+/// - **Column naming**: when both sides share a non-key column name, the right
+///   side's column should be suffixed with `_right`.
 final class MetalMergeTests: XCTestCase {
 
     func testInnerJoinSmall() {
