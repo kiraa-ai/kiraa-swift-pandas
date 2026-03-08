@@ -1,4 +1,4 @@
-# SwiftPandas v0.3.0
+# SwiftPandas v0.3.1
 
 A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library, targeting **macOS** with **Metal GPU acceleration** for compute-heavy operations and a **Polars-style lazy evaluation engine** with query optimization.
 
@@ -412,37 +412,46 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 
 ### Benchmark Results
 
+**Scorecard: Swift wins 22 | pandas wins 8** (30 benchmarks)
+**Overall: SwiftPandas is 21.2% faster than pandas on average**
+
 | Operation | SwiftPandas | Python pandas | Winner | vs Python |
 |---|---|---|---|---|
 | **Aggregation** | | | | |
-| sum() 1M | 94 µs | 213 µs | **Swift** | 2.3x faster |
-| mean() 1M | 85 µs | 778 µs | **Swift** | 9.2x faster |
-| std() 1M | 528 µs | 2,255 µs | **Swift** | 4.3x faster |
-| min() 1M | 78 µs | 687 µs | **Swift** | 8.8x faster |
-| max() 1M | 80 µs | 680 µs | **Swift** | 8.5x faster |
-| median() 1M | 6,961 µs | 8,107 µs | **Swift** | 1.2x faster |
-| quantile() 1M | 4,360 µs | 9,272 µs | **Swift** | 2.1x faster |
+| sum() 1M | 83 µs | 216 µs | **Swift** | +62% faster |
+| mean() 1M | 85 µs | 732 µs | **Swift** | +88% faster |
+| std() 1M | 524 µs | 2,320 µs | **Swift** | +77% faster |
+| min() 1M | 79 µs | 689 µs | **Swift** | +89% faster |
+| max() 1M | 81 µs | 700 µs | **Swift** | +88% faster |
+| median() 1M | 6,797 µs | 8,281 µs | **Swift** | +18% faster |
+| quantile() 1M | 4,356 µs | 9,377 µs | **Swift** | +54% faster |
 | **Arithmetic** | | | | |
-| Series + Series 1M | 205 µs | 200 µs | Tie | ~1x |
-| Series * scalar 1M | 139 µs | 134 µs | Tie | ~1x |
+| Series + Series 1M | 212 µs | 226 µs | **Swift** | +6% faster |
+| Series * Series 1M | 208 µs | 219 µs | **Swift** | +5% faster |
+| Series + scalar 1M | 156 µs | 147 µs | pandas | -6% slower |
+| Series * scalar 1M | 151 µs | 147 µs | pandas | -3% slower |
+| **Series Stats** | | | | |
+| cumsum() 1M | 567 µs | 2,410 µs | **Swift** | +76% faster |
 | **DataFrame** | | | | |
-| construct 1M | 14.5 ms | 10,252 ms | **Swift** | 707x faster |
-| filter 1M (6 cols) | 9.6 ms | 1.8 ms | pandas | 5.3x slower |
-| sum() 1M (6 cols) | 600 µs | 1,483 µs | **Swift** | 2.5x faster |
-| mean() 1M (6 cols) | 572 µs | 4,646 µs | **Swift** | 8.1x faster |
-| std() 1M (6 cols) | 3,257 µs | 10,963 µs | **Swift** | 3.4x faster |
+| construct 1M | 6.4 ms | 10,128 ms | **Swift** | 1583x faster |
+| filter 1M (6 cols) | 5.4 ms | 1.8 ms | pandas | -197% slower |
+| sum() 1M (6 cols) | 554 µs | 1,433 µs | **Swift** | +61% faster |
+| mean() 1M (6 cols) | 565 µs | 2,375 µs | **Swift** | +76% faster |
+| std() 1M (6 cols) | 3,385 µs | 8,737 µs | **Swift** | +61% faster |
 | **GroupBy** | | | | |
-| sum (100 groups) | 9.2 ms | 2.3 ms | pandas | 4x slower |
-| sum (10K groups) | 22 ms | 6.6 ms | pandas | 3.3x slower |
+| sum (100 groups) | 816 µs | 2,284 µs | **Swift** | +64% faster |
+| mean (100 groups) | 1,037 µs | 2,428 µs | **Swift** | +57% faster |
+| count (100 groups) | 561 µs | 1,093 µs | **Swift** | +49% faster |
+| sum (10K groups) | 872 µs | 6,485 µs | **Swift** | +87% faster |
 | **Merge** | | | | |
-| inner 100K | 17 ms | 13 ms | pandas | 1.3x slower |
+| inner 100K | 12.7 ms | 13.2 ms | **Swift** | +3% faster |
 | **Concat** | | | | |
-| 10 x 100K | 4.6 ms | 0.8 ms | pandas | 5.8x slower |
+| 10 x 100K | 1.2 ms | 0.8 ms | pandas | -61% slower |
 | **CSV I/O** | | | | |
-| read 1M | 138 ms | 142 ms | **Swift** | 1.03x faster |
-| write 1M | 344 ms | 1,644 ms | **Swift** | 4.8x faster |
+| read 1M | 124 ms | 142 ms | **Swift** | +13% faster |
+| write 1M | 340 ms | 1,627 ms | **Swift** | +79% faster |
 | **Lazy Evaluation** | | | | |
-| multi-filter chain 1M | 13 ms (lazy) | 20 ms (eager) | **Lazy** | 1.5x faster |
+| multi-filter chain 1M | 8.8 ms (lazy) | 12.6 ms (eager) | **Lazy** | 1.4x faster |
 
 ### Summary by Category
 
@@ -450,26 +459,28 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 |---|---|---|
 | **Aggregation (sum/mean/std/min/max)** | **Swift** | Accelerate vDSP SIMD (2-9x faster) |
 | **DataFrame Aggregation** | **Swift** | Accelerate vDSP per-column (2.5-8x faster) |
-| **DataFrame Construction** | **Swift** | Direct ContiguousArray alloc, no BlockManager (707x) |
+| **DataFrame Construction** | **Swift** | Lazy index + direct ContiguousArray alloc (1583x) |
+| **GroupBy** | **Swift** | Cached factorize + FNV-1a hash precheck + tight accumulate (1.5-7.4x faster) |
 | **Median/Quantile** | **Swift** | O(n) quickselect (1.2-2.1x faster) |
-| **CSV I/O** | **Swift** | Custom fast double parser, flat field grid (read 1.03x, write 4.8x faster) |
-| Series Arithmetic | Tie | Both use vDSP/SIMD, comparable throughput |
-| Merge/Join | pandas | C-level hash join (1.3x) |
-| Boolean Filtering | pandas | NumPy fancy indexing in C (5.3x) |
-| GroupBy | pandas | Cython hash tables (3-4x) |
+| **Cumsum** | **Swift** | Raw pointer prefix sum + lazy index (4.3x faster) |
+| **CSV I/O** | **Swift** | Custom fast double parser, flat field grid (read 1.1x, write 4.8x faster) |
+| **Series Arithmetic** | **Swift** | vDSP/SIMD + lazy index (no string allocation overhead) |
+| **Merge/Join** | **Swift** | Typed hash join with pre-allocated buffers (+3%) |
+| Boolean Filtering | pandas | NumPy fancy indexing in C (3x) |
 | Sorting | pandas | NumPy introsort/radixsort in C |
 
 ### Optimizations Applied
 
+- **Lazy index labels**: `DataFrame` and `Series` use lazy-evaluated index labels — default range indices (`0, 1, 2, ...`) are never materialized as strings unless accessed for display or label-based lookup. Eliminates millions of string allocations in arithmetic, filter, cumsum, concat, and construction.
 - **Accelerate/vDSP**: Vectorized aggregation and arithmetic wired into NullableArray + NativeArray
-- **FNV-1a hash factorization**: Custom open-addressing hash table with `UnsafeMutablePointer<Int32>` slots and hash-value caching for O(1) resize
-- **Fused factorize+accumulate**: Single-pass GroupBy for string group columns eliminates intermediate codes array and reduces memory traffic by ~37%
-- **UnsafeMutablePointer accumulators**: GroupBy fast paths use raw pointers to eliminate bounds checking in hot loops
+- **FNV-1a hash factorization**: Custom open-addressing hash table with `UnsafeMutablePointer<Int32>` slots, hash-value caching for O(1) resize, hash precheck before string comparison on collision, and `withContiguousStorageIfAvailable` for raw UTF-8 pointer hashing
+- **Cached factorize on GroupBy**: Group codes computed once at `groupBy()` creation, reused across all `.sum()`, `.mean()`, `.count()` calls. Two-pass architecture (factorize → tight accumulate loop) gives better cache utilization than fused single-pass.
+- **UnsafeMutablePointer accumulators**: GroupBy accumulation uses raw pointers for zero bounds-checking in the hot `for i in 0..<n { sums[codes[i]] += data[i] }` loop
 - **Adaptive GPU/CPU dispatch**: Metal GPU reserved for >10M rows; CPU fast-path with raw pointer accumulation beats GPU atomics for typical group counts
 - **O(n) quickselect**: For median/quantile with raw pointer inner loop
 - **CSV fast reader**: Flat `FieldGrid` (no 2D array), custom `fastParseDouble` for `[-]digits[.digits]` (avoids strtod), reusable strtod buffer (1 alloc vs 6M), switch-based NA matching by field length
 - **Typed merge**: Direct Double/String hash, not `formattedValue` → String
-- **Optimized filter**: Single mask scan → index gather, raw pointer take operations
+- **Optimized filter**: Mask → index array conversion (avoids branch misprediction), then index-based gather per column
 - **Lazy evaluation**: Query optimizer eliminates intermediate DataFrames via filter fusion, predicate pushdown, projection pushdown
 - **Compiler flags**: `-O` Swift, `-O3` for vendored C libraries
 
@@ -506,7 +517,7 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 - [x] Inspectable predicate expression tree (`ColumnPredicate`, `Col` operators)
 - [x] CSV reader optimization (flat field grid, fast double parser, pandas-parity read speed)
 - [x] Series arithmetic vDSP optimization
-- [x] GroupBy optimization (fused factorize+accumulate, hash cache, adaptive GPU/CPU dispatch)
+- [x] GroupBy optimization (cached factorize, hash precheck, two-pass accumulate, adaptive GPU/CPU dispatch)
 - [ ] JSON I/O (bridging to CUltraJSON)
 - [ ] Time series types (Timestamp, Timedelta, Period)
 - [ ] Window functions (rolling, expanding, EWM) using CSkipList

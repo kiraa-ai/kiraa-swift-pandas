@@ -115,27 +115,42 @@ public struct StringArray {
         uniqueKeys.reserveCapacity(128)
 
         // Open-addressing hash table with FNV-1a
+        // Pre-size for estimated unique count (heuristic: min(n, 65536))
+        let estimatedUniques = Swift.min(n, 65536)
         var cap = 256
+        while cap < estimatedUniques * 2 { cap &*= 2 }
         var mask = cap &- 1
         var table = UnsafeMutablePointer<Int32>.allocate(capacity: cap)
         table.initialize(repeating: -1, count: cap)
 
         // Cache hash values for O(1) resize (avoids re-hashing all unique keys)
         var hashCache = ContiguousArray<Int>()
-        hashCache.reserveCapacity(128)
+        hashCache.reserveCapacity(estimatedUniques)
 
         // Use raw buffer pointer to skip per-element bounds checking
         storage.withUnsafeBufferPointer { storageBuf in
             for i in 0..<n {
                 guard let s = storageBuf[i] else { continue }
 
-                // FNV-1a hash
-                var h: UInt = 14695981039346656037
-                for byte in s.utf8 {
-                    h ^= UInt(byte)
-                    h &*= 1099511628211
+                // FNV-1a hash via withUTF8 raw pointer (avoids UTF8View iterator overhead)
+                let hi: Int
+                if let result = s.utf8.withContiguousStorageIfAvailable({ buf -> Int in
+                    var h: UInt = 14695981039346656037
+                    for j in 0..<buf.count {
+                        h ^= UInt(buf[j])
+                        h &*= 1099511628211
+                    }
+                    return Int(bitPattern: h)
+                }) {
+                    hi = result
+                } else {
+                    var h: UInt = 14695981039346656037
+                    for byte in s.utf8 {
+                        h ^= UInt(byte)
+                        h &*= 1099511628211
+                    }
+                    hi = Int(bitPattern: h)
                 }
-                let hi = Int(bitPattern: h)
 
                 var pos = hi & mask
                 while true {
@@ -163,7 +178,8 @@ public struct StringArray {
                         }
                         break
                     }
-                    if uniqueKeys[idx]! == s {
+                    // Hash precheck: skip full string comparison if hashes differ
+                    if hashCache[idx] == hi && uniqueKeys[idx]! == s {
                         codes[i] = idx
                         break
                     }

@@ -10,8 +10,26 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     /// Column data keyed by name.
     internal var columns: [String: Column]
 
-    /// Row index labels.
-    public var indexLabels: [String]
+    /// Row index labels. For default range indices, generated lazily on first access.
+    public var indexLabels: [String] {
+        get {
+            if _isDefaultIndex && _indexLabels.isEmpty && rowCount > 0 {
+                return (0..<rowCount).map { "\($0)" }
+            }
+            return _indexLabels
+        }
+        set {
+            _indexLabels = newValue
+            _isDefaultIndex = false
+        }
+    }
+    internal var _indexLabels: [String] = []
+
+    /// True if index is the default range (0, 1, 2, ...).
+    internal var _isDefaultIndex: Bool = true
+
+    /// Whether this DataFrame uses a default range index.
+    internal var isDefaultIndex: Bool { _isDefaultIndex }
 
     // MARK: - Initializers
 
@@ -19,7 +37,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     public init() {
         self.columnNames = []
         self.columns = [:]
-        self.indexLabels = []
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from a dictionary of Double arrays.
@@ -34,7 +53,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             precondition(values.count == rowCount, "All columns must have same length")
             self.columns[key] = .fromDoubles(values)
         }
-        self.indexLabels = (0..<rowCount).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from a dictionary of optional Double arrays.
@@ -49,7 +69,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             precondition(values.count == rowCount, "All columns must have same length")
             self.columns[key] = .fromOptionalDoubles(values)
         }
-        self.indexLabels = (0..<rowCount).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from explicit columns and index.
@@ -61,7 +82,13 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             precondition(col.count == rowCount, "All columns must have same length")
             self.columns[name] = col
         }
-        self.indexLabels = index ?? (0..<rowCount).map { "\($0)" }
+        if let index = index {
+            self._indexLabels = index
+            self._isDefaultIndex = false
+        } else {
+            self._indexLabels = []
+            self._isDefaultIndex = true
+        }
     }
 
     /// Create from an array of dictionaries (records).
@@ -76,7 +103,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             let values: [Double?] = records.map { $0[key] }
             self.columns[key] = .fromOptionalDoubles(values)
         }
-        self.indexLabels = (0..<records.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     // MARK: - Shape
@@ -114,7 +142,7 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             guard let col = columns[column] else {
                 fatalError("Column '\(column)' not found")
             }
-            return Series(data: col, index: indexLabels, name: column)
+            return Series(data: col, defaultIndex: _isDefaultIndex, index: _indexLabels, name: column)
         }
         set {
             precondition(newValue.count == rowCount || columnCount == 0,
@@ -124,7 +152,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             }
             columns[column] = newValue.data
             if columnCount == 1 {
-                indexLabels = newValue.indexLabels
+                _indexLabels = newValue._indexLabels
+                _isDefaultIndex = newValue._isDefaultIndex
             }
         }
     }
@@ -132,7 +161,8 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     /// Select multiple columns, returning a new DataFrame.
     public func select(columns names: [String]) -> DataFrame {
         var result = DataFrame()
-        result.indexLabels = indexLabels
+        result._indexLabels = _indexLabels
+        result._isDefaultIndex = _isDefaultIndex
         result.columnNames = names
         for name in names {
             guard let col = columns[name] else {
@@ -199,25 +229,36 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     /// Select rows by boolean mask.
     public func filter(mask: [Bool]) -> DataFrame {
         precondition(mask.count == rowCount, "Mask must have same length as DataFrame")
-        // Scan the branchy mask ONCE to build sorted indices.
-        // Reuse indices for all columns — avoids N+1 misprediction-heavy mask scans.
-        var trueCount = 0
-        mask.withUnsafeBufferPointer { m in
-            for i in 0..<m.count { if m[i] { trueCount += 1 } }
-        }
-        let indices = [Int](unsafeUninitializedCapacity: trueCount) { dst, count in
+        // Convert mask to index array (avoids branch misprediction in per-column scan)
+        let n = mask.count
+        let indices = ContiguousArray<Int>(unsafeUninitializedCapacity: n) { buf, count in
             mask.withUnsafeBufferPointer { m in
                 var j = 0
-                for i in 0..<m.count {
+                for i in 0..<n {
                     if m[i] {
-                        (dst.baseAddress! + j).initialize(to: i)
+                        (buf.baseAddress! + j).initialize(to: i)
                         j += 1
                     }
                 }
                 count = j
             }
         }
-        return takeRows(indices)
+        let indexArray = Array(indices)
+        var newColumns = [(String, Column)]()
+        newColumns.reserveCapacity(columnNames.count)
+        for name in columnNames {
+            newColumns.append((name, columns[name]!.take(indices: indexArray)))
+        }
+        if _isDefaultIndex {
+            return DataFrame(columns: newColumns)
+        }
+        // Custom index: gather labels
+        var gathered = [String]()
+        gathered.reserveCapacity(indexArray.count)
+        for idx in indexArray {
+            gathered.append(_indexLabels[idx])
+        }
+        return DataFrame(columns: newColumns, index: gathered)
     }
 
     /// Subscript with a boolean mask — enables `df[df["age"] > 30]` syntax.
@@ -232,7 +273,11 @@ public struct DataFrame: CustomStringConvertible, Sendable {
         for name in columnNames {
             newColumns.append((name, columns[name]!.take(indices: indices)))
         }
-        // Gather index labels with raw pointer access on indices
+        if isDefaultIndex {
+            // Default range index: generate new range (avoids N string copies)
+            return DataFrame(columns: newColumns)
+        }
+        // Custom index: gather labels from old index
         var newIndex = [String]()
         newIndex.reserveCapacity(indices.count)
         indices.withUnsafeBufferPointer { idx in
@@ -430,6 +475,9 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             let transformed = transform(series)
             resultCols.append((name, transformed.data))
         }
+        if _isDefaultIndex {
+            return DataFrame(columns: resultCols)
+        }
         return DataFrame(columns: resultCols, index: indexLabels)
     }
 
@@ -493,10 +541,14 @@ public struct DataFrame: CustomStringConvertible, Sendable {
             }
         }
 
+        // If all frames use default range index, skip index gathering entirely
+        let allDefault = frames.allSatisfy { $0._isDefaultIndex }
+        if allDefault {
+            return DataFrame(columns: resultCols)
+        }
         for frame in frames {
             resultIndex.append(contentsOf: frame.indexLabels)
         }
-
         return DataFrame(columns: resultCols, index: resultIndex)
     }
 
@@ -698,8 +750,149 @@ public struct GroupBy: Sendable {
     public let dataFrame: DataFrame
     public let by: [String]
 
+    // Cached factorize results — computed once, reused across all aggregations
+    private let _groupCodes: [Int]
+    private let _nGroups: Int
+    private let _firstRowForGroup: [Int]
+    private let _sortedGroupIndices: [Int]
+    private let _hasNA: Bool
+
+    public init(dataFrame: DataFrame, by: [String]) {
+        self.dataFrame = dataFrame
+        self.by = by
+
+        let n = dataFrame.rowCount
+        guard n > 0 else {
+            _groupCodes = []
+            _nGroups = 0
+            _firstRowForGroup = []
+            _sortedGroupIndices = []
+            _hasNA = false
+            return
+        }
+
+        // Factorize group columns to integer codes (computed once)
+        var groupCodes: [Int]
+        var nGroups: Int
+        var hasNA = false
+
+        if by.count == 1 {
+            guard let col = dataFrame.columns[by[0]] else {
+                _groupCodes = [Int](repeating: 0, count: n)
+                _nGroups = 0
+                _firstRowForGroup = []
+                _sortedGroupIndices = []
+                _hasNA = false
+                return
+            }
+            let (codes, nUnique): ([Int], Int)
+            switch col {
+            case .double(let a):
+                let f = a.factorize()
+                codes = f.codes; nUnique = f.uniques.count
+            case .string(let a):
+                let f = a.factorize()
+                codes = f.codes; nUnique = f.uniques.count
+            case .int64(let a):
+                let f = a.factorize()
+                codes = f.codes; nUnique = f.uniques.count
+            default:
+                codes = [Int](repeating: 0, count: n); nUnique = 1
+            }
+            groupCodes = codes
+            nGroups = nUnique
+            for c in codes where c < 0 { hasNA = true; break }
+        } else {
+            groupCodes = [Int](repeating: 0, count: n)
+            nGroups = 1
+            var validRow = [Bool](repeating: true, count: n)
+            for colName in by {
+                guard let col = dataFrame.columns[colName] else { continue }
+                let (codes, nUnique): ([Int], Int)
+                switch col {
+                case .double(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                case .string(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                case .int64(let a):
+                    let f = a.factorize()
+                    codes = f.codes; nUnique = f.uniques.count
+                default:
+                    codes = [Int](repeating: 0, count: n); nUnique = 1
+                }
+                for i in 0..<n {
+                    if codes[i] < 0 { validRow[i] = false }
+                    else { groupCodes[i] = groupCodes[i] * nUnique + codes[i] }
+                }
+                nGroups *= nUnique
+            }
+            hasNA = !validRow.allSatisfy { $0 }
+            if hasNA {
+                for i in 0..<n where !validRow[i] { groupCodes[i] = -1 }
+            }
+        }
+
+        // Compact codes and find first row per group
+        let actualGroups: Int
+        var firstRowForGroup: [Int]
+
+        if by.count == 1 && !hasNA {
+            actualGroups = nGroups
+            firstRowForGroup = [Int](repeating: -1, count: actualGroups)
+            groupCodes.withUnsafeBufferPointer { codesBuf in
+                for i in 0..<n {
+                    let g = codesBuf[i]
+                    if firstRowForGroup[g] < 0 { firstRowForGroup[g] = i }
+                }
+            }
+        } else {
+            var codeMap = [Int: Int]()
+            var denseCode = 0
+            firstRowForGroup = [Int]()
+            for i in 0..<n {
+                let code = groupCodes[i]
+                guard code >= 0 else { continue }
+                if codeMap[code] == nil {
+                    codeMap[code] = denseCode
+                    firstRowForGroup.append(i)
+                    denseCode += 1
+                }
+                groupCodes[i] = codeMap[code]!
+            }
+            actualGroups = denseCode
+        }
+
+        // Sort groups by their key values
+        let sortedGroupIndices: [Int]
+        if actualGroups > 0, by.count == 1, let col = dataFrame.columns[by[0]] {
+            switch col {
+            case .string(let a):
+                let groupKeyValues = firstRowForGroup.map { a[$0] ?? "" }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            case .double(let a):
+                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            case .int64(let a):
+                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            default:
+                let groupKeyValues = firstRowForGroup.map { col.formattedValue(at: $0) }
+                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
+            }
+        } else {
+            sortedGroupIndices = Array(0..<actualGroups)
+        }
+
+        _groupCodes = groupCodes
+        _nGroups = actualGroups
+        _firstRowForGroup = firstRowForGroup
+        _sortedGroupIndices = sortedGroupIndices
+        _hasNA = hasNA
+    }
+
     /// The group keys (composite key string) and their row indices.
-    /// Retained for backward compatibility; internal fast paths use factorize.
     public var groups: [String: [Int]] {
         var result = [String: [Int]]()
         for i in 0..<dataFrame.rowCount {
@@ -749,337 +942,18 @@ public struct GroupBy: Sendable {
         return MetalGroupBy.aggregate(dataFrame: dataFrame, by: by, op: op)
     }
 
-    // MARK: - Fast integer-coded aggregation
+    // MARK: - Fast integer-coded aggregation (two-pass: cached factorize + tight accumulate)
 
-    /// Fused factorize + accumulate for single string group column.
-    /// Eliminates intermediate codes array; single pass over data.
-    private func fusedStringAggregate(_ op: GroupByAggOp) -> DataFrame? {
-        guard by.count == 1,
-              let col = dataFrame.columns[by[0]],
-              case .string(let groupArr) = col
-        else { return nil }
-
-        let n = dataFrame.rowCount
-        guard n > 0 else {
-            return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
-        }
-
-        let bySet = Set(by)
-        let numericColNames = dataFrame.columnNames.filter {
-            !bySet.contains($0) && dataFrame.columns[$0]!.isNumeric
-        }
-
-        // Collect numeric column data; bail if any have NAs
-        var numericArrays = [NullableArray<Double>]()
-        numericArrays.reserveCapacity(numericColNames.count)
-        for name in numericColNames {
-            guard let d = dataFrame.columns[name]!.asDouble(), d.mask.allValid else { return nil }
-            numericArrays.append(d)
-        }
-        let numCols = numericArrays.count
-
-        // Hash table for group factorization
-        var htCap = 256
-        var htMask = htCap &- 1
-        var htTable = UnsafeMutablePointer<Int32>.allocate(capacity: htCap)
-        htTable.initialize(repeating: -1, count: htCap)
-        var htHashCache = ContiguousArray<Int>()
-        htHashCache.reserveCapacity(128)
-
-        var uniqueKeys = ContiguousArray<String>()
-        uniqueKeys.reserveCapacity(128)
-        var firstRowForGroup = ContiguousArray<Int>()
-        firstRowForGroup.reserveCapacity(128)
-
-        // Dynamically-sized accumulators (grow with groups discovered)
-        var accumCap = 256
-        var accums: [UnsafeMutablePointer<Double>] = (0..<numCols).map { _ in
-            let p = UnsafeMutablePointer<Double>.allocate(capacity: 256)
-            p.initialize(repeating: 0, count: 256)
-            return p
-        }
-        var counts: UnsafeMutablePointer<Int>? = nil
-        if op == .mean || op == .count {
-            counts = .allocate(capacity: 256)
-            counts!.initialize(repeating: 0, count: 256)
-        }
-
-        // For min/max, initialize differently
-        if op == .min {
-            for p in accums { p.initialize(repeating: .infinity, count: 256) }
-        } else if op == .max {
-            for p in accums { p.initialize(repeating: -.infinity, count: 256) }
-        }
-
-        // Extract raw data pointers for numeric columns.
-        // SAFETY: numericArrays retains the NativeArrays, preventing deallocation.
-        // We only read (no mutation), so CoW won't trigger.
-        var numericPtrs = [UnsafePointer<Double>]()
-        numericPtrs.reserveCapacity(numCols)
-        for arr in numericArrays {
-            arr.data.withUnsafeBufferPointer { buf in
-                numericPtrs.append(buf.baseAddress!)
-            }
-        }
-
-        // ── Single fused pass: factorize + accumulate ──
-        groupArr.storage.withUnsafeBufferPointer { storageBuf in
-            for i in 0..<n {
-                guard let s = storageBuf[i] else { continue }
-
-                // FNV-1a hash (3-5x faster than SipHash for short strings)
-                var h: UInt = 14695981039346656037
-                for byte in s.utf8 {
-                    h ^= UInt(byte)
-                    h &*= 1099511628211
-                }
-                let hi = Int(bitPattern: h)
-
-                // Hash table lookup / insert
-                var pos = hi & htMask
-                var code: Int
-                while true {
-                    let idx = Int(htTable[pos])
-                    if idx < 0 {
-                        // New group
-                        code = uniqueKeys.count
-                        uniqueKeys.append(s)
-                        htHashCache.append(hi)
-                        firstRowForGroup.append(i)
-                        htTable[pos] = Int32(code)
-
-                        // Grow accumulators if needed
-                        if code >= accumCap {
-                            let newCap = accumCap &* 2
-                            for c in 0..<numCols {
-                                let newP = UnsafeMutablePointer<Double>.allocate(capacity: newCap)
-                                newP.moveInitialize(from: accums[c], count: accumCap)
-                                let initVal: Double = op == .min ? .infinity : (op == .max ? -.infinity : 0)
-                                newP.advanced(by: accumCap).initialize(repeating: initVal, count: newCap - accumCap)
-                                accums[c] = newP
-                            }
-                            if let oldCounts = counts {
-                                let newC = UnsafeMutablePointer<Int>.allocate(capacity: newCap)
-                                newC.moveInitialize(from: oldCounts, count: accumCap)
-                                newC.advanced(by: accumCap).initialize(repeating: 0, count: newCap - accumCap)
-                                counts = newC
-                            }
-                            accumCap = newCap
-                        }
-
-                        // Resize hash table at 70% load
-                        if uniqueKeys.count &* 10 > htCap &* 7 {
-                            let oldTable = htTable
-                            htCap &*= 2
-                            htMask = htCap &- 1
-                            htTable = .allocate(capacity: htCap)
-                            htTable.initialize(repeating: -1, count: htCap)
-                            for j in 0..<uniqueKeys.count {
-                                var p = htHashCache[j] & htMask
-                                while htTable[p] >= 0 { p = (p &+ 1) & htMask }
-                                htTable[p] = Int32(j)
-                            }
-                            oldTable.deallocate()
-                        }
-                        break
-                    }
-                    if uniqueKeys[idx] == s {
-                        code = idx
-                        break
-                    }
-                    pos = (pos &+ 1) & htMask
-                }
-
-                // Accumulate all numeric columns for this row
-                switch op {
-                case .sum:
-                    for c in 0..<numCols { accums[c][code] += numericPtrs[c][i] }
-                case .mean:
-                    for c in 0..<numCols { accums[c][code] += numericPtrs[c][i] }
-                    counts![code] &+= 1
-                case .count:
-                    counts![code] &+= 1
-                case .min:
-                    for c in 0..<numCols {
-                        let v = numericPtrs[c][i]
-                        if v < accums[c][code] { accums[c][code] = v }
-                    }
-                case .max:
-                    for c in 0..<numCols {
-                        let v = numericPtrs[c][i]
-                        if v > accums[c][code] { accums[c][code] = v }
-                    }
-                }
-            }
-        }
-
-        // ── Build result ──
-        let nGroups = uniqueKeys.count
-        guard nGroups > 0 else {
-            htTable.deallocate()
-            for p in accums { p.deallocate() }
-            counts?.deallocate()
-            return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
-        }
-
-        let sortedGroupIndices = (0..<nGroups).sorted { uniqueKeys[$0] < uniqueKeys[$1] }
-
-        var resultCols = [(String, Column)]()
-        resultCols.reserveCapacity(1 + numCols)
-
-        for c in 0..<numCols {
-            let values: [Double]
-            switch op {
-            case .sum, .min, .max:
-                values = sortedGroupIndices.map { accums[c][$0] }
-            case .mean:
-                values = sortedGroupIndices.map { g in
-                    counts![g] > 0 ? accums[c][g] / Double(counts![g]) : .nan
-                }
-            case .count:
-                values = sortedGroupIndices.map { Double(counts![$0]) }
-            }
-            resultCols.append((numericColNames[c], .fromDoubles(values)))
-        }
-
-        let index = sortedGroupIndices.map { String(uniqueKeys[$0]) }
-
-        // Cleanup
-        htTable.deallocate()
-        for p in accums { p.deallocate() }
-        counts?.deallocate()
-
-        return DataFrame(columns: resultCols, index: index)
-    }
-
-    /// Factorize group columns to integer codes, then aggregate with direct accumulation.
+    /// Aggregate using cached group codes. Factorize is done once in init.
     private func fastAggregate(_ op: GroupByAggOp) -> DataFrame {
-        // Try fused single-pass approach for single string group column
-        if let result = fusedStringAggregate(op) { return result }
-
         let n = dataFrame.rowCount
-
-        // Step 1: Factorize group columns to integer codes
-        var groupCodes: [Int]
-        var nGroups: Int
-        var hasNA = false
-
-        if by.count == 1 {
-            // Single-column fast path: codes are already dense [0, nUnique)
-            guard let col = dataFrame.columns[by[0]] else {
-                return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
-            }
-            let (codes, nUnique): ([Int], Int)
-            switch col {
-            case .double(let a):
-                let f = a.factorize()
-                codes = f.codes; nUnique = f.uniques.count
-            case .string(let a):
-                let f = a.factorize()
-                codes = f.codes; nUnique = f.uniques.count
-            case .int64(let a):
-                let f = a.factorize()
-                codes = f.codes; nUnique = f.uniques.count
-            default:
-                codes = [Int](repeating: 0, count: n); nUnique = 1
-            }
-            groupCodes = codes
-            nGroups = nUnique
-            // Check for NAs (code == -1)
-            for c in codes where c < 0 { hasNA = true; break }
-        } else {
-            // Multi-column: build composite codes
-            groupCodes = [Int](repeating: 0, count: n)
-            nGroups = 1
-            var validRow = [Bool](repeating: true, count: n)
-            for colName in by {
-                guard let col = dataFrame.columns[colName] else { continue }
-                let (codes, nUnique): ([Int], Int)
-                switch col {
-                case .double(let a):
-                    let f = a.factorize()
-                    codes = f.codes; nUnique = f.uniques.count
-                case .string(let a):
-                    let f = a.factorize()
-                    codes = f.codes; nUnique = f.uniques.count
-                case .int64(let a):
-                    let f = a.factorize()
-                    codes = f.codes; nUnique = f.uniques.count
-                default:
-                    codes = [Int](repeating: 0, count: n); nUnique = 1
-                }
-                for i in 0..<n {
-                    if codes[i] < 0 { validRow[i] = false }
-                    else { groupCodes[i] = groupCodes[i] * nUnique + codes[i] }
-                }
-                nGroups *= nUnique
-            }
-            hasNA = !validRow.allSatisfy { $0 }
-            // Mark NA rows with -1 code
-            if hasNA {
-                for i in 0..<n where !validRow[i] { groupCodes[i] = -1 }
-            }
-        }
-
-        // Step 2: Compact group codes to dense range [0, actualGroups)
-        // For single-column groupby, codes are already dense — skip dictionary compaction
-        let actualGroups: Int
-        var firstRowForGroup: [Int]
-
-        if by.count == 1 && !hasNA {
-            // Codes are already [0, nGroups) — just find first row per group
-            actualGroups = nGroups
-            firstRowForGroup = [Int](repeating: -1, count: actualGroups)
-            groupCodes.withUnsafeBufferPointer { codesBuf in
-                for i in 0..<n {
-                    let g = codesBuf[i]
-                    if firstRowForGroup[g] < 0 { firstRowForGroup[g] = i }
-                }
-            }
-        } else {
-            // General case: compact sparse composite codes via dictionary
-            var codeMap = [Int: Int]()
-            var denseCode = 0
-            firstRowForGroup = [Int]()
-            for i in 0..<n {
-                let code = groupCodes[i]
-                guard code >= 0 else { continue }
-                if codeMap[code] == nil {
-                    codeMap[code] = denseCode
-                    firstRowForGroup.append(i)
-                    denseCode += 1
-                }
-                groupCodes[i] = codeMap[code]!
-            }
-            actualGroups = denseCode
-        }
+        let actualGroups = _nGroups
 
         guard actualGroups > 0 else {
             return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
         }
 
-        // Step 3: Sort groups by their key values for consistent output
-        let sortedGroupIndices: [Int]
-        if by.count == 1, let col = dataFrame.columns[by[0]] {
-            // Sort by native typed values to avoid String conversion
-            switch col {
-            case .string(let a):
-                let groupKeyValues = firstRowForGroup.map { a[$0] ?? "" }
-                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
-            case .double(let a):
-                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
-                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
-            case .int64(let a):
-                let groupKeyValues = firstRowForGroup.map { a.data[$0] }
-                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
-            default:
-                let groupKeyValues = firstRowForGroup.map { col.formattedValue(at: $0) }
-                sortedGroupIndices = (0..<actualGroups).sorted { groupKeyValues[$0] < groupKeyValues[$1] }
-            }
-        } else {
-            sortedGroupIndices = Array(0..<actualGroups)
-        }
-        // Step 4: Direct accumulation — single pass over data per column
+        // Direct accumulation using cached codes — tight loop, no string processing
         let bySet = Set(by)
         let numericCols = dataFrame.columnNames.filter {
             !bySet.contains($0) && dataFrame.columns[$0]!.isNumeric
@@ -1088,35 +962,31 @@ public struct GroupBy: Sendable {
         var resultCols = [(String, Column)]()
         resultCols.reserveCapacity(by.count + numericCols.count)
 
-        // Build group key columns using sorted firstRowForGroup
-        let sortedFirstRows = sortedGroupIndices.map { firstRowForGroup[$0] }
+        let sortedFirstRows = _sortedGroupIndices.map { _firstRowForGroup[$0] }
         if by.count > 1 {
             for groupCol in by {
                 resultCols.append((groupCol, dataFrame.columns[groupCol]!.take(indices: sortedFirstRows)))
             }
         }
 
-        // Check if all rows have valid keys (common case: no NA in group columns)
-        let allRowsValid = !hasNA
+        let allRowsValid = !_hasNA
 
         for colName in numericCols {
             guard let colData = dataFrame.columns[colName]!.asDouble() else { continue }
             let values: [Double]
 
-            // Fast-path: no NA keys AND no NA values → skip all validity checks
             let allColValid = colData.mask.allValid
             let fullyValid = allRowsValid && allColValid
 
             if fullyValid {
-                // Fastest path: raw pointers throughout, no bounds checks
                 values = colData.data.withUnsafeBufferPointer { dataBuf in
-                    groupCodes.withUnsafeBufferPointer { codesBuf in
+                    _groupCodes.withUnsafeBufferPointer { codesBuf in
                         switch op {
                         case .sum:
                             let sums = UnsafeMutablePointer<Double>.allocate(capacity: actualGroups)
                             sums.initialize(repeating: 0, count: actualGroups)
                             for i in 0..<n { sums[codesBuf[i]] += dataBuf[i] }
-                            let result = sortedGroupIndices.map { sums[$0] }
+                            let result = _sortedGroupIndices.map { sums[$0] }
                             sums.deallocate()
                             return result
                         case .mean:
@@ -1129,7 +999,7 @@ public struct GroupBy: Sendable {
                                 sums[g] += dataBuf[i]
                                 counts[g] &+= 1
                             }
-                            let result = sortedGroupIndices.map { g in
+                            let result = _sortedGroupIndices.map { g in
                                 counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
                             }
                             sums.deallocate(); counts.deallocate()
@@ -1138,7 +1008,7 @@ public struct GroupBy: Sendable {
                             let counts = UnsafeMutablePointer<Int>.allocate(capacity: actualGroups)
                             counts.initialize(repeating: 0, count: actualGroups)
                             for i in 0..<n { counts[codesBuf[i]] &+= 1 }
-                            let result = sortedGroupIndices.map { Double(counts[$0]) }
+                            let result = _sortedGroupIndices.map { Double(counts[$0]) }
                             counts.deallocate()
                             return result
                         case .min:
@@ -1149,7 +1019,7 @@ public struct GroupBy: Sendable {
                                 let v = dataBuf[i]
                                 if v < mins[g] { mins[g] = v }
                             }
-                            let result = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                            let result = _sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
                             mins.deallocate()
                             return result
                         case .max:
@@ -1160,63 +1030,61 @@ public struct GroupBy: Sendable {
                                 let v = dataBuf[i]
                                 if v > maxs[g] { maxs[g] = v }
                             }
-                            let result = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                            let result = _sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
                             maxs.deallocate()
                             return result
                         }
                     }
                 }
             } else {
-                // Slow path: check validity per element (NA keys have code -1)
                 switch op {
                 case .sum:
                     var sums = [Double](repeating: 0, count: actualGroups)
                     for i in 0..<n {
-                        let g = groupCodes[i]
+                        let g = _groupCodes[i]
                         if g >= 0 && colData.mask[i] { sums[g] += colData.data[i] }
                     }
-                    values = sortedGroupIndices.map { sums[$0] }
+                    values = _sortedGroupIndices.map { sums[$0] }
                 case .mean:
                     var sums = [Double](repeating: 0, count: actualGroups)
                     var counts = [Int](repeating: 0, count: actualGroups)
                     for i in 0..<n {
-                        let g = groupCodes[i]
+                        let g = _groupCodes[i]
                         if g >= 0 && colData.mask[i] {
                             sums[g] += colData.data[i]
                             counts[g] += 1
                         }
                     }
-                    values = sortedGroupIndices.map { g in
+                    values = _sortedGroupIndices.map { g in
                         counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
                     }
                 case .count:
                     var counts = [Int](repeating: 0, count: actualGroups)
                     for i in 0..<n {
-                        let g = groupCodes[i]
+                        let g = _groupCodes[i]
                         if g >= 0 && colData.mask[i] { counts[g] += 1 }
                     }
-                    values = sortedGroupIndices.map { Double(counts[$0]) }
+                    values = _sortedGroupIndices.map { Double(counts[$0]) }
                 case .min:
                     var mins = [Double](repeating: .infinity, count: actualGroups)
                     for i in 0..<n {
-                        let g = groupCodes[i]
+                        let g = _groupCodes[i]
                         if g >= 0 && colData.mask[i] && colData.data[i] < mins[g] { mins[g] = colData.data[i] }
                     }
-                    values = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
+                    values = _sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
                 case .max:
                     var maxs = [Double](repeating: -.infinity, count: actualGroups)
                     for i in 0..<n {
-                        let g = groupCodes[i]
+                        let g = _groupCodes[i]
                         if g >= 0 && colData.mask[i] && colData.data[i] > maxs[g] { maxs[g] = colData.data[i] }
                     }
-                    values = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
+                    values = _sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
                 }
             }
 
             resultCols.append((colName, .fromDoubles(values)))
         }
 
-        // For single-column groupBy, use the group key values as the index
         let index: [String]
         if by.count == 1, let col = dataFrame.columns[by[0]] {
             switch col {

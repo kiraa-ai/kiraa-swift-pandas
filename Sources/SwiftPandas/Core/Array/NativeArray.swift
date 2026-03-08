@@ -107,8 +107,8 @@ public struct NativeArray<T> {
 
     /// Take elements where mask is true. `trueCount` must equal mask.filter({$0}).count.
     public func take(mask: [Bool], trueCount: Int) -> NativeArray<T> {
-        // Use unsafeUninitializedCapacity to avoid per-element append overhead
-        let arr = [T](unsafeUninitializedCapacity: trueCount) { dst, initializedCount in
+        // Use ContiguousArray directly to avoid [T] → ContiguousArray copy
+        let result = ContiguousArray<T>(unsafeUninitializedCapacity: trueCount) { dst, initializedCount in
             buffer.storage.withUnsafeBufferPointer { src in
                 mask.withUnsafeBufferPointer { m in
                     var j = 0
@@ -122,7 +122,7 @@ public struct NativeArray<T> {
                 }
             }
         }
-        return NativeArray(arr)
+        return NativeArray(result)
     }
 
     // MARK: - Append

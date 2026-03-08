@@ -9,8 +9,21 @@ public struct Series: CustomStringConvertible, Sendable {
     /// The underlying data column.
     public var data: Column
 
-    /// Integer positions of labels. We store labels as strings for flexibility.
-    internal var indexLabels: [String]
+    /// Row index labels. For default range indices, generated lazily on first access.
+    internal var indexLabels: [String] {
+        get {
+            if _isDefaultIndex && _indexLabels.isEmpty && data.count > 0 {
+                return (0..<data.count).map { "\($0)" }
+            }
+            return _indexLabels
+        }
+        set {
+            _indexLabels = newValue
+            _isDefaultIndex = false
+        }
+    }
+    internal var _indexLabels: [String] = []
+    internal var _isDefaultIndex: Bool = true
 
     // MARK: - Initializers
 
@@ -18,42 +31,48 @@ public struct Series: CustomStringConvertible, Sendable {
     public init(_ values: [Double], name: String? = nil) {
         self.data = .fromDoubles(values)
         self.name = name
-        self.indexLabels = (0..<values.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from an array of optional Doubles.
     public init(_ values: [Double?], name: String? = nil) {
         self.data = .fromOptionalDoubles(values)
         self.name = name
-        self.indexLabels = (0..<values.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from an array of Strings.
     public init(_ values: [String], name: String? = nil) {
         self.data = .fromStrings(values)
         self.name = name
-        self.indexLabels = (0..<values.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from an array of optional Strings.
     public init(_ values: [String?], name: String? = nil) {
         self.data = .fromOptionalStrings(values)
         self.name = name
-        self.indexLabels = (0..<values.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from an array of Ints (converted to Double).
     public init(_ values: [Int], name: String? = nil) {
         self.data = .fromDoubles(values.map { Double($0) })
         self.name = name
-        self.indexLabels = (0..<values.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
     }
 
     /// Create from a Column with explicit index labels.
     public init(data: Column, index: [String], name: String? = nil) {
         precondition(data.count == index.count, "Data and index must have same length")
         self.data = data
-        self.indexLabels = index
+        self._indexLabels = index
+        self._isDefaultIndex = false
         self.name = name
     }
 
@@ -61,13 +80,23 @@ public struct Series: CustomStringConvertible, Sendable {
     public init(data: Column, name: String? = nil) {
         self.data = data
         self.name = name
-        self.indexLabels = (0..<data.count).map { "\($0)" }
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
+    /// Internal: create from Column preserving lazy index flag from parent.
+    internal init(data: Column, defaultIndex: Bool, index: [String], name: String? = nil) {
+        self.data = data
+        self._isDefaultIndex = defaultIndex
+        self._indexLabels = defaultIndex ? [] : index
+        self.name = name
     }
 
     /// Create from a dictionary.
     public init(_ dict: [String: Double], name: String? = nil) {
         let sorted = dict.sorted { $0.key < $1.key }
-        self.indexLabels = sorted.map { $0.key }
+        self._indexLabels = sorted.map { $0.key }
+        self._isDefaultIndex = false
         self.data = .fromDoubles(sorted.map { $0.value })
         self.name = name
     }
@@ -114,9 +143,12 @@ public struct Series: CustomStringConvertible, Sendable {
     /// Integer-location based slicing.
     public func iloc(_ range: Range<Int>) -> Series {
         let indices = Array(range)
+        if _isDefaultIndex {
+            return Series(data: data.take(indices: indices), name: name)
+        }
         return Series(
             data: data.take(indices: indices),
-            index: indices.map { indexLabels[$0] },
+            index: indices.map { _indexLabels[$0] },
             name: name
         )
     }
@@ -150,9 +182,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public func dropNA() -> Series {
         let mask = data.isNA()
         let validIndices = mask.enumerated().compactMap { !$1 ? $0 : nil }
+        if _isDefaultIndex {
+            return Series(data: data.take(indices: validIndices), name: name)
+        }
         return Series(
             data: data.take(indices: validIndices),
-            index: validIndices.map { indexLabels[$0] },
+            index: validIndices.map { _indexLabels[$0] },
             name: name
         )
     }
@@ -162,7 +197,8 @@ public struct Series: CustomStringConvertible, Sendable {
         guard case .double(let arr) = data else { return self }
         return Series(
             data: .double(arr.fillNANullable(value: value)),
-            index: indexLabels,
+            defaultIndex: _isDefaultIndex,
+            index: _indexLabels,
             name: name
         )
     }
@@ -209,9 +245,12 @@ public struct Series: CustomStringConvertible, Sendable {
         default:
             return self
         }
+        if _isDefaultIndex {
+            return Series(data: data.take(indices: indices), name: name)
+        }
         return Series(
             data: data.take(indices: indices),
-            index: indices.map { indexLabels[$0] },
+            index: indices.map { _indexLabels[$0] },
             name: name
         )
     }
@@ -222,27 +261,54 @@ public struct Series: CustomStringConvertible, Sendable {
     public func valueCounts() -> Series {
         switch data {
         case .double(let a):
-            var counts = [Double: Int]()
-            for i in 0..<a.count where a.mask[i] {
-                counts[a.data[i], default: 0] += 1
+            var counts = [Double: Int](minimumCapacity: Swift.min(a.count, 1_000_000))
+            a.data.withUnsafeBufferPointer { src in
+                if a.mask.allValid {
+                    for i in 0..<src.count {
+                        counts[src[i], default: 0] += 1
+                    }
+                } else {
+                    for i in 0..<src.count where a.mask[i] {
+                        counts[src[i], default: 0] += 1
+                    }
+                }
             }
-            let sorted = counts.sorted { $0.value > $1.value }
+            // Sort by count descending
+            let sortedPairs = counts.sorted { $0.value > $1.value }
+            let n = sortedPairs.count
+            var values = ContiguousArray<Double>(repeating: 0, count: n)
+            var labels = [String]()
+            labels.reserveCapacity(n)
+            for i in 0..<n {
+                values[i] = Double(sortedPairs[i].value)
+                labels.append("\(sortedPairs[i].key)")
+            }
             return Series(
-                data: .fromDoubles(sorted.map { Double($0.value) }),
-                index: sorted.map { "\($0.key)" },
+                data: .double(NullableArray(data: NativeArray(values), mask: BitVector(repeating: true, count: n))),
+                index: labels,
                 name: name
             )
         case .string(let a):
-            var counts = [String: Int]()
-            for s in a.storage {
-                if let s = s {
-                    counts[s, default: 0] += 1
+            var counts = [String: Int](minimumCapacity: Swift.min(a.count, 1_000_000))
+            a.storage.withContiguousStorageIfAvailable { buf in
+                for i in 0..<buf.count {
+                    if let s = buf[i] {
+                        counts[s, default: 0] += 1
+                    }
                 }
             }
-            let sorted = counts.sorted { $0.value > $1.value }
+            let sortedPairs = counts.sorted { $0.value > $1.value }
+            let n = sortedPairs.count
+            var values = ContiguousArray<Double>(repeating: 0, count: n)
+            var labels = [String]()
+            labels.reserveCapacity(n)
+            for i in 0..<n {
+                values[i] = Double(sortedPairs[i].value)
+                labels.append(sortedPairs[i].key)
+            }
             return Series(
-                data: .fromDoubles(sorted.map { Double($0.value) }),
-                index: sorted.map { $0.key },
+                data: .double(NullableArray(data: NativeArray(values), mask: BitVector(repeating: true, count: n))),
+                index: labels,
                 name: name
             )
         default:
@@ -256,28 +322,28 @@ public struct Series: CustomStringConvertible, Sendable {
         guard case .double(let la) = lhs.data, case .double(let ra) = rhs.data else {
             fatalError("Arithmetic only supported on numeric Series")
         }
-        return Series(data: .double(la + ra), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(la + ra), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func - (lhs: Series, rhs: Series) -> Series {
         guard case .double(let la) = lhs.data, case .double(let ra) = rhs.data else {
             fatalError("Arithmetic only supported on numeric Series")
         }
-        return Series(data: .double(la - ra), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(la - ra), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func * (lhs: Series, rhs: Series) -> Series {
         guard case .double(let la) = lhs.data, case .double(let ra) = rhs.data else {
             fatalError("Arithmetic only supported on numeric Series")
         }
-        return Series(data: .double(la * ra), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(la * ra), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func / (lhs: Series, rhs: Series) -> Series {
         guard case .double(let la) = lhs.data, case .double(let ra) = rhs.data else {
             fatalError("Arithmetic only supported on numeric Series")
         }
-        return Series(data: .double(la / ra), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(la / ra), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     // MARK: - Scalar arithmetic
@@ -292,13 +358,13 @@ public struct Series: CustomStringConvertible, Sendable {
                 }
                 count = n
             }
-            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+            return Series(data: .double(NullableArray(NativeArray(resultData))), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
         }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] + rhs
         }
-        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(result), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func - (lhs: Series, rhs: Double) -> Series {
@@ -311,13 +377,13 @@ public struct Series: CustomStringConvertible, Sendable {
                 }
                 count = n
             }
-            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+            return Series(data: .double(NullableArray(NativeArray(resultData))), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
         }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] - rhs
         }
-        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(result), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func * (lhs: Series, rhs: Double) -> Series {
@@ -330,13 +396,13 @@ public struct Series: CustomStringConvertible, Sendable {
                 }
                 count = n
             }
-            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+            return Series(data: .double(NullableArray(NativeArray(resultData))), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
         }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] * rhs
         }
-        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(result), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     public static func / (lhs: Series, rhs: Double) -> Series {
@@ -349,13 +415,13 @@ public struct Series: CustomStringConvertible, Sendable {
                 }
                 count = n
             }
-            return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
+            return Series(data: .double(NullableArray(NativeArray(resultData))), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
         }
         var result = a.copy()
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = result.data[i] / rhs
         }
-        return Series(data: .double(result), index: lhs.indexLabels, name: lhs.name)
+        return Series(data: .double(result), defaultIndex: lhs._isDefaultIndex, index: lhs._indexLabels, name: lhs.name)
     }
 
     // MARK: - Comparison operators (return Bool masks like pandas)
@@ -477,7 +543,7 @@ public struct Series: CustomStringConvertible, Sendable {
         for i in 0..<result.count where result.mask[i] {
             result.data[i] = transform(result.data[i])
         }
-        return Series(data: .double(result), index: indexLabels, name: name)
+        return Series(data: .double(result), defaultIndex: _isDefaultIndex, index: _indexLabels, name: name)
     }
 
     /// Map values using a dictionary. Unmapped values become NA.
@@ -510,18 +576,39 @@ public struct Series: CustomStringConvertible, Sendable {
     /// Cumulative sum. NA values are skipped (not propagated).
     public func cumsum() -> Series {
         guard case .double(let a) = data else { return self }
-        var cumValues = [Double?]()
-        cumValues.reserveCapacity(a.count)
-        var running = 0.0
-        for i in 0..<a.count {
-            if a.mask[i] {
-                running += a.data[i]
-                cumValues.append(running)
-            } else {
-                cumValues.append(nil)
+        let n = a.count
+        // Build result using raw pointer accumulation + reuse existing index
+        let resultData: NullableArray<Double>
+        if a.mask.allValid {
+            // Fast path: no NAs — prefix sum with raw pointers
+            var result = ContiguousArray<Double>(repeating: 0, count: n)
+            a.data.withUnsafeBufferPointer { src in
+                result.withUnsafeMutableBufferPointer { dst in
+                    var running = 0.0
+                    for i in 0..<n {
+                        running += src[i]
+                        dst[i] = running
+                    }
+                }
             }
+            resultData = NullableArray(data: NativeArray(result), mask: a.mask)
+        } else {
+            // Slow path: skip NAs
+            var result = ContiguousArray<Double>(repeating: 0, count: n)
+            a.data.withUnsafeBufferPointer { src in
+                result.withUnsafeMutableBufferPointer { dst in
+                    var running = 0.0
+                    for i in 0..<n {
+                        if a.mask[i] {
+                            running += src[i]
+                            dst[i] = running
+                        }
+                    }
+                }
+            }
+            resultData = NullableArray(data: NativeArray(result), mask: a.mask)
         }
-        return Series(cumValues, name: name)
+        return Series(data: .double(resultData), defaultIndex: _isDefaultIndex, index: _indexLabels, name: name)
     }
 
     // MARK: - Additional aggregations
@@ -631,9 +718,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public func dropDuplicates() -> Series {
         let dupes = duplicated()
         let keepIndices = dupes.enumerated().compactMap { !$1 ? $0 : nil }
+        if _isDefaultIndex {
+            return Series(data: data.take(indices: keepIndices), name: name)
+        }
         return Series(
             data: data.take(indices: keepIndices),
-            index: keepIndices.map { indexLabels[$0] },
+            index: keepIndices.map { _indexLabels[$0] },
             name: name
         )
     }
