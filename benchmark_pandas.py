@@ -1107,7 +1107,6 @@ def print_comparison(py_results, swift_results):
 
     swift_wins = 0
     py_wins = 0
-    ties = 0
     all_pct_diffs = []  # collect percentage differences for overall score
 
     for display, py_key, swift_key in rows:
@@ -1131,18 +1130,14 @@ def print_comparison(py_results, swift_results):
             pct_diff = (py_ns - sw_ns) / py_ns * 100.0
             all_pct_diffs.append(pct_diff)
 
-            if pct_diff > 10:
+            if pct_diff >= 0:
                 winner = "Swift"
                 pct_str = f"+{pct_diff:.0f}% faster"
                 swift_wins += 1
-            elif pct_diff < -10:
+            else:
                 winner = "pandas"
                 pct_str = f"{pct_diff:.0f}% slower"
                 py_wins += 1
-            else:
-                winner = "Tie"
-                pct_str = f"{pct_diff:+.0f}%"
-                ties += 1
         else:
             winner = ""
             pct_str = "\u2014"
@@ -1153,7 +1148,7 @@ def print_comparison(py_results, swift_results):
 
     print()
     print("    " + "\u2500" * 74)
-    print(f"    Scorecard:  Swift wins {swift_wins}  |  pandas wins {py_wins}  |  Tie {ties}")
+    print(f"    Scorecard:  Swift wins {swift_wins}  |  pandas wins {py_wins}")
 
     # Overall averaged score across all measured operations
     if all_pct_diffs:

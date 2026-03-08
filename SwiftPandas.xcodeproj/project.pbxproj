@@ -1,0 +1,979 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0181C17DFB7EADFE06FF93C0 /* PandasArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */; };
+		01FEDECC1810186D0F38DFC9 /* ShaderCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = DCD547CE28268E228BA21D66 /* ShaderCommon.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		0D444D47D864B034231CA1C2 /* Index.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423F4EFB71BB9E23C8A4AA59 /* Index.swift */; };
+		0D7A0049DBF49C7FFC96CBA8 /* khash.c in Sources */ = {isa = PBXBuildFile; fileRef = 3AFA34B68A7B97BF6F7EC370 /* khash.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		0FD353BC50F11AFA45DB69D2 /* VectorOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */; };
+		130E265F076756503C4CE0A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D54DADED754D5BC12DF98593 /* Assets.xcassets */; };
+		13B87867978645B6BB8E7D4E /* employees.csv in Resources */ = {isa = PBXBuildFile; fileRef = 9A99DFCEF5DDD4349827FEF3 /* employees.csv */; };
+		29B876F3ACF2B56CF5707B69 /* portable.h in Headers */ = {isa = PBXBuildFile; fileRef = 9F877B1C6BBEB8C3A073AD2E /* portable.h */; };
+		2CC1F5A12DD2FB33AFF1D307 /* DType.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24D37B50C94748102DA0EC9 /* DType.swift */; };
+		2D11886EE9F2D76BB83CA478 /* Column.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A8679BEFC622508CAF1EE07 /* Column.swift */; };
+		2F1BAFFF047C36C2B73F40F6 /* CSVReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC07EC065B5C63900D3BF24A /* CSVReader.swift */; };
+		31EA71E19E92E19E973868FE /* DataFrameDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80ED81B7E4A9A7671F3A5ED /* DataFrameDemoView.swift */; };
+		34129D1A378E55C954EE9A01 /* skiplist.h in Headers */ = {isa = PBXBuildFile; fileRef = 755EA62922A9F0EB0A476736 /* skiplist.h */; };
+		382E4C7DB3EAEAD28466C7AD /* DataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725C3853F05C0920274BF161 /* DataFrame.swift */; };
+		38934C4ACB339F9B15DF5B66 /* skiplist.c in Sources */ = {isa = PBXBuildFile; fileRef = A9B9154E503F8C0AF170E60A /* skiplist.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		3B731C9EE18D7CF9B53C3931 /* SwiftPandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D1B757A00691EEC78E36F9F /* SwiftPandasApp.swift */; };
+		499F95EA6EC3DD1BC773C09F /* SwiftPandasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */; };
+		57CF234A5BDD021FE3C07ABC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F845FA91A1F9266A74A73600 /* ContentView.swift */; };
+		5B790ED8BAB7DEA8B371046F /* MetalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57050F20F42C904FEFFA187 /* MetalTests.swift */; };
+		5D6039BD81DC65009BBCDBC5 /* BenchmarkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C398A65678403C674A2C11 /* BenchmarkView.swift */; };
+		5DC583AF471388A23624240B /* CSVDataFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */; };
+		5F30B43A3192313BEBE4E54E /* SwiftPandas.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; };
+		642648E72CFAE2C45842489D /* StringArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = D43E4688A860B3EA57425A30 /* StringArray.swift */; };
+		6893BD2302FDBAC647DA9DB2 /* ultrajsondec.c in Sources */ = {isa = PBXBuildFile; fileRef = 33D3A3C57157A8B084612879 /* ultrajsondec.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		765DC70429EEE386FC2EEDBF /* employees.csv in Resources */ = {isa = PBXBuildFile; fileRef = F144E9A25383F5A6574D65C3 /* employees.csv */; };
+		7814EC209B984E84282B4F52 /* NullableArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */; };
+		7B12FB5FA55C994067F68B82 /* NewFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */; };
+		7EA61E6296F45A69BE7D975B /* GroupByShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 19D846DA71CE9577F41EE749 /* GroupByShaders.metal */; };
+		7EF10C03A9F9D5B5348B6CC2 /* SwiftPandas.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; };
+		837D57E390A3B5D9CA75CB7B /* BenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */; };
+		85DCE13E5A6EFD34D67D6D2E /* NativeArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3376038DA3DA74732D8ADC79 /* NativeArray.swift */; };
+		8737AC28EBFDD391A49EAB33 /* khash.h in Headers */ = {isa = PBXBuildFile; fileRef = 0E209DB760F4CBFC327B5BBC /* khash.h */; };
+		8C6EDF782DC146BB2C0386E9 /* MetalGroupBy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */; };
+		8F1361F2A1C972947162AFD5 /* OtherDTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A83B1B5C5B972FA793F9FCAF /* OtherDTypes.swift */; };
+		90F8D09DBB17B2D35ACD1BD5 /* SwiftPandas.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		91DC5A926733A507A044224A /* MetalShaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46E84DEBD0790B057CABF32 /* MetalShaders.swift */; };
+		9BB5855F4DE49AE9DC90664F /* NumericDTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34855C4F0B79C939DD409DD8 /* NumericDTypes.swift */; };
+		AA604D56C8049D00A21D6E28 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 408C06FD62F2C489D8DB191B /* MetalContext.swift */; };
+		AA9506361F2B946998AB0ED0 /* BitVector.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD9E552B3EE0341E8D16FBD /* BitVector.swift */; };
+		B09AABE6C2E0B1E4B3E8CABC /* Series.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BC5D47091871B54416C613 /* Series.swift */; };
+		B433902F318B689A03D2288E /* ultrajsonenc.c in Sources */ = {isa = PBXBuildFile; fileRef = E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
+		CD90D4C6AFE9B359A901E7F8 /* SwiftPandas.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		CFF0E3C0BFC711C9C3B18F9A /* MergeShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4525D3C37734796C534282A9 /* MergeShaders.metal */; };
+		D7C70F105F0EC95A58A85B03 /* SwiftPandas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */; };
+		DB2BED9171563AC0EA69338A /* ultrajson.h in Headers */ = {isa = PBXBuildFile; fileRef = 6CD5074D92B6D34F1D59DD03 /* ultrajson.h */; };
+		E2A1020ACF50A59DC654EB55 /* MetalMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F8BF25398E15233CBBFD30 /* MetalMerge.swift */; };
+		EC6777C9B6466BA0BBC683BD /* GroupByDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */; };
+		F0A342F3697757C62A77D911 /* MetalDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */; };
+		F9402D2323F3FEE4877690A5 /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464B03A7DE52D165D759490 /* Buffer.swift */; };
+		BB0001B1C2D3E4F5A6B7C8D9 /* Predicate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001B1C2D3E4F5A6B7C8D9 /* Predicate.swift */; };
+		BB0002B1C2D3E4F5A6B7C8D9 /* QueryPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0002B1C2D3E4F5A6B7C8D9 /* QueryPlan.swift */; };
+		BB0003B1C2D3E4F5A6B7C8D9 /* LazyDataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0003B1C2D3E4F5A6B7C8D9 /* LazyDataFrame.swift */; };
+		BB0004B1C2D3E4F5A6B7C8D9 /* QueryOptimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0004B1C2D3E4F5A6B7C8D9 /* QueryOptimizer.swift */; };
+		BB0005B1C2D3E4F5A6B7C8D9 /* QueryExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0005B1C2D3E4F5A6B7C8D9 /* QueryExecutor.swift */; };
+		BB0006B1C2D3E4F5A6B7C8D9 /* LazyDataFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0006B1C2D3E4F5A6B7C8D9 /* LazyDataFrameTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		807E16CFEC1149FFF74D859E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2825A716D0F54F423DACC780 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 06FEE45C2F882A118ECED543;
+			remoteInfo = SwiftPandas;
+		};
+		88A715E5CC76DA92456ABF3F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2825A716D0F54F423DACC780 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 06FEE45C2F882A118ECED543;
+			remoteInfo = SwiftPandas;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A75FA68B07C1141CED8BC0DB /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				CD90D4C6AFE9B359A901E7F8 /* SwiftPandas.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB76ECD57310D19490E08DEC /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				90F8D09DBB17B2D35ACD1BD5 /* SwiftPandas.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFeaturesTests.swift; sourceTree = "<group>"; };
+		0250C094428401FE056718CA /* SwiftPandasApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftPandasApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A8679BEFC622508CAF1EE07 /* Column.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Column.swift; sourceTree = "<group>"; };
+		0E209DB760F4CBFC327B5BBC /* khash.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = khash.h; sourceTree = "<group>"; };
+		19D846DA71CE9577F41EE749 /* GroupByShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GroupByShaders.metal; sourceTree = "<group>"; };
+		1B8817FEF468D972F755B00C /* SwiftPandasTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftPandasTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandasArray.swift; sourceTree = "<group>"; };
+		3376038DA3DA74732D8ADC79 /* NativeArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeArray.swift; sourceTree = "<group>"; };
+		33D3A3C57157A8B084612879 /* ultrajsondec.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ultrajsondec.c; sourceTree = "<group>"; };
+		34855C4F0B79C939DD409DD8 /* NumericDTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumericDTypes.swift; sourceTree = "<group>"; };
+		3AFA34B68A7B97BF6F7EC370 /* khash.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = khash.c; sourceTree = "<group>"; };
+		3D1B757A00691EEC78E36F9F /* SwiftPandasApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandasApp.swift; sourceTree = "<group>"; };
+		408C06FD62F2C489D8DB191B /* MetalContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalContext.swift; sourceTree = "<group>"; };
+		423F4EFB71BB9E23C8A4AA59 /* Index.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Index.swift; sourceTree = "<group>"; };
+		4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkTests.swift; sourceTree = "<group>"; };
+		4525D3C37734796C534282A9 /* MergeShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MergeShaders.metal; sourceTree = "<group>"; };
+		46BC5D47091871B54416C613 /* Series.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Series.swift; sourceTree = "<group>"; };
+		51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NullableArray.swift; sourceTree = "<group>"; };
+		67F8BF25398E15233CBBFD30 /* MetalMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalMerge.swift; sourceTree = "<group>"; };
+		6CD5074D92B6D34F1D59DD03 /* ultrajson.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ultrajson.h; sourceTree = "<group>"; };
+		725C3853F05C0920274BF161 /* DataFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataFrame.swift; sourceTree = "<group>"; };
+		7464B03A7DE52D165D759490 /* Buffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Buffer.swift; sourceTree = "<group>"; };
+		755EA62922A9F0EB0A476736 /* skiplist.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = skiplist.h; sourceTree = "<group>"; };
+		77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupByDemoView.swift; sourceTree = "<group>"; };
+		9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalGroupBy.swift; sourceTree = "<group>"; };
+		97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalDispatch.swift; sourceTree = "<group>"; };
+		9A99DFCEF5DDD4349827FEF3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
+		9F877B1C6BBEB8C3A073AD2E /* portable.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = portable.h; sourceTree = "<group>"; };
+		A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandas.swift; sourceTree = "<group>"; };
+		A57050F20F42C904FEFFA187 /* MetalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTests.swift; sourceTree = "<group>"; };
+		A83B1B5C5B972FA793F9FCAF /* OtherDTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtherDTypes.swift; sourceTree = "<group>"; };
+		A9B9154E503F8C0AF170E60A /* skiplist.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = skiplist.c; sourceTree = "<group>"; };
+		B46E84DEBD0790B057CABF32 /* MetalShaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalShaders.swift; sourceTree = "<group>"; };
+		C24D37B50C94748102DA0EC9 /* DType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DType.swift; sourceTree = "<group>"; };
+		C289550B9C9C6036608C34E7 /* SwiftPandas.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = SwiftPandas.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVDataFrameTests.swift; sourceTree = "<group>"; };
+		C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorOps.swift; sourceTree = "<group>"; };
+		D43E4688A860B3EA57425A30 /* StringArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringArray.swift; sourceTree = "<group>"; };
+		D54DADED754D5BC12DF98593 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandasTests.swift; sourceTree = "<group>"; };
+		D7C398A65678403C674A2C11 /* BenchmarkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BenchmarkView.swift; sourceTree = "<group>"; };
+		D80ED81B7E4A9A7671F3A5ED /* DataFrameDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataFrameDemoView.swift; sourceTree = "<group>"; };
+		DC07EC065B5C63900D3BF24A /* CSVReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVReader.swift; sourceTree = "<group>"; };
+		DCD547CE28268E228BA21D66 /* ShaderCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderCommon.h; sourceTree = "<group>"; };
+		E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ultrajsonenc.c; sourceTree = "<group>"; };
+		EDD9E552B3EE0341E8D16FBD /* BitVector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitVector.swift; sourceTree = "<group>"; };
+		F144E9A25383F5A6574D65C3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
+		F845FA91A1F9266A74A73600 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AA0001B1C2D3E4F5A6B7C8D9 /* Predicate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Predicate.swift; sourceTree = "<group>"; };
+		AA0002B1C2D3E4F5A6B7C8D9 /* QueryPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryPlan.swift; sourceTree = "<group>"; };
+		AA0003B1C2D3E4F5A6B7C8D9 /* LazyDataFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyDataFrame.swift; sourceTree = "<group>"; };
+		AA0004B1C2D3E4F5A6B7C8D9 /* QueryOptimizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryOptimizer.swift; sourceTree = "<group>"; };
+		AA0005B1C2D3E4F5A6B7C8D9 /* QueryExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryExecutor.swift; sourceTree = "<group>"; };
+		AA0006B1C2D3E4F5A6B7C8D9 /* LazyDataFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyDataFrameTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		062A7C485510D9913AFEF9AA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7EF10C03A9F9D5B5348B6CC2 /* SwiftPandas.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C72D000F5612B89B566D3FED /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5F30B43A3192313BEBE4E54E /* SwiftPandas.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		009A52BFF0EC869B44D86406 /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				7464B03A7DE52D165D759490 /* Buffer.swift */,
+			);
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		08367D3CD71EED91B9E7B6D1 /* Metal */ = {
+			isa = PBXGroup;
+			children = (
+				36244A35FCD969231A295E7C /* Shaders */,
+				408C06FD62F2C489D8DB191B /* MetalContext.swift */,
+				97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */,
+				9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */,
+				67F8BF25398E15233CBBFD30 /* MetalMerge.swift */,
+				B46E84DEBD0790B057CABF32 /* MetalShaders.swift */,
+			);
+			path = Metal;
+			sourceTree = "<group>";
+		};
+		1A6F4098CEBE6B0E67F51F8D /* CUltraJSON */ = {
+			isa = PBXGroup;
+			children = (
+				E2D4986F2EA16558E2244C91 /* include */,
+				33D3A3C57157A8B084612879 /* ultrajsondec.c */,
+				E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */,
+			);
+			path = CUltraJSON;
+			sourceTree = "<group>";
+		};
+		2080D138C43B69B93607BF4A /* Numeric */ = {
+			isa = PBXGroup;
+			children = (
+				C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */,
+			);
+			path = Numeric;
+			sourceTree = "<group>";
+		};
+		36244A35FCD969231A295E7C /* Shaders */ = {
+			isa = PBXGroup;
+			children = (
+				19D846DA71CE9577F41EE749 /* GroupByShaders.metal */,
+				4525D3C37734796C534282A9 /* MergeShaders.metal */,
+				DCD547CE28268E228BA21D66 /* ShaderCommon.h */,
+			);
+			path = Shaders;
+			sourceTree = "<group>";
+		};
+		3AF7AC41582BB3A660765E43 = {
+			isa = PBXGroup;
+			children = (
+				53C2EB67A17DAD3DC9F6DE6A /* Sources */,
+				8D518F8C7EC25B1ABCA86EDE /* SwiftPandasApp */,
+				B1A14D244C9605F058A505F5 /* Tests */,
+				62AB098571854E23B1D99E95 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		50062BF1DA41C67EA47F9501 /* DType */ = {
+			isa = PBXGroup;
+			children = (
+				C24D37B50C94748102DA0EC9 /* DType.swift */,
+				34855C4F0B79C939DD409DD8 /* NumericDTypes.swift */,
+				A83B1B5C5B972FA793F9FCAF /* OtherDTypes.swift */,
+			);
+			path = DType;
+			sourceTree = "<group>";
+		};
+		53C2EB67A17DAD3DC9F6DE6A /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				59458DBDB0BD813CB92B21CF /* CKHash */,
+				F814E11105DFFCDFEA781234 /* CSkipList */,
+				1A6F4098CEBE6B0E67F51F8D /* CUltraJSON */,
+				68B9C8E45373F98D133BB8A7 /* SwiftPandas */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		55BBBF19C224B96197B17E84 /* Index */ = {
+			isa = PBXGroup;
+			children = (
+				423F4EFB71BB9E23C8A4AA59 /* Index.swift */,
+			);
+			path = Index;
+			sourceTree = "<group>";
+		};
+		59458DBDB0BD813CB92B21CF /* CKHash */ = {
+			isa = PBXGroup;
+			children = (
+				9FA323CFC9906BD0B0AED17A /* include */,
+				3AFA34B68A7B97BF6F7EC370 /* khash.c */,
+			);
+			path = CKHash;
+			sourceTree = "<group>";
+		};
+		62AB098571854E23B1D99E95 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C289550B9C9C6036608C34E7 /* SwiftPandas.framework */,
+				0250C094428401FE056718CA /* SwiftPandasApp.app */,
+				1B8817FEF468D972F755B00C /* SwiftPandasTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		665A03AB81E3749244B4B9C9 /* CSV */ = {
+			isa = PBXGroup;
+			children = (
+				DC07EC065B5C63900D3BF24A /* CSVReader.swift */,
+			);
+			path = CSV;
+			sourceTree = "<group>";
+		};
+		CC0001B1C2D3E4F5A6B7C8D9 /* Lazy */ = {
+			isa = PBXGroup;
+			children = (
+				AA0003B1C2D3E4F5A6B7C8D9 /* LazyDataFrame.swift */,
+				AA0001B1C2D3E4F5A6B7C8D9 /* Predicate.swift */,
+				AA0005B1C2D3E4F5A6B7C8D9 /* QueryExecutor.swift */,
+				AA0004B1C2D3E4F5A6B7C8D9 /* QueryOptimizer.swift */,
+				AA0002B1C2D3E4F5A6B7C8D9 /* QueryPlan.swift */,
+			);
+			path = Lazy;
+			sourceTree = "<group>";
+		};
+		68B9C8E45373F98D133BB8A7 /* SwiftPandas */ = {
+			isa = PBXGroup;
+			children = (
+				BF5FDEA8266DB0BE3248D43E /* Core */,
+				7D6D4EC3AE88C12B75AE257A /* DataFrame */,
+				55BBBF19C224B96197B17E84 /* Index */,
+				E4E57AE7978C13418ACEC275 /* IO */,
+				CC0001B1C2D3E4F5A6B7C8D9 /* Lazy */,
+				08367D3CD71EED91B9E7B6D1 /* Metal */,
+				2080D138C43B69B93607BF4A /* Numeric */,
+				D4137E24CCB495BFCFC9899F /* Series */,
+				A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */,
+			);
+			path = SwiftPandas;
+			sourceTree = "<group>";
+		};
+		7D6D4EC3AE88C12B75AE257A /* DataFrame */ = {
+			isa = PBXGroup;
+			children = (
+				725C3853F05C0920274BF161 /* DataFrame.swift */,
+			);
+			path = DataFrame;
+			sourceTree = "<group>";
+		};
+		837AC83F6711C8F1C401824D /* DemoViews */ = {
+			isa = PBXGroup;
+			children = (
+				D7C398A65678403C674A2C11 /* BenchmarkView.swift */,
+				D80ED81B7E4A9A7671F3A5ED /* DataFrameDemoView.swift */,
+				77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */,
+			);
+			path = DemoViews;
+			sourceTree = "<group>";
+		};
+		8490AEE93707654B1156BA6A /* include */ = {
+			isa = PBXGroup;
+			children = (
+				755EA62922A9F0EB0A476736 /* skiplist.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		8AE260A405D4C37651CD4374 /* Missing */ = {
+			isa = PBXGroup;
+			children = (
+				EDD9E552B3EE0341E8D16FBD /* BitVector.swift */,
+			);
+			path = Missing;
+			sourceTree = "<group>";
+		};
+		8D518F8C7EC25B1ABCA86EDE /* SwiftPandasApp */ = {
+			isa = PBXGroup;
+			children = (
+				837AC83F6711C8F1C401824D /* DemoViews */,
+				D54DADED754D5BC12DF98593 /* Assets.xcassets */,
+				F845FA91A1F9266A74A73600 /* ContentView.swift */,
+				9A99DFCEF5DDD4349827FEF3 /* employees.csv */,
+				3D1B757A00691EEC78E36F9F /* SwiftPandasApp.swift */,
+			);
+			path = SwiftPandasApp;
+			sourceTree = "<group>";
+		};
+		8E3A36BDB8F68DC137BA46F1 /* SampleData */ = {
+			isa = PBXGroup;
+			children = (
+				F144E9A25383F5A6574D65C3 /* employees.csv */,
+			);
+			path = SampleData;
+			sourceTree = "<group>";
+		};
+		9BAAFE977C0269626DBC581F /* SwiftPandasTests */ = {
+			isa = PBXGroup;
+			children = (
+				8E3A36BDB8F68DC137BA46F1 /* SampleData */,
+				4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */,
+				C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */,
+				AA0006B1C2D3E4F5A6B7C8D9 /* LazyDataFrameTests.swift */,
+				A57050F20F42C904FEFFA187 /* MetalTests.swift */,
+				00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */,
+				D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */,
+			);
+			path = SwiftPandasTests;
+			sourceTree = "<group>";
+		};
+		9FA323CFC9906BD0B0AED17A /* include */ = {
+			isa = PBXGroup;
+			children = (
+				0E209DB760F4CBFC327B5BBC /* khash.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		B1A14D244C9605F058A505F5 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				9BAAFE977C0269626DBC581F /* SwiftPandasTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		BF5FDEA8266DB0BE3248D43E /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				E55CDD9FD839DE99E9A8332F /* Array */,
+				50062BF1DA41C67EA47F9501 /* DType */,
+				8AE260A405D4C37651CD4374 /* Missing */,
+				009A52BFF0EC869B44D86406 /* Storage */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		D4137E24CCB495BFCFC9899F /* Series */ = {
+			isa = PBXGroup;
+			children = (
+				46BC5D47091871B54416C613 /* Series.swift */,
+			);
+			path = Series;
+			sourceTree = "<group>";
+		};
+		E2D4986F2EA16558E2244C91 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				9F877B1C6BBEB8C3A073AD2E /* portable.h */,
+				6CD5074D92B6D34F1D59DD03 /* ultrajson.h */,
+			);
+			path = include;
+			sourceTree = "<group>";
+		};
+		E4E57AE7978C13418ACEC275 /* IO */ = {
+			isa = PBXGroup;
+			children = (
+				665A03AB81E3749244B4B9C9 /* CSV */,
+			);
+			path = IO;
+			sourceTree = "<group>";
+		};
+		E55CDD9FD839DE99E9A8332F /* Array */ = {
+			isa = PBXGroup;
+			children = (
+				0A8679BEFC622508CAF1EE07 /* Column.swift */,
+				3376038DA3DA74732D8ADC79 /* NativeArray.swift */,
+				51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */,
+				22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */,
+				D43E4688A860B3EA57425A30 /* StringArray.swift */,
+			);
+			path = Array;
+			sourceTree = "<group>";
+		};
+		F814E11105DFFCDFEA781234 /* CSkipList */ = {
+			isa = PBXGroup;
+			children = (
+				8490AEE93707654B1156BA6A /* include */,
+				A9B9154E503F8C0AF170E60A /* skiplist.c */,
+			);
+			path = CSkipList;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		6308B44D1DDBD974746993FC /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				01FEDECC1810186D0F38DFC9 /* ShaderCommon.h in Headers */,
+				8737AC28EBFDD391A49EAB33 /* khash.h in Headers */,
+				29B876F3ACF2B56CF5707B69 /* portable.h in Headers */,
+				34129D1A378E55C954EE9A01 /* skiplist.h in Headers */,
+				DB2BED9171563AC0EA69338A /* ultrajson.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		06FEE45C2F882A118ECED543 /* SwiftPandas */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BCBC53FE40197BA02FB9C28E /* Build configuration list for PBXNativeTarget "SwiftPandas" */;
+			buildPhases = (
+				6308B44D1DDBD974746993FC /* Headers */,
+				EA2D37F58AA46D6A43E73B79 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SwiftPandas;
+			packageProductDependencies = (
+			);
+			productName = SwiftPandas;
+			productReference = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		27684C8A15AFB445B6093339 /* SwiftPandasTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7F76325F6623E40AE085A9A3 /* Build configuration list for PBXNativeTarget "SwiftPandasTests" */;
+			buildPhases = (
+				B508D413226B7CEEB34583F9 /* Sources */,
+				1C8F07EA04624481045B8A9B /* Resources */,
+				062A7C485510D9913AFEF9AA /* Frameworks */,
+				BB76ECD57310D19490E08DEC /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F8FAA8D122194EB4C81FC38E /* PBXTargetDependency */,
+			);
+			name = SwiftPandasTests;
+			packageProductDependencies = (
+			);
+			productName = SwiftPandasTests;
+			productReference = 1B8817FEF468D972F755B00C /* SwiftPandasTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		DB7040382E19EEC0B53C647B /* SwiftPandasApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2BEBAC527089D79A4E07818F /* Build configuration list for PBXNativeTarget "SwiftPandasApp" */;
+			buildPhases = (
+				C22E8FEB47D168D5CB314602 /* Sources */,
+				EBB6B0F9AE5A621531AB27E6 /* Resources */,
+				C72D000F5612B89B566D3FED /* Frameworks */,
+				A75FA68B07C1141CED8BC0DB /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5A6F8C8B3F57E08547D038FE /* PBXTargetDependency */,
+			);
+			name = SwiftPandasApp;
+			packageProductDependencies = (
+			);
+			productName = SwiftPandasApp;
+			productReference = 0250C094428401FE056718CA /* SwiftPandasApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		2825A716D0F54F423DACC780 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 3D48683C385D1FCB20FFA5A1 /* Build configuration list for PBXProject "SwiftPandas" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3AF7AC41582BB3A660765E43;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 62AB098571854E23B1D99E95 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				06FEE45C2F882A118ECED543 /* SwiftPandas */,
+				DB7040382E19EEC0B53C647B /* SwiftPandasApp */,
+				27684C8A15AFB445B6093339 /* SwiftPandasTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1C8F07EA04624481045B8A9B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				765DC70429EEE386FC2EEDBF /* employees.csv in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EBB6B0F9AE5A621531AB27E6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				130E265F076756503C4CE0A5 /* Assets.xcassets in Resources */,
+				13B87867978645B6BB8E7D4E /* employees.csv in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B508D413226B7CEEB34583F9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				837D57E390A3B5D9CA75CB7B /* BenchmarkTests.swift in Sources */,
+				5DC583AF471388A23624240B /* CSVDataFrameTests.swift in Sources */,
+				5B790ED8BAB7DEA8B371046F /* MetalTests.swift in Sources */,
+				7B12FB5FA55C994067F68B82 /* NewFeaturesTests.swift in Sources */,
+				499F95EA6EC3DD1BC773C09F /* SwiftPandasTests.swift in Sources */,
+				BB0006B1C2D3E4F5A6B7C8D9 /* LazyDataFrameTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C22E8FEB47D168D5CB314602 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D6039BD81DC65009BBCDBC5 /* BenchmarkView.swift in Sources */,
+				57CF234A5BDD021FE3C07ABC /* ContentView.swift in Sources */,
+				31EA71E19E92E19E973868FE /* DataFrameDemoView.swift in Sources */,
+				EC6777C9B6466BA0BBC683BD /* GroupByDemoView.swift in Sources */,
+				3B731C9EE18D7CF9B53C3931 /* SwiftPandasApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		EA2D37F58AA46D6A43E73B79 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA9506361F2B946998AB0ED0 /* BitVector.swift in Sources */,
+				F9402D2323F3FEE4877690A5 /* Buffer.swift in Sources */,
+				2F1BAFFF047C36C2B73F40F6 /* CSVReader.swift in Sources */,
+				2D11886EE9F2D76BB83CA478 /* Column.swift in Sources */,
+				2CC1F5A12DD2FB33AFF1D307 /* DType.swift in Sources */,
+				382E4C7DB3EAEAD28466C7AD /* DataFrame.swift in Sources */,
+				7EA61E6296F45A69BE7D975B /* GroupByShaders.metal in Sources */,
+				0D444D47D864B034231CA1C2 /* Index.swift in Sources */,
+				CFF0E3C0BFC711C9C3B18F9A /* MergeShaders.metal in Sources */,
+				AA604D56C8049D00A21D6E28 /* MetalContext.swift in Sources */,
+				F0A342F3697757C62A77D911 /* MetalDispatch.swift in Sources */,
+				8C6EDF782DC146BB2C0386E9 /* MetalGroupBy.swift in Sources */,
+				E2A1020ACF50A59DC654EB55 /* MetalMerge.swift in Sources */,
+				91DC5A926733A507A044224A /* MetalShaders.swift in Sources */,
+				85DCE13E5A6EFD34D67D6D2E /* NativeArray.swift in Sources */,
+				7814EC209B984E84282B4F52 /* NullableArray.swift in Sources */,
+				9BB5855F4DE49AE9DC90664F /* NumericDTypes.swift in Sources */,
+				8F1361F2A1C972947162AFD5 /* OtherDTypes.swift in Sources */,
+				0181C17DFB7EADFE06FF93C0 /* PandasArray.swift in Sources */,
+				B09AABE6C2E0B1E4B3E8CABC /* Series.swift in Sources */,
+				642648E72CFAE2C45842489D /* StringArray.swift in Sources */,
+				D7C70F105F0EC95A58A85B03 /* SwiftPandas.swift in Sources */,
+				0FD353BC50F11AFA45DB69D2 /* VectorOps.swift in Sources */,
+				BB0001B1C2D3E4F5A6B7C8D9 /* Predicate.swift in Sources */,
+				BB0002B1C2D3E4F5A6B7C8D9 /* QueryPlan.swift in Sources */,
+				BB0003B1C2D3E4F5A6B7C8D9 /* LazyDataFrame.swift in Sources */,
+				BB0004B1C2D3E4F5A6B7C8D9 /* QueryOptimizer.swift in Sources */,
+				BB0005B1C2D3E4F5A6B7C8D9 /* QueryExecutor.swift in Sources */,
+				0D7A0049DBF49C7FFC96CBA8 /* khash.c in Sources */,
+				38934C4ACB339F9B15DF5B66 /* skiplist.c in Sources */,
+				6893BD2302FDBAC647DA9DB2 /* ultrajsondec.c in Sources */,
+				B433902F318B689A03D2288E /* ultrajsonenc.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5A6F8C8B3F57E08547D038FE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 06FEE45C2F882A118ECED543 /* SwiftPandas */;
+			targetProxy = 807E16CFEC1149FFF74D859E /* PBXContainerItemProxy */;
+		};
+		F8FAA8D122194EB4C81FC38E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 06FEE45C2F882A118ECED543 /* SwiftPandas */;
+			targetProxy = 88A715E5CC76DA92456ABF3F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0446D1083ED8B285ED9C7732 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		0DF35127B28A2B1EFB097B64 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		3726E029FC3A614C36D14371 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.tests;
+				SDKROOT = macosx;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		37820FFB70B44DA7531F06EA /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.tests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		3EA2BC14E2AF75401CF8FAAC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "SwiftPandas Demo";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.app;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		764977FE3EFF21756E40AB7F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Sources/CKHash/include",
+					"$(SRCROOT)/Sources/CSkipList/include",
+					"$(SRCROOT)/Sources/CUltraJSON/include",
+				);
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MTL_HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders";
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.SwiftPandas;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = ACCELERATE_AVAILABLE;
+				SWIFT_VERSION = 5.9;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		E76998FB0EAB57C0629D38C0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "SwiftPandas Demo";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.app;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		F91CA0843003C7F45B822D21 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/Sources/CKHash/include",
+					"$(SRCROOT)/Sources/CSkipList/include",
+					"$(SRCROOT)/Sources/CUltraJSON/include",
+				);
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MTL_HEADER_SEARCH_PATHS = "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders";
+				PRODUCT_BUNDLE_IDENTIFIER = com.swiftpandas.SwiftPandas;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = ACCELERATE_AVAILABLE;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.9;
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2BEBAC527089D79A4E07818F /* Build configuration list for PBXNativeTarget "SwiftPandasApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3EA2BC14E2AF75401CF8FAAC /* Debug */,
+				E76998FB0EAB57C0629D38C0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3D48683C385D1FCB20FFA5A1 /* Build configuration list for PBXProject "SwiftPandas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0DF35127B28A2B1EFB097B64 /* Debug */,
+				0446D1083ED8B285ED9C7732 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7F76325F6623E40AE085A9A3 /* Build configuration list for PBXNativeTarget "SwiftPandasTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				37820FFB70B44DA7531F06EA /* Debug */,
+				3726E029FC3A614C36D14371 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BCBC53FE40197BA02FB9C28E /* Build configuration list for PBXNativeTarget "SwiftPandas" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				764977FE3EFF21756E40AB7F /* Debug */,
+				F91CA0843003C7F45B822D21 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 2825A716D0F54F423DACC780 /* Project object */;
+}

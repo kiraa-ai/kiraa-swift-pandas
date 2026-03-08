@@ -393,8 +393,8 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.benchRow("sum()", ns: tSum10K)
 
         print("")
-        BenchmarkTests.note("factorize + raw pointer accumulation (allValid fast-path).")
-        BenchmarkTests.note("Metal GPU active for >= 500K rows.")
+        BenchmarkTests.note("Fused factorize+accumulate with FNV-1a hash, raw pointer accumulators.")
+        BenchmarkTests.note("Metal GPU reserved for >= 10M rows (CPU fast-path faster for typical workloads).")
     }
 
     // ─── 10. Merge ──────────────────────────────────────────────────────
@@ -477,6 +477,75 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.note("byte-level UTF-8 state machine parser + Double(String) per cell.")
     }
 
+    // ─── Lazy vs Eager ─────────────────────────────────────────────────
+
+    func testEA_LazyVsEager() {
+        BenchmarkTests.section("13", "Lazy vs Eager (1M rows)")
+
+        let df = BenchmarkTests.groupableDataFrame(rows: 1_000_000, nGroups: 100, seed: 77)
+
+        BenchmarkTests.sub("Filter → GroupBy → Sum")
+        BenchmarkTests.tableHeader()
+
+        let tEager = BenchmarkTests.benchmark {
+            let mask = df["value1"] > 500
+            let filtered = df.filter(mask: mask)
+            _ = filtered.groupBy("group").sum()
+        }
+        BenchmarkTests.benchRow("eager", ns: tEager)
+
+        let tLazy = BenchmarkTests.benchmark {
+            _ = df.lazy()
+                .filter(col("value1") > 500)
+                .groupBy("group").sum()
+                .collect()
+        }
+        BenchmarkTests.benchRow("lazy", ns: tLazy)
+
+        BenchmarkTests.sub("Filter → Select → GroupBy → Sum")
+        BenchmarkTests.tableHeader()
+
+        let tEager2 = BenchmarkTests.benchmark {
+            let mask = df["value1"] > 500
+            let filtered = df.filter(mask: mask)
+            let selected = filtered.select(columns: ["group", "value1"])
+            _ = selected.groupBy("group").sum()
+        }
+        BenchmarkTests.benchRow("eager", ns: tEager2)
+
+        let tLazy2 = BenchmarkTests.benchmark {
+            _ = df.lazy()
+                .filter(col("value1") > 500)
+                .select("group", "value1")
+                .groupBy("group").sum()
+                .collect()
+        }
+        BenchmarkTests.benchRow("lazy", ns: tLazy2)
+
+        BenchmarkTests.sub("Multi-Filter Chain")
+        BenchmarkTests.tableHeader()
+
+        let tEager3 = BenchmarkTests.benchmark {
+            let mask1 = df["value1"] > 200
+            let f1 = df.filter(mask: mask1)
+            let mask2 = f1["value1"] < 800
+            _ = f1.filter(mask: mask2)
+        }
+        BenchmarkTests.benchRow("eager", ns: tEager3)
+
+        let tLazy3 = BenchmarkTests.benchmark {
+            _ = df.lazy()
+                .filter(col("value1") > 200)
+                .filter(col("value1") < 800)
+                .collect()
+        }
+        BenchmarkTests.benchRow("lazy", ns: tLazy3)
+
+        print("")
+        BenchmarkTests.note("Lazy evaluation eliminates intermediate DataFrames.")
+        BenchmarkTests.note("Optimizer applies: filter fusion, predicate pushdown, projection pushdown.")
+    }
+
     // ─── Summary ────────────────────────────────────────────────────────
 
     func testZZ_BenchmarkSummary() {
@@ -491,6 +560,7 @@ final class BenchmarkTests: XCTestCase {
         BenchmarkTests.note("  + Byte-level UTF-8 CSV parser")
         BenchmarkTests.note("  + Typed merge (Double/String hash, not String formatting)")
         BenchmarkTests.note("  + Metal GPU compute shaders for GroupBy/Merge (>= 500K rows)")
+        BenchmarkTests.note("  + Lazy evaluation engine with query optimizer (filter fusion, pushdown)")
         print("")
 
         print("  Metal GPU Acceleration")

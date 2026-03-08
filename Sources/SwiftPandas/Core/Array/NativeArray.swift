@@ -298,13 +298,14 @@ public extension NativeArray where T == Double {
     /// Accelerate-optimized element-wise addition.
     static func + (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
         precondition(lhs.count == rhs.count, "Arrays must have same length")
-        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
-        lhs.withUnsafeBufferPointer { lBuf in
-            rhs.withUnsafeBufferPointer { rBuf in
-                result.withUnsafeMutableBufferPointer { resBuf in
-                    VectorOps.add(lBuf, rBuf, result: resBuf)
+        let n = lhs.count
+        let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+            lhs.withUnsafeBufferPointer { lBuf in
+                rhs.withUnsafeBufferPointer { rBuf in
+                    VectorOps.add(lBuf, rBuf, result: buf)
                 }
             }
+            count = n
         }
         return NativeArray(result)
     }
@@ -312,13 +313,14 @@ public extension NativeArray where T == Double {
     /// Accelerate-optimized element-wise subtraction.
     static func - (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
         precondition(lhs.count == rhs.count, "Arrays must have same length")
-        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
-        lhs.withUnsafeBufferPointer { lBuf in
-            rhs.withUnsafeBufferPointer { rBuf in
-                result.withUnsafeMutableBufferPointer { resBuf in
-                    VectorOps.subtract(lBuf, rBuf, result: resBuf)
+        let n = lhs.count
+        let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+            lhs.withUnsafeBufferPointer { lBuf in
+                rhs.withUnsafeBufferPointer { rBuf in
+                    VectorOps.subtract(lBuf, rBuf, result: buf)
                 }
             }
+            count = n
         }
         return NativeArray(result)
     }
@@ -326,13 +328,14 @@ public extension NativeArray where T == Double {
     /// Accelerate-optimized element-wise multiplication.
     static func * (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
         precondition(lhs.count == rhs.count, "Arrays must have same length")
-        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
-        lhs.withUnsafeBufferPointer { lBuf in
-            rhs.withUnsafeBufferPointer { rBuf in
-                result.withUnsafeMutableBufferPointer { resBuf in
-                    VectorOps.multiply(lBuf, rBuf, result: resBuf)
+        let n = lhs.count
+        let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+            lhs.withUnsafeBufferPointer { lBuf in
+                rhs.withUnsafeBufferPointer { rBuf in
+                    VectorOps.multiply(lBuf, rBuf, result: buf)
                 }
             }
+            count = n
         }
         return NativeArray(result)
     }
@@ -340,24 +343,26 @@ public extension NativeArray where T == Double {
     /// Accelerate-optimized element-wise division.
     static func / (lhs: NativeArray<Double>, rhs: NativeArray<Double>) -> NativeArray<Double> {
         precondition(lhs.count == rhs.count, "Arrays must have same length")
-        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
-        lhs.withUnsafeBufferPointer { lBuf in
-            rhs.withUnsafeBufferPointer { rBuf in
-                result.withUnsafeMutableBufferPointer { resBuf in
-                    VectorOps.divide(lBuf, rBuf, result: resBuf)
+        let n = lhs.count
+        let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+            lhs.withUnsafeBufferPointer { lBuf in
+                rhs.withUnsafeBufferPointer { rBuf in
+                    VectorOps.divide(lBuf, rBuf, result: buf)
                 }
             }
+            count = n
         }
         return NativeArray(result)
     }
 
     /// Accelerate-optimized scalar division.
     static func / (lhs: NativeArray<Double>, rhs: Double) -> NativeArray<Double> {
-        var result = ContiguousArray<Double>(repeating: 0, count: lhs.count)
-        lhs.withUnsafeBufferPointer { lBuf in
-            result.withUnsafeMutableBufferPointer { resBuf in
-                VectorOps.scalarDivide(lBuf, rhs, result: resBuf)
+        let n = lhs.count
+        let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+            lhs.withUnsafeBufferPointer { lBuf in
+                VectorOps.scalarDivide(lBuf, rhs, result: buf)
             }
+            count = n
         }
         return NativeArray(result)
     }

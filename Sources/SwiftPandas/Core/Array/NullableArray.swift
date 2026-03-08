@@ -356,6 +356,18 @@ public extension NullableArray where T == Double {
     /// Accelerate-optimized element-wise addition with NA propagation.
     static func + (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
         precondition(lhs.count == rhs.count)
+        if lhs.mask.allValid && rhs.mask.allValid {
+            let n = lhs.count
+            let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                lhs.data.withUnsafeBufferPointer { l in
+                    rhs.data.withUnsafeBufferPointer { r in
+                        VectorOps.add(l, r, result: buf)
+                    }
+                }
+                count = n
+            }
+            return NullableArray(data: NativeArray(result), mask: lhs.mask)
+        }
         let combinedMask = lhs.mask & rhs.mask
         let resultData: NativeArray<Double> = lhs.data + rhs.data
         return NullableArray(data: resultData, mask: combinedMask)
@@ -364,6 +376,18 @@ public extension NullableArray where T == Double {
     /// Accelerate-optimized element-wise subtraction with NA propagation.
     static func - (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
         precondition(lhs.count == rhs.count)
+        if lhs.mask.allValid && rhs.mask.allValid {
+            let n = lhs.count
+            let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                lhs.data.withUnsafeBufferPointer { l in
+                    rhs.data.withUnsafeBufferPointer { r in
+                        VectorOps.subtract(l, r, result: buf)
+                    }
+                }
+                count = n
+            }
+            return NullableArray(data: NativeArray(result), mask: lhs.mask)
+        }
         let combinedMask = lhs.mask & rhs.mask
         let resultData: NativeArray<Double> = lhs.data - rhs.data
         return NullableArray(data: resultData, mask: combinedMask)
@@ -372,6 +396,18 @@ public extension NullableArray where T == Double {
     /// Accelerate-optimized element-wise multiplication with NA propagation.
     static func * (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
         precondition(lhs.count == rhs.count)
+        if lhs.mask.allValid && rhs.mask.allValid {
+            let n = lhs.count
+            let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                lhs.data.withUnsafeBufferPointer { l in
+                    rhs.data.withUnsafeBufferPointer { r in
+                        VectorOps.multiply(l, r, result: buf)
+                    }
+                }
+                count = n
+            }
+            return NullableArray(data: NativeArray(result), mask: lhs.mask)
+        }
         let combinedMask = lhs.mask & rhs.mask
         let resultData: NativeArray<Double> = lhs.data * rhs.data
         return NullableArray(data: resultData, mask: combinedMask)
@@ -380,6 +416,18 @@ public extension NullableArray where T == Double {
     /// Accelerate-optimized element-wise division with NA propagation.
     static func / (lhs: NullableArray<Double>, rhs: NullableArray<Double>) -> NullableArray<Double> {
         precondition(lhs.count == rhs.count)
+        if lhs.mask.allValid && rhs.mask.allValid {
+            let n = lhs.count
+            let result = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                lhs.data.withUnsafeBufferPointer { l in
+                    rhs.data.withUnsafeBufferPointer { r in
+                        VectorOps.divide(l, r, result: buf)
+                    }
+                }
+                count = n
+            }
+            return NullableArray(data: NativeArray(result), mask: lhs.mask)
+        }
         let combinedMask = lhs.mask & rhs.mask
         let resultData: NativeArray<Double> = lhs.data / rhs.data
         return NullableArray(data: resultData, mask: combinedMask)
@@ -473,26 +521,33 @@ public extension NullableArray where T: Hashable & ExpressibleByIntegerLiteral {
 
     /// Factorize: encode values as integer codes + uniques. NA gets code -1.
     func factorize() -> (codes: [Int], uniques: NativeArray<T>) {
-        var mapping = [T: Int]()
-        var uniques = ContiguousArray<T>()
-        var codes = [Int]()
-        codes.reserveCapacity(count)
+        let n = count
+        guard n > 0 else { return ([], NativeArray(ContiguousArray<T>())) }
 
-        for i in 0..<count {
-            if mask[i] {
-                let v = data[i]
+        // Pre-allocate codes array (-1 = NA)
+        var codes = [Int](repeating: -1, count: n)
+        var uniqueValues = ContiguousArray<T>()
+        uniqueValues.reserveCapacity(128)
+
+        // Use Dictionary for correctness with generic Hashable types
+        // but pre-allocate and use direct data access
+        var mapping = [T: Int]()
+        mapping.reserveCapacity(128)
+
+        data.withUnsafeBufferPointer { dataBuf in
+            for i in 0..<n {
+                guard mask[i] else { continue }
+                let v = dataBuf[i]
                 if let code = mapping[v] {
-                    codes.append(code)
+                    codes[i] = code
                 } else {
-                    let code = uniques.count
+                    let code = uniqueValues.count
                     mapping[v] = code
-                    uniques.append(v)
-                    codes.append(code)
+                    uniqueValues.append(v)
+                    codes[i] = code
                 }
-            } else {
-                codes.append(-1)
             }
         }
-        return (codes, NativeArray(uniques))
+        return (codes, NativeArray(uniqueValues))
     }
 }

@@ -285,12 +285,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public static func + (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
         if a.mask.allValid {
-            // Fast path: no NAs, use Accelerate
-            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
-            a.data.withUnsafeBufferPointer { src in
-                resultData.withUnsafeMutableBufferPointer { dst in
-                    VectorOps.scalarAdd(src, rhs, result: dst)
+            let n = a.count
+            let resultData = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                a.data.withUnsafeBufferPointer { src in
+                    VectorOps.scalarAdd(src, rhs, result: buf)
                 }
+                count = n
             }
             return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
         }
@@ -304,11 +304,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public static func - (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
         if a.mask.allValid {
-            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
-            a.data.withUnsafeBufferPointer { src in
-                resultData.withUnsafeMutableBufferPointer { dst in
-                    VectorOps.scalarSubtract(src, rhs, result: dst)
+            let n = a.count
+            let resultData = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                a.data.withUnsafeBufferPointer { src in
+                    VectorOps.scalarSubtract(src, rhs, result: buf)
                 }
+                count = n
             }
             return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
         }
@@ -322,11 +323,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public static func * (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
         if a.mask.allValid {
-            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
-            a.data.withUnsafeBufferPointer { src in
-                resultData.withUnsafeMutableBufferPointer { dst in
-                    VectorOps.scalarMultiply(src, rhs, result: dst)
+            let n = a.count
+            let resultData = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                a.data.withUnsafeBufferPointer { src in
+                    VectorOps.scalarMultiply(src, rhs, result: buf)
                 }
+                count = n
             }
             return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
         }
@@ -340,11 +342,12 @@ public struct Series: CustomStringConvertible, Sendable {
     public static func / (lhs: Series, rhs: Double) -> Series {
         guard case .double(let a) = lhs.data else { return lhs }
         if a.mask.allValid {
-            var resultData = ContiguousArray<Double>(repeating: 0, count: a.count)
-            a.data.withUnsafeBufferPointer { src in
-                resultData.withUnsafeMutableBufferPointer { dst in
-                    VectorOps.scalarDivide(src, rhs, result: dst)
+            let n = a.count
+            let resultData = ContiguousArray<Double>(unsafeUninitializedCapacity: n) { buf, count in
+                a.data.withUnsafeBufferPointer { src in
+                    VectorOps.scalarDivide(src, rhs, result: buf)
                 }
+                count = n
             }
             return Series(data: .double(NullableArray(NativeArray(resultData))), index: lhs.indexLabels, name: lhs.name)
         }

@@ -751,8 +751,212 @@ public struct GroupBy: Sendable {
 
     // MARK: - Fast integer-coded aggregation
 
+    /// Fused factorize + accumulate for single string group column.
+    /// Eliminates intermediate codes array; single pass over data.
+    private func fusedStringAggregate(_ op: GroupByAggOp) -> DataFrame? {
+        guard by.count == 1,
+              let col = dataFrame.columns[by[0]],
+              case .string(let groupArr) = col
+        else { return nil }
+
+        let n = dataFrame.rowCount
+        guard n > 0 else {
+            return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
+        }
+
+        let bySet = Set(by)
+        let numericColNames = dataFrame.columnNames.filter {
+            !bySet.contains($0) && dataFrame.columns[$0]!.isNumeric
+        }
+
+        // Collect numeric column data; bail if any have NAs
+        var numericArrays = [NullableArray<Double>]()
+        numericArrays.reserveCapacity(numericColNames.count)
+        for name in numericColNames {
+            guard let d = dataFrame.columns[name]!.asDouble(), d.mask.allValid else { return nil }
+            numericArrays.append(d)
+        }
+        let numCols = numericArrays.count
+
+        // Hash table for group factorization
+        var htCap = 256
+        var htMask = htCap &- 1
+        var htTable = UnsafeMutablePointer<Int32>.allocate(capacity: htCap)
+        htTable.initialize(repeating: -1, count: htCap)
+        var htHashCache = ContiguousArray<Int>()
+        htHashCache.reserveCapacity(128)
+
+        var uniqueKeys = ContiguousArray<String>()
+        uniqueKeys.reserveCapacity(128)
+        var firstRowForGroup = ContiguousArray<Int>()
+        firstRowForGroup.reserveCapacity(128)
+
+        // Dynamically-sized accumulators (grow with groups discovered)
+        var accumCap = 256
+        var accums: [UnsafeMutablePointer<Double>] = (0..<numCols).map { _ in
+            let p = UnsafeMutablePointer<Double>.allocate(capacity: 256)
+            p.initialize(repeating: 0, count: 256)
+            return p
+        }
+        var counts: UnsafeMutablePointer<Int>? = nil
+        if op == .mean || op == .count {
+            counts = .allocate(capacity: 256)
+            counts!.initialize(repeating: 0, count: 256)
+        }
+
+        // For min/max, initialize differently
+        if op == .min {
+            for p in accums { p.initialize(repeating: .infinity, count: 256) }
+        } else if op == .max {
+            for p in accums { p.initialize(repeating: -.infinity, count: 256) }
+        }
+
+        // Extract raw data pointers for numeric columns.
+        // SAFETY: numericArrays retains the NativeArrays, preventing deallocation.
+        // We only read (no mutation), so CoW won't trigger.
+        var numericPtrs = [UnsafePointer<Double>]()
+        numericPtrs.reserveCapacity(numCols)
+        for arr in numericArrays {
+            arr.data.withUnsafeBufferPointer { buf in
+                numericPtrs.append(buf.baseAddress!)
+            }
+        }
+
+        // ── Single fused pass: factorize + accumulate ──
+        groupArr.storage.withUnsafeBufferPointer { storageBuf in
+            for i in 0..<n {
+                guard let s = storageBuf[i] else { continue }
+
+                // FNV-1a hash (3-5x faster than SipHash for short strings)
+                var h: UInt = 14695981039346656037
+                for byte in s.utf8 {
+                    h ^= UInt(byte)
+                    h &*= 1099511628211
+                }
+                let hi = Int(bitPattern: h)
+
+                // Hash table lookup / insert
+                var pos = hi & htMask
+                var code: Int
+                while true {
+                    let idx = Int(htTable[pos])
+                    if idx < 0 {
+                        // New group
+                        code = uniqueKeys.count
+                        uniqueKeys.append(s)
+                        htHashCache.append(hi)
+                        firstRowForGroup.append(i)
+                        htTable[pos] = Int32(code)
+
+                        // Grow accumulators if needed
+                        if code >= accumCap {
+                            let newCap = accumCap &* 2
+                            for c in 0..<numCols {
+                                let newP = UnsafeMutablePointer<Double>.allocate(capacity: newCap)
+                                newP.moveInitialize(from: accums[c], count: accumCap)
+                                let initVal: Double = op == .min ? .infinity : (op == .max ? -.infinity : 0)
+                                newP.advanced(by: accumCap).initialize(repeating: initVal, count: newCap - accumCap)
+                                accums[c] = newP
+                            }
+                            if let oldCounts = counts {
+                                let newC = UnsafeMutablePointer<Int>.allocate(capacity: newCap)
+                                newC.moveInitialize(from: oldCounts, count: accumCap)
+                                newC.advanced(by: accumCap).initialize(repeating: 0, count: newCap - accumCap)
+                                counts = newC
+                            }
+                            accumCap = newCap
+                        }
+
+                        // Resize hash table at 70% load
+                        if uniqueKeys.count &* 10 > htCap &* 7 {
+                            let oldTable = htTable
+                            htCap &*= 2
+                            htMask = htCap &- 1
+                            htTable = .allocate(capacity: htCap)
+                            htTable.initialize(repeating: -1, count: htCap)
+                            for j in 0..<uniqueKeys.count {
+                                var p = htHashCache[j] & htMask
+                                while htTable[p] >= 0 { p = (p &+ 1) & htMask }
+                                htTable[p] = Int32(j)
+                            }
+                            oldTable.deallocate()
+                        }
+                        break
+                    }
+                    if uniqueKeys[idx] == s {
+                        code = idx
+                        break
+                    }
+                    pos = (pos &+ 1) & htMask
+                }
+
+                // Accumulate all numeric columns for this row
+                switch op {
+                case .sum:
+                    for c in 0..<numCols { accums[c][code] += numericPtrs[c][i] }
+                case .mean:
+                    for c in 0..<numCols { accums[c][code] += numericPtrs[c][i] }
+                    counts![code] &+= 1
+                case .count:
+                    counts![code] &+= 1
+                case .min:
+                    for c in 0..<numCols {
+                        let v = numericPtrs[c][i]
+                        if v < accums[c][code] { accums[c][code] = v }
+                    }
+                case .max:
+                    for c in 0..<numCols {
+                        let v = numericPtrs[c][i]
+                        if v > accums[c][code] { accums[c][code] = v }
+                    }
+                }
+            }
+        }
+
+        // ── Build result ──
+        let nGroups = uniqueKeys.count
+        guard nGroups > 0 else {
+            htTable.deallocate()
+            for p in accums { p.deallocate() }
+            counts?.deallocate()
+            return DataFrame(columns: by.map { ($0, dataFrame.columns[$0]!.take(indices: [])) })
+        }
+
+        let sortedGroupIndices = (0..<nGroups).sorted { uniqueKeys[$0] < uniqueKeys[$1] }
+
+        var resultCols = [(String, Column)]()
+        resultCols.reserveCapacity(1 + numCols)
+
+        for c in 0..<numCols {
+            let values: [Double]
+            switch op {
+            case .sum, .min, .max:
+                values = sortedGroupIndices.map { accums[c][$0] }
+            case .mean:
+                values = sortedGroupIndices.map { g in
+                    counts![g] > 0 ? accums[c][g] / Double(counts![g]) : .nan
+                }
+            case .count:
+                values = sortedGroupIndices.map { Double(counts![$0]) }
+            }
+            resultCols.append((numericColNames[c], .fromDoubles(values)))
+        }
+
+        let index = sortedGroupIndices.map { String(uniqueKeys[$0]) }
+
+        // Cleanup
+        htTable.deallocate()
+        for p in accums { p.deallocate() }
+        counts?.deallocate()
+
+        return DataFrame(columns: resultCols, index: index)
+    }
+
     /// Factorize group columns to integer codes, then aggregate with direct accumulation.
     private func fastAggregate(_ op: GroupByAggOp) -> DataFrame {
+        // Try fused single-pass approach for single string group column
+        if let result = fusedStringAggregate(op) { return result }
+
         let n = dataFrame.rowCount
 
         // Step 1: Factorize group columns to integer codes
@@ -875,18 +1079,14 @@ public struct GroupBy: Sendable {
         } else {
             sortedGroupIndices = Array(0..<actualGroups)
         }
-        // Build reverse mapping: sortedPosition[originalDenseCode] = position in output
-        var reverseSortMap = [Int](repeating: 0, count: actualGroups)
-        for (pos, origIdx) in sortedGroupIndices.enumerated() {
-            reverseSortMap[origIdx] = pos
-        }
-
         // Step 4: Direct accumulation — single pass over data per column
+        let bySet = Set(by)
         let numericCols = dataFrame.columnNames.filter {
-            !by.contains($0) && dataFrame.columns[$0]!.isNumeric
+            !bySet.contains($0) && dataFrame.columns[$0]!.isNumeric
         }
 
         var resultCols = [(String, Column)]()
+        resultCols.reserveCapacity(by.count + numericCols.count)
 
         // Build group key columns using sorted firstRowForGroup
         let sortedFirstRows = sortedGroupIndices.map { firstRowForGroup[$0] }
@@ -927,7 +1127,7 @@ public struct GroupBy: Sendable {
                             for i in 0..<n {
                                 let g = codesBuf[i]
                                 sums[g] += dataBuf[i]
-                                counts[g] += 1
+                                counts[g] &+= 1
                             }
                             let result = sortedGroupIndices.map { g in
                                 counts[g] > 0 ? sums[g] / Double(counts[g]) : .nan
@@ -937,7 +1137,7 @@ public struct GroupBy: Sendable {
                         case .count:
                             let counts = UnsafeMutablePointer<Int>.allocate(capacity: actualGroups)
                             counts.initialize(repeating: 0, count: actualGroups)
-                            for i in 0..<n { counts[codesBuf[i]] += 1 }
+                            for i in 0..<n { counts[codesBuf[i]] &+= 1 }
                             let result = sortedGroupIndices.map { Double(counts[$0]) }
                             counts.deallocate()
                             return result
@@ -946,7 +1146,8 @@ public struct GroupBy: Sendable {
                             mins.initialize(repeating: .infinity, count: actualGroups)
                             for i in 0..<n {
                                 let g = codesBuf[i]
-                                if dataBuf[i] < mins[g] { mins[g] = dataBuf[i] }
+                                let v = dataBuf[i]
+                                if v < mins[g] { mins[g] = v }
                             }
                             let result = sortedGroupIndices.map { mins[$0] == .infinity ? .nan : mins[$0] }
                             mins.deallocate()
@@ -956,7 +1157,8 @@ public struct GroupBy: Sendable {
                             maxs.initialize(repeating: -.infinity, count: actualGroups)
                             for i in 0..<n {
                                 let g = codesBuf[i]
-                                if dataBuf[i] > maxs[g] { maxs[g] = dataBuf[i] }
+                                let v = dataBuf[i]
+                                if v > maxs[g] { maxs[g] = v }
                             }
                             let result = sortedGroupIndices.map { maxs[$0] == -.infinity ? .nan : maxs[$0] }
                             maxs.deallocate()

@@ -6,7 +6,11 @@ import Metal
 public enum MetalDispatch {
 
     /// Minimum row count to use GPU for GroupBy operations.
-    public static var groupByThreshold = 500_000
+    /// Set high because the CPU raw-pointer accumulation path is faster than
+    /// GPU atomic reductions for typical group counts (< 100K groups).
+    /// GPU GroupBy suffers from atomic contention when many threads write
+    /// to few accumulators, plus synchronous kernel dispatch overhead.
+    public static var groupByThreshold = 10_000_000
 
     /// Minimum row count to use GPU for Merge operations.
     public static var mergeThreshold = 500_000

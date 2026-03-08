@@ -114,60 +114,61 @@ public struct StringArray {
         var uniqueKeys = [String?]()
         uniqueKeys.reserveCapacity(128)
 
-        // Open-addressing hash table with FNV-1a (3-5x faster than SipHash for short strings)
+        // Open-addressing hash table with FNV-1a
         var cap = 256
-        var mask = cap - 1
+        var mask = cap &- 1
         var table = UnsafeMutablePointer<Int32>.allocate(capacity: cap)
         table.initialize(repeating: -1, count: cap)
 
-        for i in 0..<n {
-            guard let s = storage[i] else { continue }
+        // Cache hash values for O(1) resize (avoids re-hashing all unique keys)
+        var hashCache = ContiguousArray<Int>()
+        hashCache.reserveCapacity(128)
 
-            // FNV-1a hash over UTF-8 bytes
-            var h: UInt = 14695981039346656037
-            for byte in s.utf8 {
-                h ^= UInt(byte)
-                h &*= 1099511628211
-            }
+        // Use raw buffer pointer to skip per-element bounds checking
+        storage.withUnsafeBufferPointer { storageBuf in
+            for i in 0..<n {
+                guard let s = storageBuf[i] else { continue }
 
-            var pos = Int(bitPattern: h) & mask
-            while true {
-                let idx = Int(table[pos])
-                if idx < 0 {
-                    // New unique key — insert
-                    let code = uniqueKeys.count
-                    uniqueKeys.append(s)
-                    table[pos] = Int32(code)
-                    codes[i] = code
-                    // Resize at 70% load factor
-                    if uniqueKeys.count * 10 > cap * 7 {
-                        let oldCap = cap
-                        let oldTable = table
-                        cap *= 2
-                        mask = cap - 1
-                        table = .allocate(capacity: cap)
-                        table.initialize(repeating: -1, count: cap)
-                        for j in 0..<oldCap {
-                            let entry = oldTable[j]
-                            guard entry >= 0 else { continue }
-                            var rh: UInt = 14695981039346656037
-                            for byte in uniqueKeys[Int(entry)]!.utf8 {
-                                rh ^= UInt(byte)
-                                rh &*= 1099511628211
+                // FNV-1a hash
+                var h: UInt = 14695981039346656037
+                for byte in s.utf8 {
+                    h ^= UInt(byte)
+                    h &*= 1099511628211
+                }
+                let hi = Int(bitPattern: h)
+
+                var pos = hi & mask
+                while true {
+                    let idx = Int(table[pos])
+                    if idx < 0 {
+                        // New unique key — insert
+                        let code = uniqueKeys.count
+                        uniqueKeys.append(s)
+                        hashCache.append(hi)
+                        table[pos] = Int32(code)
+                        codes[i] = code
+                        // Resize at 70% load factor
+                        if uniqueKeys.count &* 10 > cap &* 7 {
+                            let oldTable = table
+                            cap &*= 2
+                            mask = cap &- 1
+                            table = .allocate(capacity: cap)
+                            table.initialize(repeating: -1, count: cap)
+                            for j in 0..<uniqueKeys.count {
+                                var p = hashCache[j] & mask
+                                while table[p] >= 0 { p = (p &+ 1) & mask }
+                                table[p] = Int32(j)
                             }
-                            var p = Int(bitPattern: rh) & mask
-                            while table[p] >= 0 { p = (p + 1) & mask }
-                            table[p] = entry
+                            oldTable.deallocate()
                         }
-                        oldTable.deallocate()
+                        break
                     }
-                    break
+                    if uniqueKeys[idx]! == s {
+                        codes[i] = idx
+                        break
+                    }
+                    pos = (pos &+ 1) & mask
                 }
-                if uniqueKeys[idx]! == s {
-                    codes[i] = idx
-                    break
-                }
-                pos = (pos + 1) & mask
             }
         }
 

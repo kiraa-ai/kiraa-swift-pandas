@@ -9,11 +9,15 @@ public struct BitVector: Sendable, Equatable {
     /// The number of bits (elements) this vector tracks.
     public private(set) var bitCount: Int
 
+    /// Cached flag: true means all bits are known to be set. False means unknown.
+    internal var _knownAllValid: Bool
+
     // MARK: - Initializers
 
     /// Create a BitVector with all bits set to the given value.
     public init(repeating value: Bool, count: Int) {
         self.bitCount = count
+        self._knownAllValid = value
         let wordCount = (count + 63) / 64
         self.words = [UInt64](repeating: value ? ~0 : 0, count: wordCount)
         // Clear trailing bits in the last word if not perfectly aligned
@@ -26,6 +30,7 @@ public struct BitVector: Sendable, Equatable {
     /// Create from an array of booleans.
     public init(_ bools: [Bool]) {
         self.bitCount = bools.count
+        self._knownAllValid = false
         let wordCount = (bools.count + 63) / 64
         self.words = [UInt64](repeating: 0, count: wordCount)
         for (i, b) in bools.enumerated() where b {
@@ -47,6 +52,7 @@ public struct BitVector: Sendable, Equatable {
         }
         set {
             precondition(index >= 0 && index < bitCount, "Index \(index) out of range")
+            if !newValue { _knownAllValid = false }
             let wordIndex = index / 64
             let bitIndex = index % 64
             if newValue {
@@ -69,7 +75,8 @@ public struct BitVector: Sendable, Equatable {
 
     /// Whether all bits are set (no NAs).
     public var allValid: Bool {
-        popcount == bitCount
+        if _knownAllValid { return true }
+        return popcount == bitCount
     }
 
     /// Whether all bits are unset (all NAs).
@@ -122,6 +129,7 @@ public struct BitVector: Sendable, Equatable {
 
     /// Concatenate another BitVector, appending its bits after this one.
     public mutating func append(contentsOf other: BitVector) {
+        _knownAllValid = false
         let oldCount = bitCount
         let newCount = oldCount + other.bitCount
         let newWordCount = (newCount + 63) / 64

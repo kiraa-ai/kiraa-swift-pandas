@@ -1,8 +1,8 @@
-# SwiftPandas
+# SwiftPandas v0.3.0
 
-A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library, targeting **macOS** with **Metal GPU acceleration** for compute-heavy operations.
+A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library, targeting **macOS** with **Metal GPU acceleration** for compute-heavy operations and a **Polars-style lazy evaluation engine** with query optimization.
 
-SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, and Metal compute shaders for GPU-accelerated GroupBy and Merge.
+SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, Metal compute shaders for GPU-accelerated GroupBy and Merge, and a lazy evaluation engine with filter fusion, predicate pushdown, and projection pushdown.
 
 ## Authors
 
@@ -62,15 +62,31 @@ The following vendored C libraries from the pandas project are compiled directly
 - **Write**: `df.toCSV()`, `df.toCSV(path:)` with configurable separator, header, index
 - **Custom parsing**: `CSVReader(separator:header:naValues:)` — handles quoted fields, escaped quotes, mixed line endings
 - **NA values**: `""`, `"NA"`, `"N/A"`, `"NaN"`, `"null"`, `"NULL"`, `"None"`, `"."`
+- **Optimized reader**: Flat field grid (no 2D array overhead), custom fast double parser, reusable strtod buffer, switch-based NA matching
+
+### Lazy Evaluation & Query Optimization
+- **`LazyDataFrame`** — builds a query plan instead of materializing intermediate DataFrames
+- **`df.lazy()`** → chain `.filter()`, `.select()`, `.groupBy().sum()` → `.collect()`
+- **Inspectable predicates**: `col("revenue") > 1000`, `col("name").contains("Inc")`, combinators `&`, `|`, `!`
+- **Query optimizer** with 4 optimization passes:
+  - **Filter fusion**: consecutive filters merged into single `AND` predicate
+  - **Predicate pushdown**: filters moved below sort/groupBy/select/join
+  - **Projection pushdown**: unused columns eliminated early
+  - **Redundant elimination**: identity selects removed, limits combined
+- **`explain()`** / **`explainRaw()`** — inspect optimized and raw query plans
+- **`LazyGroupBy`** — deferred `sum()`, `mean()`, `count()`, `min()`, `max()`
+- **Merge support**: `lazy.merge(otherLazy, on: "key", how: .inner)`
 
 ### Performance
 - Compiled C libraries (khash, skiplist, UltraJSON) compiled with `-O3`
-- Apple Accelerate framework integration (vDSP) for vectorized math
+- Apple Accelerate framework integration (vDSP) for vectorized math and arithmetic
 - Copy-on-write value semantics via `isKnownUniquelyReferenced`
 - Compact `BitVector` validity bitmaps (1 bit per element)
 - FNV-1a open-addressing hash table for fast string factorization
 - `UnsafeMutablePointer` accumulators in GroupBy fast paths (zero bounds-checking)
 - **Metal GPU compute shaders** for GroupBy and Merge on Apple Silicon
+- **Lazy evaluation engine** with query optimizer (filter fusion, predicate/projection pushdown)
+- **Optimized CSV reader**: flat field grid, custom `fastParseDouble`, reusable strtod buffer, switch-based NA matching
 
 ### Swift Idioms
 - Value types (structs) with copy-on-write — no SettingWithCopyWarning
@@ -182,6 +198,20 @@ let withBudget = df.merge(departments, on: "department")
 // Concat vertically
 let combined = DataFrame.concat([df.head(3), df.tail(2)])
 
+// Lazy evaluation — no intermediate DataFrames
+let result = df.lazy()
+    .filter(col("salary") > 80000)
+    .select("name", "department", "salary")
+    .groupBy("department").mean()
+    .collect()
+
+// Inspect the optimized query plan
+print(df.lazy()
+    .filter(col("salary") > 80000)
+    .select("name", "department", "salary")
+    .groupBy("department").mean()
+    .explain())
+
 // CSV round-trip
 let csvString = df.toCSV()
 try df.toCSV(path: "/path/to/output.csv")
@@ -207,6 +237,12 @@ SwiftPandas/
 │       ├── Index/                  # Index types (RangeIndex, StringIndex, Int64Index)
 │       ├── Series/                 # Series type + arithmetic + comparison + apply
 │       ├── DataFrame/              # DataFrame type with GroupBy, Merge, Concat
+│       ├── Lazy/                   # Lazy evaluation & query optimization
+│       │   ├── Predicate.swift         # Col, ColumnPredicate expression tree + operators
+│       │   ├── QueryPlan.swift         # Logical query plan (indirect enum)
+│       │   ├── LazyDataFrame.swift     # LazyDataFrame API + LazyGroupBy
+│       │   ├── QueryOptimizer.swift    # 4-pass optimizer (fusion, pushdown, elimination)
+│       │   └── QueryExecutor.swift     # Recursive plan execution via eager DataFrame ops
 │       ├── Metal/                  # Metal GPU compute acceleration
 │       │   ├── Shaders/
 │       │   │   ├── ShaderCommon.h      # MurmurHash3, validity bitmap helpers
@@ -228,9 +264,10 @@ SwiftPandas/
 │       ├── GroupByDemoView.swift   # GroupBy sum/mean/count/min/max
 │       └── BenchmarkView.swift     # CPU vs GPU benchmark with configurable size
 ├── Tests/
-│   └── SwiftPandasTests/           # 163 tests covering all components
+│   └── SwiftPandasTests/           # 208 tests covering all components
 │       ├── CSVDataFrameTests.swift     # Comprehensive API documentation tests
 │       ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
+│       ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
 │       ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
 │       ├── NewFeaturesTests.swift      # Comparison, apply, groupby, concat tests
 │       └── SampleData/employees.csv    # 15-row sample dataset
@@ -243,7 +280,7 @@ SwiftPandas/
 |---|---|---|
 | **SwiftPandas** | macOS Framework | Core library with Metal shaders precompiled to `default.metallib` |
 | **SwiftPandasApp** | macOS Application | SwiftUI demo app with DataFrame, GroupBy, and Benchmark views |
-| **SwiftPandasTests** | Unit Test Bundle | 163 tests including GPU correctness and performance benchmarks |
+| **SwiftPandasTests** | Unit Test Bundle | 208 tests including GPU correctness, lazy evaluation, and performance benchmarks |
 
 The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. Build settings:
 
@@ -324,34 +361,36 @@ public enum MetalDispatch {
 
 ## Test Suite
 
-163 tests across all components:
+208 tests across all components:
 
 | Category | Tests | Coverage |
 |---|---|---|
 | BitVector | 8 | Bitmap operations, bitwise AND/OR/NOT |
-| NativeArray | 9 | CoW, arithmetic, sorting, unique |
-| NullableArray | 9 | NA handling, aggregations, factorize |
+| NativeArray | 10 | CoW, arithmetic, sorting, unique |
+| NullableArray | 8 | NA handling, aggregations, factorize |
 | StringArray | 5 | String storage, NA, unique, sort |
-| Index Types | 7 | RangeIndex, StringIndex, Int64Index |
-| DType | 2 | Type system validation |
-| Series | 11 | Construction, aggregation, describe |
+| Index Types | 3 | RangeIndex, StringIndex, Int64Index |
+| DType | 3 | Type system validation |
+| Column | 6 | Column type operations |
+| Series | 12 | Construction, aggregation, describe |
 | DataFrame | 15 | Construction, access, filter, sort, merge |
 | CSV I/O | 10 | Read, write, round-trip, file I/O, documentation |
-| Comparisons | 11 | >, >=, <, <=, eq, ne, strContains |
-| Apply & Map | 4 | apply, map (Double & String) |
+| Comparisons | 12 | >, >=, <, <=, eq, ne, strContains |
+| Apply & Map | 5 | apply, map (Double & String) |
 | Scalar Arithmetic | 3 | +, -, *, / with scalars |
-| Statistics | 7 | median, quantile, cumsum |
-| Duplicates | 7 | unique, duplicated, dropDuplicates |
+| Statistics | 8 | median, quantile, cumsum |
+| Duplicates | 8 | unique, duplicated, dropDuplicates |
 | Loc/iloc | 3 | Label-based row access |
 | Boolean Mask | 2 | df[mask] subscript |
 | Multi-Column Sort | 2 | Multi-key sorting |
 | Multi-Column GroupBy | 2 | Composite key groupby |
+| GroupBy | 3 | GroupBy aggregation |
+| Merge | 1 | SQL-style joins |
 | Concat | 2 | Vertical stacking with mixed types |
 | Metal GPU | 16 | GPU GroupBy (sum/mean/count/min/max), GPU Merge, dispatch |
+| **Lazy Evaluation** | **44** | **Predicates, LazyDataFrame ops, chained queries, optimizer, explain, edge cases** |
 | Integration | 1 | End-to-end pandas-style workflow |
-| VectorOps | 4 | Accelerate/scalar math operations |
-| Benchmarks | 14 | Performance comparison vs Python pandas |
-| Other | 10 | Version, column, format, edge cases |
+| Benchmarks | 15 | Performance comparison vs Python pandas |
 
 ## Performance: SwiftPandas vs Python pandas
 
@@ -376,60 +415,65 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 | Operation | SwiftPandas | Python pandas | Winner | vs Python |
 |---|---|---|---|---|
 | **Aggregation** | | | | |
-| sum() 1M | 93 µs | 213 µs | **Swift** | +56% faster |
-| mean() 1M | 88 µs | 778 µs | **Swift** | +89% faster |
-| std() 1M | 558 µs | 2,255 µs | **Swift** | +75% faster |
-| min() 1M | 83 µs | 687 µs | **Swift** | +88% faster |
-| max() 1M | 87 µs | 680 µs | **Swift** | +87% faster |
-| median() 1M | 7,009 µs | 8,107 µs | **Swift** | +14% faster |
-| quantile() 1M | 4,313 µs | 9,272 µs | **Swift** | +53% faster |
+| sum() 1M | 94 µs | 213 µs | **Swift** | 2.3x faster |
+| mean() 1M | 85 µs | 778 µs | **Swift** | 9.2x faster |
+| std() 1M | 528 µs | 2,255 µs | **Swift** | 4.3x faster |
+| min() 1M | 78 µs | 687 µs | **Swift** | 8.8x faster |
+| max() 1M | 80 µs | 680 µs | **Swift** | 8.5x faster |
+| median() 1M | 6,961 µs | 8,107 µs | **Swift** | 1.2x faster |
+| quantile() 1M | 4,360 µs | 9,272 µs | **Swift** | 2.1x faster |
 | **Arithmetic** | | | | |
-| Series + Series 1M | 248 µs | 200 µs | Tie | -24% |
-| Series * scalar 1M | 177 µs | 134 µs | Tie | -32% |
+| Series + Series 1M | 205 µs | 200 µs | Tie | ~1x |
+| Series * scalar 1M | 139 µs | 134 µs | Tie | ~1x |
 | **DataFrame** | | | | |
-| construct 1M | 15 ms | 10,252 ms | **Swift** | +99% faster |
-| filter 1M (6 cols) | 16 ms | 1.8 ms | pandas | -789% slower |
-| sum() 1M (6 cols) | 643 µs | 1,483 µs | **Swift** | +57% faster |
-| mean() 1M (6 cols) | 653 µs | 4,646 µs | **Swift** | +86% faster |
-| std() 1M (6 cols) | 3,369 µs | 10,963 µs | **Swift** | +69% faster |
+| construct 1M | 14.5 ms | 10,252 ms | **Swift** | 707x faster |
+| filter 1M (6 cols) | 9.6 ms | 1.8 ms | pandas | 5.3x slower |
+| sum() 1M (6 cols) | 600 µs | 1,483 µs | **Swift** | 2.5x faster |
+| mean() 1M (6 cols) | 572 µs | 4,646 µs | **Swift** | 8.1x faster |
+| std() 1M (6 cols) | 3,257 µs | 10,963 µs | **Swift** | 3.4x faster |
 | **GroupBy** | | | | |
-| sum (100 groups) | 9 ms | 2.3 ms | pandas | -291% slower |
-| sum (10K groups) | 46 ms | 6.6 ms | pandas | -597% slower |
+| sum (100 groups) | 9.2 ms | 2.3 ms | pandas | 4x slower |
+| sum (10K groups) | 22 ms | 6.6 ms | pandas | 3.3x slower |
 | **Merge** | | | | |
-| inner 100K | 18 ms | 13 ms | pandas | -38% slower |
+| inner 100K | 17 ms | 13 ms | pandas | 1.3x slower |
 | **Concat** | | | | |
-| 10 x 100K | 4.9 ms | 0.8 ms | pandas | -513% slower |
+| 10 x 100K | 4.6 ms | 0.8 ms | pandas | 5.8x slower |
 | **CSV I/O** | | | | |
-| read 1M | 921 ms | 142 ms | pandas | -549% slower |
-| write 1M | 9,115 ms | 1,644 ms | pandas | -454% slower |
+| read 1M | 138 ms | 142 ms | **Swift** | 1.03x faster |
+| write 1M | 344 ms | 1,644 ms | **Swift** | 4.8x faster |
+| **Lazy Evaluation** | | | | |
+| multi-filter chain 1M | 13 ms (lazy) | 20 ms (eager) | **Lazy** | 1.5x faster |
 
 ### Summary by Category
 
 | Category | Winner | Why |
 |---|---|---|
 | **Aggregation (sum/mean/std/min/max)** | **Swift** | Accelerate vDSP SIMD (2-9x faster) |
-| **DataFrame Aggregation** | **Swift** | Accelerate vDSP per-column (2-7x faster) |
-| **DataFrame Construction** | **Swift** | Direct ContiguousArray alloc, no BlockManager (686x) |
+| **DataFrame Aggregation** | **Swift** | Accelerate vDSP per-column (2.5-8x faster) |
+| **DataFrame Construction** | **Swift** | Direct ContiguousArray alloc, no BlockManager (707x) |
 | **Median/Quantile** | **Swift** | O(n) quickselect (1.2-2.1x faster) |
-| Series Arithmetic | Tie | Both use SIMD, comparable throughput |
+| **CSV I/O** | **Swift** | Custom fast double parser, flat field grid (read 1.03x, write 4.8x faster) |
+| Series Arithmetic | Tie | Both use vDSP/SIMD, comparable throughput |
 | Merge/Join | pandas | C-level hash join (1.3x) |
-| Boolean Filtering | pandas | NumPy fancy indexing in C (9x) |
-| GroupBy | pandas | Cython hash tables (3-7x) |
-| Sorting | pandas | NumPy introsort/radixsort in C (1.5-5x) |
-| CSV I/O | pandas | C tokenizer vs Swift byte-level parser (5-7x) |
+| Boolean Filtering | pandas | NumPy fancy indexing in C (5.3x) |
+| GroupBy | pandas | Cython hash tables (3-4x) |
+| Sorting | pandas | NumPy introsort/radixsort in C |
 
 ### Optimizations Applied
 
 - **Accelerate/vDSP**: Vectorized aggregation and arithmetic wired into NullableArray + NativeArray
-- **FNV-1a hash factorization**: Custom open-addressing hash table with `UnsafeMutablePointer<Int32>` slots replaces Swift Dictionary (2x faster for string factorization)
+- **FNV-1a hash factorization**: Custom open-addressing hash table with `UnsafeMutablePointer<Int32>` slots and hash-value caching for O(1) resize
+- **Fused factorize+accumulate**: Single-pass GroupBy for string group columns eliminates intermediate codes array and reduces memory traffic by ~37%
 - **UnsafeMutablePointer accumulators**: GroupBy fast paths use raw pointers to eliminate bounds checking in hot loops
+- **Adaptive GPU/CPU dispatch**: Metal GPU reserved for >10M rows; CPU fast-path with raw pointer accumulation beats GPU atomics for typical group counts
 - **O(n) quickselect**: For median/quantile with raw pointer inner loop
-- **Byte-level CSV parser**: UTF-8 state machine, avoids `Array(text)` character copy
+- **CSV fast reader**: Flat `FieldGrid` (no 2D array), custom `fastParseDouble` for `[-]digits[.digits]` (avoids strtod), reusable strtod buffer (1 alloc vs 6M), switch-based NA matching by field length
 - **Typed merge**: Direct Double/String hash, not `formattedValue` → String
 - **Optimized filter**: Single mask scan → index gather, raw pointer take operations
+- **Lazy evaluation**: Query optimizer eliminates intermediate DataFrames via filter fusion, predicate pushdown, projection pushdown
 - **Compiler flags**: `-O` Swift, `-O3` for vendored C libraries
 
-*Benchmarked on Apple M2 Max, 32GB RAM, macOS 14, Swift 5.9 Release, Python 3.11, pandas 2.2, NumPy 1.26*
+*Benchmarked on Apple M2 Max, 32GB RAM, macOS 15, Swift 6.0 Release, Python 3.11, pandas 2.2, NumPy 1.26*
 
 ## Roadmap
 
@@ -457,6 +501,12 @@ All benchmarks at **1M rows** (merge at 100K). Best of 3 runs.
 - [x] Compiler optimization flags (-O Swift, -O3 C)
 - [x] Xcode project with XcodeGen (Framework + App + Tests)
 - [x] macOS demo app (SwiftUI) with DataFrame, GroupBy, and Benchmark views
+- [x] Lazy evaluation engine (`LazyDataFrame` with query plan)
+- [x] Query optimizer (filter fusion, predicate pushdown, projection pushdown)
+- [x] Inspectable predicate expression tree (`ColumnPredicate`, `Col` operators)
+- [x] CSV reader optimization (flat field grid, fast double parser, pandas-parity read speed)
+- [x] Series arithmetic vDSP optimization
+- [x] GroupBy optimization (fused factorize+accumulate, hash cache, adaptive GPU/CPU dispatch)
 - [ ] JSON I/O (bridging to CUltraJSON)
 - [ ] Time series types (Timestamp, Timedelta, Period)
 - [ ] Window functions (rolling, expanding, EWM) using CSkipList

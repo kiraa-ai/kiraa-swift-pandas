@@ -3,7 +3,7 @@ import XCTest
 
 final class SwiftPandasTests: XCTestCase {
     func testVersion() {
-        XCTAssertEqual(SwiftPandas.version, "0.1.0")
+        XCTAssertEqual(SwiftPandas.version, "0.2.0")
     }
 }
 
