@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="swift_pandas.png" alt="SwiftPandas" width="400">
+</p>
+
 # SwiftPandas v0.4.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
