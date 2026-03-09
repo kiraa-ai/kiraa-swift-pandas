@@ -1906,3 +1906,106 @@ public struct GroupBy: Sendable {
         return DataFrame(columns: resultCols, index: index)
     }
 }
+
+// MARK: - Equatable
+
+extension DataFrame: Equatable {
+    public static func == (lhs: DataFrame, rhs: DataFrame) -> Bool {
+        guard lhs.columnNames == rhs.columnNames else { return false }
+        for name in lhs.columnNames {
+            guard let lCol = lhs.columns[name], let rCol = rhs.columns[name],
+                  lCol == rCol else { return false }
+        }
+        return true
+    }
+}
+
+// MARK: - Sequence (Row Iteration)
+
+extension DataFrame: Sequence {
+    public struct RowIterator: IteratorProtocol {
+        private let df: DataFrame
+        private var position: Int = 0
+
+        init(_ df: DataFrame) { self.df = df }
+
+        public mutating func next() -> [String: Any?]? {
+            guard position < df.rowCount else { return nil }
+            var row = [String: Any?](minimumCapacity: df.columnCount)
+            for name in df.columnNames {
+                if let col = df.columns[name] {
+                    row[name] = col.value(at: position)
+                }
+            }
+            position += 1
+            return row
+        }
+    }
+
+    public func makeIterator() -> RowIterator { RowIterator(self) }
+}
+
+// MARK: - Convenience Initializers
+
+extension DataFrame {
+    /// Creates a DataFrame from a dictionary mapping column names to ``Column`` values.
+    public init(_ dict: [String: Column]) {
+        let sortedKeys = dict.keys.sorted()
+        let rowCount = dict.values.first?.count ?? 0
+        self.columnNames = sortedKeys
+        self.columns = [:]
+        for key in sortedKeys {
+            let col = dict[key]!
+            precondition(col.count == rowCount, "All columns must have same length")
+            self.columns[key] = col
+        }
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
+    /// Creates a DataFrame from a dictionary mapping column names to `[String]` arrays.
+    public init(_ dict: [String: [String]]) {
+        let sortedKeys = dict.keys.sorted()
+        let rowCount = dict.values.first?.count ?? 0
+        self.columnNames = sortedKeys
+        self.columns = [:]
+        for key in sortedKeys {
+            let values = dict[key]!
+            precondition(values.count == rowCount, "All columns must have same length")
+            self.columns[key] = .fromStrings(values)
+        }
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
+    /// Creates a DataFrame from a dictionary mapping column names to `[Int]` arrays.
+    public init(_ dict: [String: [Int]]) {
+        let sortedKeys = dict.keys.sorted()
+        let rowCount = dict.values.first?.count ?? 0
+        self.columnNames = sortedKeys
+        self.columns = [:]
+        for key in sortedKeys {
+            let values = dict[key]!
+            precondition(values.count == rowCount, "All columns must have same length")
+            self.columns[key] = .fromInts(values)
+        }
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+}
+
+// MARK: - Throwing API
+
+extension DataFrame {
+    /// Returns the column as a ``Series``, throwing if the column does not exist.
+    public func column(_ name: String) throws -> Series {
+        guard let col = columns[name] else {
+            throw DataFrameError.columnNotFound(name)
+        }
+        if _isDefaultIndex {
+            return Series(data: col, name: name)
+        } else {
+            return Series(data: col, index: _indexLabels, name: name)
+        }
+    }
+}

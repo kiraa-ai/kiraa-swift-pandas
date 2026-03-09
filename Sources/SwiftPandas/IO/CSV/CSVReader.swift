@@ -1226,4 +1226,25 @@ extension DataFrame {
         let writer = CSVWriter(separator: separator, includeHeader: header, includeIndex: index)
         try writer.write(self, toPath: path)
     }
+
+    /// Creates a ``DataFrame`` by reading and parsing a CSV file at the given `URL`.
+    public static func readCSV(
+        url: URL,
+        separator: Character = ",",
+        header: Bool = true
+    ) throws -> DataFrame {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        return readCSV(text, separator: separator, header: header)
+    }
+
+    /// Writes this ``DataFrame`` to a CSV file at the given `URL`.
+    public func toCSV(
+        url: URL,
+        separator: String = ",",
+        header: Bool = true,
+        index: Bool = false
+    ) throws {
+        let csv = toCSV(separator: separator, header: header, index: index)
+        try csv.write(to: url, atomically: true, encoding: .utf8)
+    }
 }

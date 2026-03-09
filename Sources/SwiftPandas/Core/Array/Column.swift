@@ -459,3 +459,41 @@ public enum Column: CustomStringConvertible, Sendable {
         }
     }
 }
+
+// MARK: - Equatable
+
+extension Column: Equatable {
+    public static func == (lhs: Column, rhs: Column) -> Bool {
+        switch (lhs, rhs) {
+        case (.double(let a), .double(let b)): return a == b
+        case (.string(let a), .string(let b)): return a == b
+        case (.bool(let a), .bool(let b)): return a == b
+        case (.int64(let a), .int64(let b)): return a == b
+        default: return false
+        }
+    }
+}
+
+// MARK: - Additional Factory Methods
+
+extension Column {
+    /// Creates a column from an array of optional integers.
+    public static func fromOptionalInts(_ values: [Int?]) -> Column {
+        var data = ContiguousArray<Int64>(repeating: 0, count: values.count)
+        var valid = [Bool](repeating: false, count: values.count)
+        for (i, v) in values.enumerated() {
+            if let v = v { data[i] = Int64(v); valid[i] = true }
+        }
+        return .int64(NullableArray(data: NativeArray(data), mask: BitVector(valid)))
+    }
+
+    /// Creates a column from an array of optional booleans.
+    public static func fromOptionalBools(_ values: [Bool?]) -> Column {
+        var data = ContiguousArray<Bool>(repeating: false, count: values.count)
+        var valid = [Bool](repeating: false, count: values.count)
+        for (i, v) in values.enumerated() {
+            if let v = v { data[i] = v; valid[i] = true }
+        }
+        return .bool(NullableArray(data: NativeArray(data), mask: BitVector(valid)))
+    }
+}

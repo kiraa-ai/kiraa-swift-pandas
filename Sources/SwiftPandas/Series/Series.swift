@@ -240,6 +240,44 @@ public struct Series: CustomStringConvertible, Sendable {
         self._isDefaultIndex = true
     }
 
+    /// Creates a Series from an array of `Bool` values.
+    ///
+    /// - Parameters:
+    ///   - values: The `Bool` values.
+    ///   - name: Optional series name.
+    public init(_ values: [Bool], name: String? = nil) {
+        self.data = .fromBools(values)
+        self.name = name
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
+    /// Creates a Series from an array of optional `Bool` values, where
+    /// `nil` entries represent missing data (NA).
+    ///
+    /// - Parameters:
+    ///   - values: The `Bool?` values (`nil` = NA).
+    ///   - name: Optional series name.
+    public init(_ values: [Bool?], name: String? = nil) {
+        self.data = .fromOptionalBools(values)
+        self.name = name
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
+    /// Creates a Series from an array of optional `Int` values, where
+    /// `nil` entries represent missing data (NA).
+    ///
+    /// - Parameters:
+    ///   - values: The `Int?` values (`nil` = NA).
+    ///   - name: Optional series name.
+    public init(_ values: [Int?], name: String? = nil) {
+        self.data = .fromOptionalInts(values)
+        self.name = name
+        self._indexLabels = []
+        self._isDefaultIndex = true
+    }
+
     /// Creates a Series from a pre-built ``Column`` with explicit index
     /// labels, analogous to `pd.Series(data, index=index)`.
     ///
@@ -1372,5 +1410,49 @@ public struct Series: CustomStringConvertible, Sendable {
             index: stats.map { $0.0 },
             name: name
         )
+    }
+}
+
+// MARK: - Equatable
+
+extension Series: Equatable {
+    /// Two Series are equal if they have the same name and identical column data.
+    ///
+    /// Index labels are not compared, matching pandas value-based equality
+    /// semantics. To compare indexes, check `lhs.indexLabels == rhs.indexLabels`
+    /// separately.
+    public static func == (lhs: Series, rhs: Series) -> Bool {
+        lhs.name == rhs.name && lhs.data == rhs.data
+    }
+}
+
+// MARK: - Sequence
+
+extension Series: Sequence {
+    /// An iterator that yields each element of a Series as `Any?`.
+    ///
+    /// Double and Int64 values are returned as their native types. String values
+    /// are returned as `String?`. NA positions yield `nil`.
+    ///
+    /// - Note: Iteration is O(n) and intended for interop with Swift stdlib
+    ///   patterns (`for value in series`, `series.map { ... }`). For
+    ///   performance-critical numeric work, use ``doubleValues`` or access the
+    ///   underlying ``data`` column directly.
+    public struct SeriesIterator: IteratorProtocol {
+        private let series: Series
+        private var position: Int = 0
+
+        init(_ series: Series) { self.series = series }
+
+        public mutating func next() -> Any?? {
+            guard position < series.count else { return nil }
+            let value = series.data.value(at: position)
+            position += 1
+            return value
+        }
+    }
+
+    public func makeIterator() -> SeriesIterator {
+        SeriesIterator(self)
     }
 }
