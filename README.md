@@ -36,9 +36,10 @@ The following vendored C libraries from the pandas project are compiled directly
 ## Features
 
 ### Core Types
-- **`DataFrame`** — 2D labeled tabular data with column-oriented storage and box-drawing table display
-- **`Series`** — 1D labeled array with numeric, string, and boolean support
+- **`DataFrame`** — 2D labeled tabular data with column-oriented storage and box-drawing table display. `Equatable`, `Sequence` (row iteration), convenience inits, throwing column access.
+- **`Series`** — 1D labeled array with numeric, string, and boolean support. `Equatable`, `Sequence` conformance, `Bool`/`Int?` initializers.
 - **`Index`** — Label-based axis indexing (`RangeIndex`, `StringIndex`, `Int64Index`)
+- **`DataFrameError`** — Public error enum for recoverable errors (column not found, type mismatch, length mismatch, index out of range, key column not found, invalid JSON)
 
 ### Data Types
 - All numeric columns default to `Double` for type consistency
@@ -72,11 +73,16 @@ The following vendored C libraries from the pandas project are compiled directly
 - **Concat**: `DataFrame.concat([df1, df2])` vertical stacking with mixed column types
 
 ### CSV I/O
-- **Read**: `DataFrame.readCSV(string)`, `DataFrame.readCSV(path:)` with auto type inference
-- **Write**: `df.toCSV()`, `df.toCSV(path:)` with configurable separator, header, index
+- **Read**: `DataFrame.readCSV(string)`, `DataFrame.readCSV(path:)`, `DataFrame.readCSV(url:)` with auto type inference
+- **Write**: `df.toCSV()`, `df.toCSV(path:)`, `df.toCSV(url:)` with configurable separator, header, index
 - **Custom parsing**: `CSVReader(separator:header:naValues:)` — handles quoted fields, escaped quotes, mixed line endings
 - **NA values**: `""`, `"NA"`, `"N/A"`, `"NaN"`, `"null"`, `"NULL"`, `"None"`, `"."`
 - **Optimized reader**: Flat field grid (no 2D array overhead), custom fast double parser, reusable strtod buffer, switch-based NA matching
+
+### JSON I/O
+- **Read**: `DataFrame.readJSON(string)`, `DataFrame.readJSON(path:)`, `DataFrame.readJSON(url:)`, `DataFrame.readJSON(data:)` — records-oriented JSON arrays
+- **Write**: `df.toJSON()`, `df.toJSON(path:)`, `df.toJSON(url:)` — records-oriented output with `prettyPrinted` option
+- **Error handling**: Throws `DataFrameError.invalidJSON` with descriptive messages
 
 ### Lazy Evaluation & Query Optimization
 - **`LazyDataFrame`** — builds a query plan instead of materializing intermediate DataFrames
@@ -105,14 +111,32 @@ The following vendored C libraries from the pandas project are compiled directly
 ### Swift Idioms
 - Value types (structs) with copy-on-write — no SettingWithCopyWarning
 - `Sendable` conformance for Swift concurrency safety
+- `Equatable` conformance on `Series`, `DataFrame`, `Column` for easy comparison
+- `Sequence` conformance on `Series` (element iteration) and `DataFrame` (row iteration)
+- Throwing API variants (e.g., `df.column("name")`) with `DataFrameError` for recoverable errors
 - Protocol-oriented design (`PandasDType`, `PandasArray`, `PandasIndex`)
 - Generic type system with concrete numeric dtypes
 
 ## Installation
 
-### Xcode Project (Recommended)
+### Swift Package Manager (Recommended)
 
-SwiftPandas is distributed as an Xcode project with precompiled Metal shaders. To build:
+SwiftPandas is a Swift Package Manager project. Package.swift applies `-O` optimization for both library and test targets, and `-O3` for vendored C libraries.
+
+```bash
+# Build
+swift build
+
+# Run tests
+swift test
+
+# Build in release mode
+swift build -c release
+```
+
+### Xcode Project
+
+An Xcode project with precompiled Metal shaders is also available:
 
 ```bash
 # Install xcodegen if needed
@@ -123,16 +147,13 @@ xcodegen generate
 
 # Build framework
 xcodebuild build -scheme SwiftPandas -configuration Release
-
-# Run tests
-xcodebuild test -scheme SwiftPandas -configuration Release -destination 'platform=macOS'
 ```
 
 To use in your own Xcode project, add the `SwiftPandas.framework` as a dependency.
 
-### Swift Package Manager (Legacy)
+### Adding as a Dependency
 
-SPM is supported for backward compatibility but does **not** include precompiled Metal shaders (shaders are compiled at runtime from embedded source strings):
+SPM shaders are compiled at runtime from embedded source strings (vs precompiled `.metallib` in Xcode):
 
 ```swift
 dependencies: [
@@ -253,7 +274,7 @@ SwiftPandas/
 │       │   └── Storage/            # CoW buffer management
 │       ├── Index/                  # Index types (RangeIndex, StringIndex, Int64Index)
 │       ├── Series/                 # Series type + arithmetic + comparison + apply
-│       ├── DataFrame/              # DataFrame type with GroupBy, Merge, Concat
+│       ├── DataFrame/              # DataFrame type with GroupBy, Merge, Concat, DataFrameError
 │       ├── Lazy/                   # Lazy evaluation & query optimization
 │       │   ├── Predicate.swift         # Col, ColumnPredicate expression tree + operators
 │       │   ├── QueryPlan.swift         # Logical query plan (indirect enum)
@@ -271,7 +292,8 @@ SwiftPandas/
 │       │   ├── MetalMerge.swift         # GPU Merge: co-factorize → hash build → probe
 │       │   └── MetalDispatch.swift      # Threshold-based GPU/CPU routing (≥500K rows)
 │       ├── IO/
-│       │   └── CSV/                # CSV reader/writer with type inference
+│       │   ├── CSV/                # CSV reader/writer with type inference
+│       │   └── JSON/               # JSON reader/writer (records orientation)
 │       └── Numeric/                # VectorOps with Accelerate support
 ├── SwiftPandasApp/                 # macOS demo application (SwiftUI)
 │   ├── SwiftPandasApp.swift        # @main entry point
@@ -287,6 +309,7 @@ SwiftPandas/
 │       ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
 │       ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
 │       ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
+│       ├── NewFeaturesTests.swift      # Equatable, Sequence, JSON I/O, throwing API tests
 │       └── SampleData/employees.csv    # 15-row sample dataset
 └── Package.swift                   # SPM manifest (legacy/backward compatibility)
 ```
@@ -297,7 +320,7 @@ SwiftPandas/
 |---|---|---|
 | **SwiftPandas** | macOS Framework | Core library with Metal shaders precompiled to `default.metallib` |
 | **SwiftPandasApp** | macOS Application | SwiftUI demo app with DataFrame, GroupBy, and Benchmark views |
-| **SwiftPandasTests** | Unit Test Bundle | 206 tests including GPU correctness, lazy evaluation, and performance benchmarks |
+| **SwiftPandasTests** | Unit Test Bundle | 229 tests including GPU correctness, lazy evaluation, and performance benchmarks |
 
 The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. Build settings:
 
@@ -380,15 +403,11 @@ public enum MetalDispatch {
 
 ### Running Tests
 
-208 tests across 5 test files. All tests use XCTest.
+229 tests across 6 test files. All tests use XCTest.
 
 ```bash
-# Run all tests (Debug, via Swift Package Manager)
+# Run all tests (Package.swift applies -O optimization even in debug config)
 swift test
-
-# Run all tests (Release optimized, via Xcode — recommended)
-xcodebuild test -scheme SwiftPandas -configuration Release \
-    -destination 'platform=macOS'
 
 # Run a specific test file
 swift test --filter SwiftPandasTests       # core unit tests
@@ -396,11 +415,11 @@ swift test --filter CSVDataFrameTests      # CSV & API demos
 swift test --filter LazyDataFrameTests     # lazy evaluation engine
 swift test --filter MetalTests             # GPU compute shaders
 swift test --filter BenchmarkTests         # performance benchmarks
+swift test --filter NewFeaturesTests       # Equatable, Sequence, JSON I/O, throwing API
 ```
 
-> **Note:** `swift test` runs in Debug mode by default. Use the `xcodebuild`
-> command with `-configuration Release` for accurate benchmark timings, as
-> Swift's `-O` optimization flag makes a significant difference for numeric code.
+> **Note:** Package.swift specifies `-O` (optimized) for both the library and
+> test targets, so `swift test` produces optimized code suitable for benchmarking.
 
 ### Test Files
 
@@ -410,6 +429,7 @@ swift test --filter BenchmarkTests         # performance benchmarks
 | **CSVDataFrameTests.swift** | ~10 | API documentation demos covering Series, DataFrame, GroupBy, Merge, Concat, CSV I/O, Core Types, Index Types, full pipeline; CSV file round-trip |
 | **LazyDataFrameTests.swift** | ~44 | Predicates (comparison, string, AND/OR/NOT), LazyDataFrame ops (filter, select, drop, sort, head, groupBy, merge), chained operations, query optimizer (filter fusion, predicate pushdown, limit elimination, identity select removal), explain output, edge cases (empty, single-row, all-filtered, NA values) |
 | **MetalTests.swift** | ~16 | Metal dispatch threshold logic, GPU GroupBy correctness (sum/mean/count/min/max, large dataset 100K), GPU Merge (inner join, no-matches, duplicate keys, column naming), GPU/CPU integration |
+| **NewFeaturesTests.swift** | ~21 | Equatable conformance (Series, DataFrame, Column), Sequence conformance (Series, DataFrame), JSON I/O (read/write string, path, URL, Data), throwing API, convenience initializers, Bool/Int? Series, fromOptionalInts/fromOptionalBools |
 | **BenchmarkTests.swift** | ~15 | Performance benchmarks at 1M rows: Series aggregation/arithmetic/sorting/statistics, DataFrame construction/filtering/sorting/aggregation, GroupBy, Merge, Concat, CSV I/O, Lazy vs Eager |
 
 ### Python Benchmarks
@@ -422,7 +442,7 @@ scaling comparisons. Requires `pandas` and `numpy`.
 # Install Python dependencies
 pip install pandas numpy
 
-# Full side-by-side comparison (Python pandas + SwiftPandas via xcodebuild)
+# Full side-by-side comparison (Python pandas + SwiftPandas via swift test)
 python3 benchmarks/benchmark_pandas.py
 
 # List all 30 individual benchmarks
@@ -470,46 +490,49 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 
 ### Benchmark Results
 
-**Scorecard: Swift wins 22 | pandas wins 8** (30 benchmarks)
-**Overall: SwiftPandas is 21.2% faster than pandas on average**
+**Scorecard: Swift wins 23 | pandas wins 7** (30 benchmarks)
+**Overall: SwiftPandas is 25.7% faster than pandas on average**
 
 | Operation | SwiftPandas | Python pandas | Winner | vs Python |
 |---|---|---|---|---|
 | **Aggregation** | | | | |
-| sum() 1M | 83 µs | 216 µs | **Swift** | +62% faster |
-| mean() 1M | 85 µs | 732 µs | **Swift** | +88% faster |
-| std() 1M | 524 µs | 2,320 µs | **Swift** | +77% faster |
-| min() 1M | 79 µs | 689 µs | **Swift** | +89% faster |
-| max() 1M | 81 µs | 700 µs | **Swift** | +88% faster |
-| median() 1M | 6,797 µs | 8,281 µs | **Swift** | +18% faster |
-| quantile() 1M | 4,356 µs | 9,377 µs | **Swift** | +54% faster |
+| sum() 1M | 93 µs | 225 µs | **Swift** | +59% faster |
+| mean() 1M | 98 µs | 392 µs | **Swift** | +75% faster |
+| std() 1M | 574 µs | 1,501 µs | **Swift** | +62% faster |
+| min() 1M | 86 µs | 361 µs | **Swift** | +76% faster |
+| max() 1M | 85 µs | 357 µs | **Swift** | +76% faster |
+| median() 1M | 7,502 µs | 9,241 µs | **Swift** | +19% faster |
 | **Arithmetic** | | | | |
-| Series + Series 1M | 212 µs | 226 µs | **Swift** | +6% faster |
-| Series * Series 1M | 208 µs | 219 µs | **Swift** | +5% faster |
-| Series + scalar 1M | 156 µs | 147 µs | pandas | -6% slower |
-| Series * scalar 1M | 151 µs | 147 µs | pandas | -3% slower |
-| **Series Stats** | | | | |
-| cumsum() 1M | 567 µs | 2,410 µs | **Swift** | +76% faster |
+| Series + Series 1M | 194 µs | 209 µs | **Swift** | +7% faster |
+| Series * Series 1M | 200 µs | 208 µs | **Swift** | +4% faster |
+| Series + scalar 1M | 169 µs | 149 µs | pandas | -14% slower |
+| Series * scalar 1M | 142 µs | 145 µs | **Swift** | +2% faster |
+| **Series Sort/Stats** | | | | |
+| sort 1M | 362 ms | 80 ms | pandas | slower |
+| quantile(0.75) 1M | 4,719 µs | 9,875 µs | **Swift** | +52% faster |
+| cumsum() 1M | 651 µs | 2,655 µs | **Swift** | +75% faster |
+| valueCounts() 1M | 98 ms | 59 ms | pandas | slower |
 | **DataFrame** | | | | |
-| construct 1M | 6.4 ms | 10,128 ms | **Swift** | 1583x faster |
-| filter 1M (6 cols) | 5.4 ms | 1.8 ms | pandas | -197% slower |
-| sum() 1M (6 cols) | 554 µs | 1,433 µs | **Swift** | +61% faster |
-| mean() 1M (6 cols) | 565 µs | 2,375 µs | **Swift** | +76% faster |
-| std() 1M (6 cols) | 3,385 µs | 8,737 µs | **Swift** | +61% faster |
+| construct 1M | 7 ms | 10,819 ms | **Swift** | +100% faster |
+| filter 1M (6 cols) | 12 ms | 2 ms | pandas | slower |
+| sort single 1M | 340 ms | 89 ms | pandas | slower |
+| sort multi 1M | 354 ms | 565 ms | **Swift** | +37% faster |
+| sum() 1M (6 cols) | 581 µs | 1,488 µs | **Swift** | +61% faster |
+| mean() 1M (6 cols) | 582 µs | 2,661 µs | **Swift** | +78% faster |
+| std() 1M (6 cols) | 3,472 µs | 9,467 µs | **Swift** | +63% faster |
+| describe() 1M | 83 ms | 104 ms | **Swift** | +20% faster |
 | **GroupBy** | | | | |
-| sum (100 groups) | 816 µs | 2,284 µs | **Swift** | +64% faster |
-| mean (100 groups) | 1,037 µs | 2,428 µs | **Swift** | +57% faster |
-| count (100 groups) | 561 µs | 1,093 µs | **Swift** | +49% faster |
-| sum (10K groups) | 872 µs | 6,485 µs | **Swift** | +87% faster |
+| sum (100 groups) | 891 µs | 2,407 µs | **Swift** | +63% faster |
+| mean (100 groups) | 1,174 µs | 2,492 µs | **Swift** | +53% faster |
+| count (100 groups) | 609 µs | 1,171 µs | **Swift** | +48% faster |
+| sum (10K groups) | 1,057 µs | 6,780 µs | **Swift** | +84% faster |
 | **Merge** | | | | |
-| inner 100K | 12.7 ms | 13.2 ms | **Swift** | +3% faster |
+| inner 100K | 16.7 ms | 14.0 ms | pandas | -19% slower |
 | **Concat** | | | | |
-| 10 x 100K | 1.2 ms | 0.8 ms | pandas | -61% slower |
+| 10 x 100K | 1.3 ms | 1.0 ms | pandas | -40% slower |
 | **CSV I/O** | | | | |
-| read 1M | 124 ms | 142 ms | **Swift** | +13% faster |
-| write 1M | 340 ms | 1,627 ms | **Swift** | +79% faster |
-| **Lazy Evaluation** | | | | |
-| multi-filter chain 1M | 8.8 ms (lazy) | 12.6 ms (eager) | **Lazy** | 1.4x faster |
+| read 1M | 128 ms | 152 ms | **Swift** | +16% faster |
+| write 1M | 381 ms | 1,765 ms | **Swift** | +78% faster |
 
 ### Summary by Category
 
@@ -577,7 +600,7 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 - [x] CSV reader optimization (flat field grid, fast double parser, pandas-parity read speed)
 - [x] Series arithmetic vDSP optimization
 - [x] GroupBy optimization (cached factorize, hash precheck, two-pass accumulate, adaptive GPU/CPU dispatch)
-- [ ] JSON I/O (bridging to CUltraJSON)
+- [x] JSON I/O (records-oriented read/write with string, path, URL, and Data support)
 - [ ] Time series types (Timestamp, Timedelta, Period)
 - [ ] Window functions (rolling, expanding, EWM) using CSkipList
 - [ ] String operations (`.str` accessor)

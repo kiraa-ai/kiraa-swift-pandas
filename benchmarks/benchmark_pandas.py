@@ -805,28 +805,23 @@ def run_python_benchmarks():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PART 3: SwiftPandas Tests (invoke via xcodebuild test)
+# PART 3: SwiftPandas Tests (invoke via swift test)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_swift_tests():
-    banner("SWIFTPANDAS — TEST SUITE (via xcodebuild test -configuration Release)")
+    banner("SWIFTPANDAS — TEST SUITE (via swift test)")
 
-    project_dir = os.path.dirname(os.path.abspath(__file__))
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     print()
-    note(f"Project: {project_dir}")
-    note("Running: xcodebuild test -scheme SwiftPandas -configuration Release")
+    note(f"Package: {package_dir}")
+    note("Running: swift test (Package.swift already specifies -O optimization)")
     print()
     print(THIN)
 
     try:
         result = subprocess.run(
-            [
-                "xcodebuild", "test",
-                "-scheme", "SwiftPandas",
-                "-destination", "platform=macOS",
-                "-configuration", "Release",
-            ],
-            cwd=project_dir,
+            ["swift", "test"],
+            cwd=package_dir,
             capture_output=True,
             text=True,
             timeout=600,
@@ -863,10 +858,10 @@ def run_swift_tests():
         return swift_passed, swift_failed
 
     except FileNotFoundError:
-        print("  ERROR: xcodebuild not found. Is Xcode installed?")
+        print("  ERROR: swift not found. Is Xcode/Swift installed?")
         return 0, -1
     except subprocess.TimeoutExpired:
-        print("  ERROR: xcodebuild test timed out after 600 seconds.")
+        print("  ERROR: swift test timed out after 600 seconds.")
         return 0, -1
 
     except Exception as e:
@@ -875,77 +870,69 @@ def run_swift_tests():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PART 4: SwiftPandas Benchmarks (invoke via xcodebuild test --filter BenchmarkTests)
+# PART 4: SwiftPandas Benchmarks (invoke via swift build + xcrun xctest)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def run_swift_benchmarks():
     """Run SwiftPandas benchmarks and return parsed timing dict {op_name: ms}."""
-    banner("SWIFTPANDAS — PERFORMANCE BENCHMARKS (via xcodebuild Release)")
+    banner("SWIFTPANDAS — PERFORMANCE BENCHMARKS (via swift build + xcrun xctest)")
 
-    project_dir = os.path.dirname(os.path.abspath(__file__))
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     print()
-    note("Running: xcodebuild build-for-testing -configuration Release")
+    note("Running: swift build --build-tests")
     note("         + xcrun xctest -XCTest BenchmarkTests")
-    note("Swift compiled with -O (optimized). C libs compiled with -O3.")
+    note("Swift compiled with -O (optimized via Package.swift). C libs compiled with -O3.")
     print()
     print(THIN)
 
     swift_timings = {}
 
     try:
-        # Build for testing in Release mode so Swift code is optimized (-O).
+        # Build tests using SPM. Package.swift specifies -O (optimized) for both
+        # the library and test targets, so even debug config produces optimized code.
         # This is critical for a fair comparison with pandas (compiled C/Cython).
-        # Then run the XCTest binary directly via xcrun xctest to preserve
+        # We then run the XCTest binary directly via xcrun xctest to preserve
         # print() output from benchmark tests.
         build_result = subprocess.run(
-            [
-                "xcodebuild", "build-for-testing",
-                "-scheme", "SwiftPandas",
-                "-destination", "platform=macOS",
-                "-configuration", "Release",
-            ],
-            cwd=project_dir,
+            ["swift", "build", "--build-tests"],
+            cwd=package_dir,
             capture_output=True, text=True, timeout=180,
         )
 
-        # Find the built xctest bundle in DerivedData
-        derived_data = None
-        for line in build_result.stdout.splitlines():
-            if "SwiftPandasTests.xctest" in line and "Build/Products" in line:
-                # Extract the path from build output
-                import re as _re
-                m = _re.search(r'(/\S*SwiftPandasTests\.xctest)\b', line)
-                if m:
-                    derived_data = m.group(1)
-                    break
+        if build_result.returncode != 0:
+            print("  ERROR: swift build --build-tests failed:")
+            # Show last few lines of build output
+            for line in (build_result.stdout + build_result.stderr).splitlines()[-10:]:
+                print(f"  {line}")
+            return swift_timings
 
-        # Fallback: search DerivedData for the test bundle (Release folder)
-        if not derived_data:
-            dd_root = os.path.expanduser(
-                "~/Library/Developer/Xcode/DerivedData"
-            )
-            for entry in os.listdir(dd_root):
-                if entry.startswith("SwiftPandas-"):
-                    candidate = os.path.join(
-                        dd_root, entry, "Build", "Products", "Release",
-                        "SwiftPandasTests.xctest",
-                    )
-                    if os.path.exists(candidate):
-                        derived_data = candidate
-                        break
+        # Find the built xctest bundle in .build directory
+        import glob as _glob
+        xctest_bundle = None
+        # SPM names the bundle <Package>PackageTests.xctest
+        for pattern in [
+            os.path.join(package_dir, ".build", "*", "debug", "SwiftPandasPackageTests.xctest"),
+            os.path.join(package_dir, ".build", "*", "release", "SwiftPandasPackageTests.xctest"),
+            os.path.join(package_dir, ".build", "debug", "SwiftPandasPackageTests.xctest"),
+            os.path.join(package_dir, ".build", "release", "SwiftPandasPackageTests.xctest"),
+        ]:
+            matches = _glob.glob(pattern)
+            if matches:
+                xctest_bundle = matches[0]
+                break
 
-        if not derived_data or not os.path.exists(derived_data):
-            print("  ERROR: Could not find SwiftPandasTests.xctest bundle.")
-            print("  Run 'xcodebuild build-for-testing -scheme SwiftPandas' first.")
+        if not xctest_bundle or not os.path.exists(xctest_bundle):
+            print("  ERROR: Could not find SwiftPandasPackageTests.xctest bundle.")
+            print("  Run 'swift build --build-tests' first.")
             return swift_timings
 
         result = subprocess.run(
             [
                 "xcrun", "xctest",
                 "-XCTest", "SwiftPandasTests.BenchmarkTests",
-                derived_data,
+                xctest_bundle,
             ],
-            cwd=project_dir,
+            cwd=package_dir,
             capture_output=True, text=True, timeout=600,
         )
 
@@ -1013,9 +1000,9 @@ def run_swift_benchmarks():
                 print(f"  {line.strip()}")
 
     except FileNotFoundError:
-        print("  ERROR: xcodebuild not found. Is Xcode installed?")
+        print("  ERROR: swift not found. Is Xcode/Swift installed?")
     except subprocess.TimeoutExpired:
-        print("  ERROR: xcodebuild test timed out.")
+        print("  ERROR: swift test timed out.")
 
     return swift_timings
 
@@ -1206,7 +1193,7 @@ def main():
         print(f"    Correctness: {swift_passed} passed, {swift_failed} failed")
     else:
         print("    Correctness: could not run (swift not found or timeout)")
-    print(f"    Benchmarks:  see xcodebuild test output above")
+    print(f"    Benchmarks:  see swift test output above")
     print()
 
     print("  Configuration:")
