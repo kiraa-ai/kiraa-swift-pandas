@@ -252,6 +252,121 @@ let csvString = df.toCSV()
 try df.toCSV(path: "/path/to/output.csv")
 ```
 
+## CLI Tool
+
+SwiftPandas includes a `swiftpandas` command-line tool for transforming CSV files using a pipe-chained DSL or structured JSON transform files.
+
+### Build & Install
+
+```bash
+swift build
+# Binary is at .build/debug/swiftpandas
+# Or run directly:
+swift run swiftpandas --help
+```
+
+### Inline DSL (`-c`)
+
+```bash
+# Filter + sort + limit
+swiftpandas -i data.csv -o out.csv -c "filter(revenue > 10000) | sort(revenue, desc) | head(10)"
+
+# GroupBy + aggregate
+swiftpandas -i data.csv -c "groupby(region) | agg(sum:revenue, mean:margin, count:transactions)"
+
+# Derive computed column + filter
+swiftpandas -i data.csv -c "derive(profit = revenue - cost) | filter(profit > 5000) | sort(profit, desc)"
+
+# Select, rename, round
+swiftpandas -i data.csv -c "select(region, revenue, margin) | rename(revenue -> sales) | round(margin, 2)"
+```
+
+### JSON Transform Files (`-f`)
+
+```bash
+swiftpandas -i data.csv -o out.csv -f transforms.json
+```
+
+JSON format:
+```json
+{
+  "description": "Sales summary pipeline",
+  "operations": [
+    { "op": "filter",  "args": { "column": "status", "operator": "==", "value": "active" } },
+    { "op": "groupby", "args": { "columns": ["region", "quarter"] } },
+    { "op": "agg",     "args": { "specs": [{"fn": "sum", "col": "revenue"}, {"fn": "mean", "col": "margin"}] } },
+    { "op": "sort",    "args": { "columns": [{"column": "revenue", "direction": "desc"}] } },
+    { "op": "rename",  "args": { "from": "revenue", "to": "total_revenue" } },
+    { "op": "round",   "args": { "column": "margin", "decimals": 2 } }
+  ]
+}
+```
+
+### CLI Flags
+
+| Flag | Description |
+|---|---|
+| `-i`, `--input` | Input CSV file path (required in CLI mode) |
+| `-o`, `--output` | Output CSV file path (stdout if omitted) |
+| `-c`, `--chain` | Inline DSL transform chain |
+| `-f`, `--file` | Path to a `.json` transform file |
+| `--sep` | Column delimiter (default: `,`) |
+| `--dry-run` | Print schema + parsed chain, no output written |
+| `--verbose` | Detailed step-by-step logging with timing (stderr) |
+| `-q`, `--quiet` | Suppress CSV output (useful with `--verbose` for stats only) |
+| `--help-ops` | Show all operation schemas and examples |
+| `--gui` | Launch interactive SwiftUI GUI mode (macOS) |
+
+### DSL Operations
+
+| Operation | Syntax | Description |
+|---|---|---|
+| `filter` | `filter(col op value)` | Row predicate. Ops: `>` `<` `>=` `<=` `==` `!=` `contains` |
+| `groupby` | `groupby(col1, col2)` | Group rows by key columns (must be followed by `agg`) |
+| `agg` | `agg(fn:col, fn:col, ...)` | Aggregate. Fns: `sum` `mean` `count` `min` `max` |
+| `sort` | `sort(col, desc)` | Sort by column. Multi: `sort(col1 asc, col2 desc)` |
+| `rename` | `rename(old -> new)` | Rename a column |
+| `round` | `round(col, decimals)` | Round a numeric column |
+| `derive` | `derive(new_col = expr)` | Computed column using `+` `-` `*` `/` |
+| `select` | `select(col1, col2)` | Keep only specified columns |
+| `drop` | `drop(col1, col2)` | Remove specified columns |
+| `head` | `head(n)` | Keep first n rows |
+| `tail` | `tail(n)` | Keep last n rows |
+| `cast` | `cast(col, Type)` | Type coercion: `Int`, `Double`, `String` |
+
+### Example Scripts
+
+10 example bash scripts are provided in `examples/cli/`:
+
+| Script | Description |
+|---|---|
+| `01_basic_filter.sh` | Simple filter on a numeric column |
+| `02_filter_sort_head.sh` | Filter + sort + head pipeline |
+| `03_groupby_agg.sh` | GroupBy with multiple aggregations |
+| `04_derive_computed_column.sh` | Derive a profit column, filter, sort |
+| `05_select_rename_round.sh` | Select, rename, and round columns |
+| `06_json_pipeline.sh` | Run transforms from a JSON file |
+| `07_dry_run.sh` | Validate pipeline without writing output |
+| `08_verbose_pipeline.sh` | Verbose mode showing per-stage row counts |
+| `09_write_output.sh` | Full pipeline writing to CSV file |
+| `10_error_handling.sh` | Demonstrate error messages and `--help-ops` |
+
+### GUI Mode (macOS)
+
+Launch the interactive SwiftUI GUI for visual pipeline building:
+
+```bash
+swiftpandas --gui
+```
+
+The GUI provides:
+- **File picker** — Browse and select CSV files with format preview
+- **Pipeline builder** — Add, remove, and reorder transform operations via dropdown + text fields
+- **DSL import** — Paste an inline DSL string and parse it into editable steps
+- **Result viewer** — Tabbed output with Table, CSV, and execution Log views
+- **Export** — Save transformed data to a new CSV file
+- **Timing** — Per-step and total execution time displayed in the status bar
+
 ## Project Structure
 
 ```
@@ -302,16 +417,36 @@ SwiftPandas/
 │       ├── DataFrameDemoView.swift # DataFrame creation, filter, sort, aggregate
 │       ├── GroupByDemoView.swift   # GroupBy sum/mean/count/min/max
 │       └── BenchmarkView.swift     # CPU vs GPU benchmark with configurable size
+├── Sources/SwiftPandasCLI/         # CLI executable target
+│   ├── SwiftPandasCLI.swift            # @main entry point (ArgumentParser)
+│   ├── CLIError.swift                  # Descriptive error types
+│   ├── DSL/
+│   │   ├── Token.swift                 # Tokenizer (char-by-char scanner)
+│   │   ├── Operation.swift             # Operation enum (parsed IR)
+│   │   ├── Parser.swift                # Pipe-chained DSL parser
+│   │   └── JSONTransformParser.swift   # Structured JSON transform file parser
+│   ├── Transforms/
+│   │   └── TransformRunner.swift       # Sequential operation pipeline executor
+│   └── GUI/
+│       └── GUIApp.swift                # SwiftUI GUI mode (--gui flag)
+├── examples/
+│   ├── cli/                        # 10 example CLI scripts (01-10)
+│   └── data/                       # Sample data & transform files
 ├── Tests/
-│   └── SwiftPandasTests/           # 206 tests covering all components
-│       ├── SwiftPandasTests.swift      # Core unit tests (types, Series, DataFrame, GroupBy, Merge)
-│       ├── CSVDataFrameTests.swift     # Comprehensive API documentation & demo tests
-│       ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
-│       ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
-│       ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
-│       ├── NewFeaturesTests.swift      # Equatable, Sequence, JSON I/O, throwing API tests
-│       └── SampleData/employees.csv    # 15-row sample dataset
-└── Package.swift                   # SPM manifest (legacy/backward compatibility)
+│   ├── SwiftPandasTests/           # 229 library tests
+│   │   ├── SwiftPandasTests.swift      # Core unit tests (types, Series, DataFrame, GroupBy, Merge)
+│   │   ├── CSVDataFrameTests.swift     # Comprehensive API documentation & demo tests
+│   │   ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
+│   │   ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
+│   │   ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
+│   │   ├── NewFeaturesTests.swift      # Equatable, Sequence, JSON I/O, throwing API tests
+│   │   └── SampleData/employees.csv    # 15-row sample dataset
+│   └── SwiftPandasCLITests/        # 68 CLI tests
+│       ├── ParserTests.swift           # Tokenizer, DSL parser, JSON parser tests
+│       ├── TransformTests.swift        # Transform operation tests
+│       ├── IntegrationTests.swift      # End-to-end pipeline tests
+│       └── Fixtures/                   # Test data (sales.csv, transforms.json)
+└── Package.swift                   # SPM manifest
 ```
 
 ## Xcode Project Targets
@@ -321,6 +456,7 @@ SwiftPandas/
 | **SwiftPandas** | macOS Framework | Core library with Metal shaders precompiled to `default.metallib` |
 | **SwiftPandasApp** | macOS Application | SwiftUI demo app with DataFrame, GroupBy, and Benchmark views |
 | **SwiftPandasTests** | Unit Test Bundle | 229 tests including GPU correctness, lazy evaluation, and performance benchmarks |
+| **SwiftPandasCLITests** | Unit Test Bundle | 68 tests covering DSL parsing, transforms, and end-to-end CLI pipelines |
 
 The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. Build settings:
 
@@ -403,7 +539,7 @@ public enum MetalDispatch {
 
 ### Running Tests
 
-229 tests across 6 test files. All tests use XCTest.
+297 tests across 9 test files. All tests use XCTest.
 
 ```bash
 # Run all tests (Package.swift applies -O optimization even in debug config)
@@ -416,6 +552,11 @@ swift test --filter LazyDataFrameTests     # lazy evaluation engine
 swift test --filter MetalTests             # GPU compute shaders
 swift test --filter BenchmarkTests         # performance benchmarks
 swift test --filter NewFeaturesTests       # Equatable, Sequence, JSON I/O, throwing API
+
+# CLI tests
+swift test --filter ParserTests            # DSL tokenizer & parser
+swift test --filter TransformTests         # transform operations
+swift test --filter IntegrationTests       # end-to-end pipelines
 ```
 
 > **Note:** Package.swift specifies `-O` (optimized) for both the library and
@@ -431,6 +572,9 @@ swift test --filter NewFeaturesTests       # Equatable, Sequence, JSON I/O, thro
 | **MetalTests.swift** | ~16 | Metal dispatch threshold logic, GPU GroupBy correctness (sum/mean/count/min/max, large dataset 100K), GPU Merge (inner join, no-matches, duplicate keys, column naming), GPU/CPU integration |
 | **NewFeaturesTests.swift** | ~21 | Equatable conformance (Series, DataFrame, Column), Sequence conformance (Series, DataFrame), JSON I/O (read/write string, path, URL, Data), throwing API, convenience initializers, Bool/Int? Series, fromOptionalInts/fromOptionalBools |
 | **BenchmarkTests.swift** | ~15 | Performance benchmarks at 1M rows: Series aggregation/arithmetic/sorting/statistics, DataFrame construction/filtering/sorting/aggregation, GroupBy, Merge, Concat, CSV I/O, Lazy vs Eager |
+| **ParserTests.swift** | ~37 | CLI: Tokenizer, DSL parser (all 12 operations), arithmetic expression precedence, JSON transform parser, error cases |
+| **TransformTests.swift** | ~21 | CLI: Filter, sort, rename, select, drop, head, tail, round, derive, cast, groupby+agg, chained pipelines |
+| **IntegrationTests.swift** | ~10 | CLI: Full pipeline (inline & JSON), empty results, derive pipeline, verbose mode, JSON error messages, edge cases |
 
 ### Python Benchmarks
 

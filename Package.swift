@@ -66,6 +66,10 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v16)],
     products: [
         .library(name: "SwiftPandas", targets: ["SwiftPandas"]),
+        .executable(name: "swiftpandas", targets: ["SwiftPandasCLI"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
         // ----------------------------------------------------------------
@@ -130,6 +134,7 @@ let package = Package(
             name: "SwiftPandas",
             dependencies: ["CSkipList", "CKHash", "CUltraJSON"],
             path: "Sources/SwiftPandas",
+            exclude: ["Metal/Shaders/GroupByShaders.metal", "Metal/Shaders/MergeShaders.metal"],
             swiftSettings: [
                 .define("ACCELERATE_AVAILABLE", .when(platforms: [.macOS, .iOS])),
                 .unsafeFlags(["-O"]),
@@ -143,6 +148,20 @@ let package = Package(
         // test bundle via the resources rule below so that I/O tests
         // can run against realistic fixtures.
         // ----------------------------------------------------------------
+        // ----------------------------------------------------------------
+        // SwiftPandasCLI — Command-line tool for CSV transformation.
+        // Reads CSV, applies a pipe-chained DSL, writes the result.
+        // Depends on the SwiftPandas library for all DataFrame operations
+        // and swift-argument-parser for CLI flag handling.
+        // ----------------------------------------------------------------
+        .executableTarget(
+            name: "SwiftPandasCLI",
+            dependencies: [
+                "SwiftPandas",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/SwiftPandasCLI"
+        ),
         .testTarget(
             name: "SwiftPandasTests",
             dependencies: ["SwiftPandas"],
@@ -151,6 +170,17 @@ let package = Package(
             swiftSettings: [
                 .unsafeFlags(["-O"]),
             ]
+        ),
+        // ----------------------------------------------------------------
+        // SwiftPandasCLITests — Tests for the CLI tool.
+        // Covers DSL parsing, transform execution, and end-to-end
+        // integration tests against CSV fixture files.
+        // ----------------------------------------------------------------
+        .testTarget(
+            name: "SwiftPandasCLITests",
+            dependencies: ["SwiftPandasCLI", "SwiftPandas"],
+            path: "Tests/SwiftPandasCLITests",
+            resources: [.copy("Fixtures")]
         ),
     ]
 )

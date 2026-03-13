@@ -1,0 +1,9 @@
+region,quarter,sku,revenue,cost,margin,transactions,status
+APAC,Q1,SKU-001,15000.0,9000.0,0.40,120,active
+APAC,Q1,SKU-002,8500.0,5950.0,0.30,80,active
+APAC,Q2,SKU-001,18000.0,10800.0,0.40,145,active
+EMEA,Q1,SKU-003,22000.0,15400.0,0.30,200,active
+EMEA,Q2,SKU-003,9000.0,6300.0,0.30,90,inactive
+US,Q1,SKU-004,35000.0,21000.0,0.40,310,active
+US,Q2,SKU-004,41000.0,28700.0,0.30,380,active
+US,Q1,SKU-005,7200.0,5760.0,0.20,65,inactive

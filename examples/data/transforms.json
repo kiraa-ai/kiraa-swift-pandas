@@ -1,0 +1,17 @@
+{
+  "description": "Kiraa standard sales summary transform",
+  "operations": [
+    { "op": "filter",  "args": { "column": "status",  "operator": "==", "value": "active" } },
+    { "op": "filter",  "args": { "column": "revenue", "operator": ">",  "value": 10000 } },
+    { "op": "groupby", "args": { "columns": ["region", "quarter"] } },
+    { "op": "agg",     "args": { "specs": [
+      { "fn": "sum",   "col": "revenue" },
+      { "fn": "mean",  "col": "margin" },
+      { "fn": "count", "col": "transactions" }
+    ] } },
+    { "op": "sort",    "args": { "columns": [{ "column": "revenue", "direction": "desc" }] } },
+    { "op": "rename",  "args": { "from": "revenue", "to": "total_revenue" } },
+    { "op": "rename",  "args": { "from": "margin", "to": "avg_margin" } },
+    { "op": "round",   "args": { "column": "avg_margin", "decimals": 3 } }
+  ]
+}

@@ -20,5 +20,12 @@ __pycache__/
 # Editor / tool state
 .claude/
 
+# Distribution
+/dist/
+
+# Generated large data files
+examples/data/transactions_*.csv
+examples/data/summary_*.csv
+
 # Cloned pandas source (for reference only)
 pandas/
