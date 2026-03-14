@@ -47,7 +47,7 @@
 // Run with: swift test --filter BenchmarkTests
 // ──────────────────────────────────────────────────────────────────────────────
 
-import XCTest
+import Testing
 @testable import SwiftPandas
 import Foundation
 
@@ -58,7 +58,7 @@ import Foundation
 /// microseconds. Test methods are alphabetically prefixed (`testAA_`, `testBA_`,
 /// etc.) to control execution order so that the header prints first and the
 /// summary prints last.
-final class BenchmarkTests: XCTestCase {
+@Suite(.serialized) struct BenchmarkTests {
 
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │  Formatting helpers                                                │
@@ -285,7 +285,7 @@ final class BenchmarkTests: XCTestCase {
 
     /// Prints the benchmark suite header, methodology description, and section index.
     /// Runs first due to the `AA` prefix.
-    func testAA_BenchmarkHeader() {
+    @Test func testAA_BenchmarkHeader() {
         BenchmarkTests.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} PERFORMANCE BENCHMARKS")
 
         print("")
@@ -318,7 +318,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// These are backed by Accelerate vDSP on contiguous Double buffers. Median
     /// uses an O(n) quickselect algorithm with a raw-pointer inner loop.
-    func testBA_SeriesAggregation() {
+    @Test func testBA_SeriesAggregation() {
         BenchmarkTests.section("1", "Series Aggregation (1,000,000 elements)")
 
         let data = BenchmarkTests.randomDoubles(1_000_000)
@@ -356,7 +356,7 @@ final class BenchmarkTests: XCTestCase {
     /// Operations tested: `Series + Series`, `Series * Series`, `Series + scalar`,
     /// `Series * scalar`. All are vectorized via Accelerate vDSP through the
     /// underlying `NullableArray<Double>`.
-    func testBB_SeriesArithmetic() {
+    @Test func testBB_SeriesArithmetic() {
         BenchmarkTests.section("2", "Series Arithmetic (1,000,000 elements)")
 
         let d1 = BenchmarkTests.randomDoubles(1_000_000, seed: 1)
@@ -387,7 +387,7 @@ final class BenchmarkTests: XCTestCase {
     /// Benchmarks `Series.sortValues()` at 1M elements.
     ///
     /// Uses stdlib TimSort on an enumerated array followed by index rebuild.
-    func testBC_SeriesSorting() {
+    @Test func testBC_SeriesSorting() {
         BenchmarkTests.section("3", "Series Sorting (1,000,000 elements)")
 
         let d1M = BenchmarkTests.randomDoubles(1_000_000, seed: 11)
@@ -409,7 +409,7 @@ final class BenchmarkTests: XCTestCase {
     /// - `quantile(0.75)`: O(n) quickselect with raw pointer inner loop.
     /// - `cumsum()`: single-pass O(n) accumulation.
     /// - `valueCounts()`: hash-based frequency counting.
-    func testBD_SeriesStatistics() {
+    @Test func testBD_SeriesStatistics() {
         BenchmarkTests.section("4", "Series Statistics (1,000,000 elements)")
 
         let d1M = BenchmarkTests.randomDoubles(1_000_000, seed: 20)
@@ -437,7 +437,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// Includes both LCG data generation and `ContiguousArray` allocation, so the
     /// reported time is an upper bound on pure construction cost.
-    func testCA_DataFrameConstruction() {
+    @Test func testCA_DataFrameConstruction() {
         BenchmarkTests.section("5", "DataFrame Construction (1M x 6 cols)")
 
         BenchmarkTests.tableHeader()
@@ -458,7 +458,7 @@ final class BenchmarkTests: XCTestCase {
     /// The filter `df["col0"] > 500.0` selects roughly half the rows. The benchmark
     /// includes both mask generation (comparison -> `[Bool]`) and row extraction
     /// (`reserveCapacity` + `takeRows`).
-    func testCB_DataFrameFiltering() {
+    @Test func testCB_DataFrameFiltering() {
         BenchmarkTests.section("6", "DataFrame Filtering (1M x 6 cols)")
 
         let df1M = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 41)
@@ -482,7 +482,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// Uses stdlib TimSort to compute a permutation array, then `takeRows` to
     /// allocate new columns in sorted order.
-    func testCC_DataFrameSorting() {
+    @Test func testCC_DataFrameSorting() {
         BenchmarkTests.section("7", "DataFrame Sorting (1,000,000 rows x 6 cols)")
 
         let df = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 50)
@@ -509,7 +509,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// `describe()` computes 8 statistics per column (count, mean, std, min, 25%,
     /// 50%, 75%, max), so it is significantly more expensive than a single reduction.
-    func testCD_DataFrameAggregation() {
+    @Test func testCD_DataFrameAggregation() {
         BenchmarkTests.section("8", "DataFrame Aggregation (1,000,000 rows x 6 cols)")
 
         let df = BenchmarkTests.numericDataFrame(rows: 1_000_000, cols: 6, seed: 60)
@@ -540,7 +540,7 @@ final class BenchmarkTests: XCTestCase {
     /// hashing and raw-pointer accumulators. The Metal GPU path is reserved for
     /// datasets >= 10M rows; at 1M rows the CPU fast-path is faster due to lower
     /// dispatch overhead.
-    func testCE_DataFrameGroupBy() {
+    @Test func testCE_DataFrameGroupBy() {
         BenchmarkTests.section("9", "GroupBy (1,000,000 rows)")
 
         let df100 = BenchmarkTests.groupableDataFrame(rows: 1_000_000, nGroups: 100, seed: 70)
@@ -580,7 +580,7 @@ final class BenchmarkTests: XCTestCase {
     /// The merge implementation uses a typed `Dictionary<String, [Int]>` hash index
     /// on the right-side keys, then probes it for each left-side row. Key generation
     /// is deterministic but shuffled on the right side to simulate realistic join patterns.
-    func testCF_DataFrameMerge() {
+    @Test func testCF_DataFrameMerge() {
         BenchmarkTests.section("10", "Merge (Inner Join, 100K rows)")
 
         var rng1 = BenchmarkTests.LCG(seed: 80)
@@ -614,7 +614,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// Concat performs per-column array concatenation followed by new DataFrame
     /// construction. The total result is 1M rows.
-    func testCG_DataFrameConcat() {
+    @Test func testCG_DataFrameConcat() {
         BenchmarkTests.section("11", "Concat (Vertical Stack)")
 
         let frames = (0..<10).map { i in
@@ -639,7 +639,7 @@ final class BenchmarkTests: XCTestCase {
     /// The CSV reader uses a byte-level UTF-8 state machine parser with per-cell
     /// `Double(String)` conversion. The writer formats each cell and joins with
     /// separators. Both operate entirely in memory (no disk I/O).
-    func testDA_CSVIO() {
+    @Test func testDA_CSVIO() {
         BenchmarkTests.section("12", "CSV I/O (1M rows x 6 cols)")
 
         let csv1M = BenchmarkTests.csvString(rows: 1_000_000, cols: 6, seed: 100)
@@ -678,7 +678,7 @@ final class BenchmarkTests: XCTestCase {
     ///
     /// The lazy engine eliminates intermediate DataFrame allocations and applies
     /// optimizer passes (filter fusion, predicate pushdown, projection pushdown).
-    func testEA_LazyVsEager() {
+    @Test func testEA_LazyVsEager() {
         BenchmarkTests.section("13", "Lazy vs Eager (1M rows)")
 
         let df = BenchmarkTests.groupableDataFrame(rows: 1_000_000, nGroups: 100, seed: 77)
@@ -749,7 +749,7 @@ final class BenchmarkTests: XCTestCase {
 
     /// Prints a summary of all optimizations applied by SwiftPandas and Metal GPU details.
     /// Runs last due to the `ZZ` prefix.
-    func testZZ_BenchmarkSummary() {
+    @Test func testZZ_BenchmarkSummary() {
         BenchmarkTests.banner("BENCHMARK SUMMARY")
 
         print("")

@@ -70,6 +70,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        .package(url: "https://github.com/apple/swift-testing.git", from: "0.12.0"),
     ],
     targets: [
         // ----------------------------------------------------------------
@@ -164,7 +165,10 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftPandasTests",
-            dependencies: ["SwiftPandas"],
+            dependencies: [
+                "SwiftPandas",
+                .product(name: "Testing", package: "swift-testing"),
+            ],
             path: "Tests/SwiftPandasTests",
             resources: [.copy("SampleData")],
             swiftSettings: [
@@ -178,7 +182,11 @@ let package = Package(
         // ----------------------------------------------------------------
         .testTarget(
             name: "SwiftPandasCLITests",
-            dependencies: ["SwiftPandasCLI", "SwiftPandas"],
+            dependencies: [
+                "SwiftPandasCLI",
+                "SwiftPandas",
+                .product(name: "Testing", package: "swift-testing"),
+            ],
             path: "Tests/SwiftPandasCLITests",
             resources: [.copy("Fixtures")]
         ),

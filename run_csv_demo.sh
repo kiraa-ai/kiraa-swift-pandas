@@ -29,15 +29,14 @@ run_stage() {
     local output
     output=$(swift test --filter "$filter" 2>&1) || true
 
-    # Show individual test results (strip any interleaved print output before "Test Case")
-    echo "$output" | grep -E "Test Case.*passed|Test Case.*failed" | \
-        sed "s/.*Test Case/Test Case/" | \
-        sed "s/Test Case '-\[SwiftPandasTests\.\([^]]*\)\]' passed.*/  ✅  \1/" | \
-        sed "s/Test Case '-\[SwiftPandasTests\.\([^]]*\)\]' failed.*/  ❌  \1/"
+    # Show individual test results (Swift Testing format: ✔ / ✘ lines)
+    echo "$output" | grep -E "^✔ Test [^r]|^✘ Test " | \
+        sed 's/^✔ Test \(.*\)() passed.*/  ✅  \1/' | \
+        sed 's/^✘ Test \(.*\)() failed.*/  ❌  \1/'
 
-    # Show summary line
+    # Show summary line (Swift Testing format: "Test run with N test(s)...")
     local summary
-    summary=$(echo "$output" | grep "Executed" | tail -1 | sed 's/^[[:space:]]*//')
+    summary=$(echo "$output" | grep -E "^✔ Test run with|^✘ Test run with" | tail -1 | sed 's/^[✔✘] //')
     echo "$THIN"
     echo "  $summary"
     echo ""
@@ -45,75 +44,73 @@ run_stage() {
 
 # ── Stage 1: Core Types ──
 run_stage "Core Types (DType, NativeArray, BitVector, NullableArray, StringArray, Column, Index)" \
-    "DTypeTests|NativeArrayTests|BitVectorTests|NullableArrayTests|StringArrayTests|ColumnTests|IndexTests"
+    "SwiftPandasTests.DTypeTests|SwiftPandasTests.NativeArrayTests|SwiftPandasTests.BitVectorTests|SwiftPandasTests.NullableArrayTests|SwiftPandasTests.StringArrayTests|SwiftPandasTests.ColumnTests|SwiftPandasTests.IndexTests"
 
 # ── Stage 2: Series ──
+# SeriesTests contains all series subtests (comparison, apply, arithmetic, etc.)
 run_stage "Series (creation, aggregation, comparison, apply/map, arithmetic, statistics)" \
-    "SeriesTests|SeriesComparisonTests|SeriesApplyMapTests|SeriesScalarArithmeticTests|SeriesStatisticsTests"
+    "SwiftPandasTests.SeriesTests"
 
 # ── Stage 3: DataFrame Core ──
-run_stage "DataFrame Core (construction, filtering, sorting, loc, mask, duplicated)" \
-    "SwiftPandasTests\.DataFrameTests|DataFrameLocTests|DataFrameMaskSubscriptTests|DuplicatedTests|MultiColumnSortTests"
+# DataFrameTests contains filtering, sorting, loc, mask, duplicated, concat subtests
+run_stage "DataFrame Core (construction, filtering, sorting, loc, mask, duplicated, concat)" \
+    "SwiftPandasTests.DataFrameTests"
 
 # ── Stage 4: GroupBy & Merge (CPU) ──
-run_stage "GroupBy & Merge — CPU (groupby, merge, concat, multi-column groupby)" \
-    "SwiftPandasTests\.GroupByTests|SwiftPandasTests\.MergeTests|SwiftPandasTests\.ConcatTests|MultiColumnGroupByTests"
+# Use exact suite names to avoid matching BenchmarkTests (which has 1M-row GroupBy/Merge)
+run_stage "GroupBy & Merge — CPU (groupby, merge, multi-column groupby)" \
+    "SwiftPandasTests.GroupByTests|SwiftPandasTests.MergeTests"
 
 # ── Stage 5: Metal GPU Acceleration ──
 run_stage "Metal GPU Acceleration (dispatch, GPU GroupBy, GPU Merge)" \
-    "MetalDispatchTests|MetalGroupByTests|MetalMergeTests"
+    "SwiftPandasTests.MetalDispatchTests|SwiftPandasTests.MetalGroupByTests|SwiftPandasTests.MetalMergeTests"
 
 # ── Stage 6: CSV I/O & API Documentation ──
 run_stage "CSV I/O & API Documentation" \
-    "CSVDataFrameTests"
-
-# Show pretty API documentation output
-echo "$DIVIDER"
-echo "  API Documentation Output"
-echo "$THIN"
-OUTPUT=$(swift test --filter CSVDataFrameTests 2>&1)
-echo "$OUTPUT" | sed 's/Test Case.*//g' | grep -vE "(^Building|^Build complete|^\[|^Test Suite|^	|^◇|^↳|^✔|^$)"
-echo ""
+    "SwiftPandasTests.CSVDataFrameTests"
 
 # ── Stage 7: Pandas-Style Workflow ──
 run_stage "Pandas-Style Workflow (end-to-end integration)" \
-    "PandasStyleWorkflowTests"
+    "SwiftPandasTests.PandasStyleWorkflowTests"
 
-# ── Stage 8: Performance Benchmarks ──
+# ── Stage 7b: New Features ──
+run_stage "New Features (Equatable, Sequence, JSON I/O, throwing API)" \
+    "SwiftPandasTests.NewFeaturesTests"
+
+# ── Stage 7c: Lazy Evaluation ──
+run_stage "Lazy Evaluation (predicates, chains, optimizer, edge cases)" \
+    "SwiftPandasTests.PredicateTests|SwiftPandasTests.LazyDataFrameTests|SwiftPandasTests.LazyChainedTests|SwiftPandasTests.QueryOptimizerTests|SwiftPandasTests.ExplainTests|SwiftPandasTests.LazyEdgeCaseTests"
+
+# ── Stage 8: CLI Tests ──
+run_stage "CLI Tool (DSL parser, transforms, integration)" \
+    "SwiftPandasCLITests.ParserTests|SwiftPandasCLITests.TransformTests|SwiftPandasCLITests.IntegrationTests"
+
+# ── Stage 9: Performance Benchmarks (skipped — run separately) ──
 echo "$DIVIDER"
-echo "  Stage: Performance Benchmarks"
+echo "  Stage: Performance Benchmarks (SKIPPED)"
 echo "$THIN"
-BENCH=$(swift test --filter BenchmarkTests 2>&1)
-# Show benchmark output (formatted tables)
-echo "$BENCH" | sed 's/Test Case.*//g' | grep -vE "(^Building|^Build complete|^\[|^Test Suite|^	|^◇|^↳|^✔|^$)"
-# Show test summary
-BENCH_SUMMARY=$(echo "$BENCH" | grep "Executed" | tail -1 | sed 's/^[[:space:]]*//')
-echo "$THIN"
-echo "  $BENCH_SUMMARY"
+echo "  Benchmarks operate on 1M+ rows and take several minutes."
+echo "  Run separately: swift test --filter SwiftPandasTests.BenchmarkTests"
 echo ""
 
 # ── Final Summary ──
 echo "$DIVIDER"
 echo "  Full Suite Summary"
 echo "$THIN"
-ALL=$(swift test 2>&1) || true
-TOTAL=$(echo "$ALL" | grep "Executed" | tail -1 | sed 's/^[[:space:]]*//')
-echo "  $TOTAL"
-
-# Count passes and failures from individual lines
-PASS_COUNT=$(echo "$ALL" | grep -c "passed" || true)
-FAIL_COUNT=$(echo "$ALL" | grep -c "failed" || true)
-
 echo ""
 echo "  Stages:"
 echo "    1. Core Types          — DType, NativeArray, BitVector, NullableArray, StringArray, Column, Index"
 echo "    2. Series              — Creation, aggregation, comparison, apply/map, arithmetic, statistics"
-echo "    3. DataFrame Core      — Construction, filtering, sorting, loc, mask, duplicated"
-echo "    4. GroupBy & Merge     — CPU path: groupby, merge, concat, multi-column"
+echo "    3. DataFrame Core      — Construction, filtering, sorting, loc, mask, duplicated, concat"
+echo "    4. GroupBy & Merge     — CPU path: groupby, merge, multi-column"
 echo "    5. Metal GPU           — Dispatch, GPU GroupBy (sum/mean/count/min/max), GPU Merge (inner join)"
 echo "    6. CSV I/O & Docs      — CSV parsing, API documentation examples"
 echo "    7. Workflow            — End-to-end pandas-style integration"
-echo "    8. Benchmarks          — Performance comparison: SwiftPandas vs Python pandas"
+echo "    7b. New Features       — Equatable, Sequence, JSON I/O, throwing API"
+echo "    7c. Lazy Evaluation    — Predicates, chains, optimizer, edge cases"
+echo ""
+echo "  Note: Benchmark tests (1M rows) excluded from this runner."
+echo "  Run benchmarks separately: swift test --filter BenchmarkTests"
 echo ""
 echo "$DIVIDER"
 echo "  Done."

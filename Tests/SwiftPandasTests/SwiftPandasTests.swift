@@ -36,14 +36,15 @@
 // randomness, no file I/O, no Metal GPU dependency.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import XCTest
+import Testing
+import Foundation
 @testable import SwiftPandas
 
 /// Tests for the library-level version constant.
 /// Ensures the public `SwiftPandas.version` string matches the expected release.
-final class SwiftPandasTests: XCTestCase {
-    func testVersion() {
-        XCTAssertEqual(SwiftPandas.version, "0.4.0-beta")
+@Suite struct SwiftPandasTests {
+    @Test func testVersion() {
+        #expect(SwiftPandas.version == "0.4.0-beta")
     }
 }
 
@@ -64,38 +65,38 @@ final class SwiftPandasTests: XCTestCase {
 ///   Float64 is float, numeric, not integer; Bool is boolean, not numeric; etc.).
 /// - `DTypeEnum` descriptions, integer detection, float detection, and numeric
 ///   exclusion for strings.
-final class DTypeTests: XCTestCase {
-    func testDTypeNames() {
-        XCTAssertEqual(Int64DType().name, "int64")
-        XCTAssertEqual(Float64DType().name, "float64")
-        XCTAssertEqual(StringDType().name, "string")
-        XCTAssertEqual(BoolDType().name, "bool")
+@Suite struct DTypeTests {
+    @Test func testDTypeNames() {
+        #expect(Int64DType().name == "int64")
+        #expect(Float64DType().name == "float64")
+        #expect(StringDType().name == "string")
+        #expect(BoolDType().name == "bool")
     }
 
-    func testDTypeCategories() {
-        XCTAssertTrue(Int64DType().isSignedInteger)
-        XCTAssertTrue(Int64DType().isNumeric)
-        XCTAssertFalse(Int64DType().isFloat)
+    @Test func testDTypeCategories() {
+        #expect(Int64DType().isSignedInteger)
+        #expect(Int64DType().isNumeric)
+        #expect(!Int64DType().isFloat)
 
-        XCTAssertTrue(UInt32DType().isUnsignedInteger)
-        XCTAssertTrue(UInt32DType().isNumeric)
-        XCTAssertTrue(UInt32DType().isInteger)
+        #expect(UInt32DType().isUnsignedInteger)
+        #expect(UInt32DType().isNumeric)
+        #expect(UInt32DType().isInteger)
 
-        XCTAssertTrue(Float64DType().isFloat)
-        XCTAssertTrue(Float64DType().isNumeric)
-        XCTAssertFalse(Float64DType().isInteger)
+        #expect(Float64DType().isFloat)
+        #expect(Float64DType().isNumeric)
+        #expect(!Float64DType().isInteger)
 
-        XCTAssertTrue(BoolDType().isBoolean)
-        XCTAssertFalse(BoolDType().isNumeric)
+        #expect(BoolDType().isBoolean)
+        #expect(!BoolDType().isNumeric)
 
-        XCTAssertFalse(StringDType().isNumeric)
+        #expect(!StringDType().isNumeric)
     }
 
-    func testDTypeEnum() {
-        XCTAssertEqual(DTypeEnum.float64.description, "float64")
-        XCTAssertTrue(DTypeEnum.int32.isInteger)
-        XCTAssertTrue(DTypeEnum.float64.isFloat)
-        XCTAssertFalse(DTypeEnum.string.isNumeric)
+    @Test func testDTypeEnum() {
+        #expect(DTypeEnum.float64.description == "float64")
+        #expect(DTypeEnum.int32.isInteger)
+        #expect(DTypeEnum.float64.isFloat)
+        #expect(!DTypeEnum.string.isNumeric)
     }
 }
 
@@ -128,85 +129,85 @@ final class DTypeTests: XCTestCase {
 /// - **Append**: in-place append of a single element.
 /// - **Collection conformance**: verifying that `map` (from Sequence) works
 ///   correctly on NativeArray.
-final class NativeArrayTests: XCTestCase {
-    func testCreation() {
+@Suite struct NativeArrayTests {
+    @Test func testCreation() {
         let a = NativeArray<Double>([1.0, 2.0, 3.0])
-        XCTAssertEqual(a.count, 3)
-        XCTAssertEqual(a[0], 1.0)
-        XCTAssertEqual(a[1], 2.0)
-        XCTAssertEqual(a[2], 3.0)
+        #expect(a.count == 3)
+        #expect(a[0] == 1.0)
+        #expect(a[1] == 2.0)
+        #expect(a[2] == 3.0)
     }
 
-    func testCopyOnWrite() {
+    @Test func testCopyOnWrite() {
         var a = NativeArray<Double>([1.0, 2.0, 3.0])
         let b = a  // shares storage
         a[0] = 99.0  // triggers CoW copy
-        XCTAssertEqual(a[0], 99.0)
-        XCTAssertEqual(b[0], 1.0)  // b is unmodified
+        #expect(a[0] == 99.0)
+        #expect(b[0] == 1.0)  // b is unmodified
     }
 
-    func testArithmetic() {
+    @Test func testArithmetic() {
         let a = NativeArray<Double>([1.0, 2.0, 3.0])
         let b = NativeArray<Double>([4.0, 5.0, 6.0])
 
         let sum = a + b
-        XCTAssertEqual(sum.array, [5.0, 7.0, 9.0])
+        #expect(sum.array == [5.0, 7.0, 9.0])
 
         let diff = b - a
-        XCTAssertEqual(diff.array, [3.0, 3.0, 3.0])
+        #expect(diff.array == [3.0, 3.0, 3.0])
 
         let prod = a * b
-        XCTAssertEqual(prod.array, [4.0, 10.0, 18.0])
+        #expect(prod.array == [4.0, 10.0, 18.0])
 
         let quot = b / a
-        XCTAssertEqual(quot.array, [4.0, 2.5, 2.0])
+        #expect(quot.array == [4.0, 2.5, 2.0])
     }
 
-    func testReductions() {
+    @Test func testReductions() {
         let a = NativeArray<Double>([1.0, 2.0, 3.0, 4.0, 5.0])
-        XCTAssertEqual(a.sum(), 15.0)
-        XCTAssertEqual(a.min(), 1.0)
-        XCTAssertEqual(a.max(), 5.0)
-        XCTAssertEqual(a.mean(), 3.0)
-        XCTAssertEqual(a.std(ddof: 0), sqrt(2.0), accuracy: 1e-10)
+        #expect(a.sum() == 15.0)
+        #expect(a.min() == 1.0)
+        #expect(a.max() == 5.0)
+        #expect(a.mean() == 3.0)
+        #expect(abs(a.std(ddof: 0) - sqrt(2.0)) <= 1e-10)
     }
 
-    func testArgsort() {
+    @Test func testArgsort() {
         let a = NativeArray<Double>([3.0, 1.0, 2.0])
-        XCTAssertEqual(a.argsort(), [1, 2, 0])
-        XCTAssertEqual(a.argsort(ascending: false), [0, 2, 1])
+        #expect(a.argsort() == [1, 2, 0])
+        #expect(a.argsort(ascending: false) == [0, 2, 1])
     }
 
-    func testUnique() {
+    @Test func testUnique() {
         let a = NativeArray<Int>([1, 2, 3, 2, 1])
         let u = a.unique()
-        XCTAssertEqual(u.array, [1, 2, 3])
+        #expect(u.array == [1, 2, 3])
     }
 
-    func testFactorize() {
+    @Test func testFactorize() {
         let a = NativeArray<String>(["cat", "dog", "cat", "bird", "dog"])
         let (codes, uniques) = a.factorize()
-        XCTAssertEqual(codes, [0, 1, 0, 2, 1])
-        XCTAssertEqual(uniques.array, ["cat", "dog", "bird"])
+        #expect(codes == [0, 1, 0, 2, 1])
+        #expect(uniques.array == ["cat", "dog", "bird"])
     }
 
-    func testSlice() {
+    @Test func testSlice() {
         let a = NativeArray<Double>([10.0, 20.0, 30.0, 40.0, 50.0])
         let s = a[1..<4]
-        XCTAssertEqual(s.array, [20.0, 30.0, 40.0])
+        #expect(s.array == [20.0, 30.0, 40.0])
     }
 
-    func testAppend() {
+    @Test func testAppend() {
         var a = NativeArray<Int>([1, 2])
         a.append(3)
-        XCTAssertEqual(a.count, 3)
-        XCTAssertEqual(a[2], 3)
+        #expect(a.count == 3)
+        #expect(a[2] == 3)
     }
 
-    func testCollection() {
+    @Test func testCollection() {
         let a = NativeArray<Int>([1, 2, 3])
         let mapped = a.map { $0 * 2 }
-        XCTAssertEqual(mapped, [2, 4, 6])
+        #expect(mapped == [2, 4, 6])
     }
 }
 
@@ -232,61 +233,61 @@ final class NativeArrayTests: XCTestCase {
 /// - **Bitwise NOT** (`~`): element-wise negation.
 /// - **Large vector**: stress-testing with 1 000 bits to ensure word-boundary
 ///   packing and popcount work at scale.
-final class BitVectorTests: XCTestCase {
-    func testAllValid() {
+@Suite struct BitVectorTests {
+    @Test func testAllValid() {
         let bv = BitVector(repeating: true, count: 100)
-        XCTAssertEqual(bv.popcount, 100)
-        XCTAssertTrue(bv.allValid)
-        XCTAssertEqual(bv.naCount, 0)
+        #expect(bv.popcount == 100)
+        #expect(bv.allValid)
+        #expect(bv.naCount == 0)
     }
 
-    func testAllNA() {
+    @Test func testAllNA() {
         let bv = BitVector(repeating: false, count: 50)
-        XCTAssertEqual(bv.popcount, 0)
-        XCTAssertTrue(bv.allNA)
+        #expect(bv.popcount == 0)
+        #expect(bv.allNA)
     }
 
-    func testFromBools() {
+    @Test func testFromBools() {
         let bv = BitVector([true, false, true, false, true])
-        XCTAssertEqual(bv.popcount, 3)
-        XCTAssertTrue(bv[0])
-        XCTAssertFalse(bv[1])
-        XCTAssertTrue(bv[2])
+        #expect(bv.popcount == 3)
+        #expect(bv[0])
+        #expect(!bv[1])
+        #expect(bv[2])
     }
 
-    func testMutation() {
+    @Test func testMutation() {
         var bv = BitVector(repeating: true, count: 10)
         bv[3] = false
         bv[7] = false
-        XCTAssertEqual(bv.popcount, 8)
-        XCTAssertFalse(bv[3])
-        XCTAssertFalse(bv[7])
+        #expect(bv.popcount == 8)
+        #expect(!bv[3])
+        #expect(!bv[7])
     }
 
-    func testBitwiseAnd() {
+    @Test func testBitwiseAnd() {
         let a = BitVector([true, true, false, false])
         let b = BitVector([true, false, true, false])
         let c = a & b
-        XCTAssertEqual(c.boolArray, [true, false, false, false])
+        #expect(c.boolArray == [true, false, false, false])
     }
 
-    func testBitwiseOr() {
+    @Test func testBitwiseOr() {
         let a = BitVector([true, true, false, false])
         let b = BitVector([true, false, true, false])
         let c = a | b
-        XCTAssertEqual(c.boolArray, [true, true, true, false])
+        #expect(c.boolArray == [true, true, true, false])
     }
 
-    func testBitwiseNot() {
+    @Test func testBitwiseNot() {
         let a = BitVector([true, false, true])
         let b = ~a
-        XCTAssertEqual(b.boolArray, [false, true, false])
+        #expect(b.boolArray == [false, true, false])
     }
 
-    func testLargeBitVector() {
+    @Test func testLargeBitVector() {
         let bv = BitVector(repeating: true, count: 1000)
-        XCTAssertEqual(bv.popcount, 1000)
-        XCTAssertEqual(bv.bitCount, 1000)
+        #expect(bv.popcount == 1000)
+        #expect(bv.bitCount == 1000)
     }
 }
 
@@ -315,65 +316,65 @@ final class BitVectorTests: XCTestCase {
 ///   plus a dense unique-value array.
 /// - **Mutation**: setting a subscript to a non-nil value marks it valid; setting
 ///   it to nil marks it NA.
-final class NullableArrayTests: XCTestCase {
-    func testFromOptionals() {
+@Suite struct NullableArrayTests {
+    @Test func testFromOptionals() {
         let a = NullableArray<Double>([1.0, nil, 3.0, nil, 5.0])
-        XCTAssertEqual(a.count, 5)
-        XCTAssertEqual(a.validCount, 3)
-        XCTAssertEqual(a.naCount, 2)
-        XCTAssertEqual(a[0], 1.0)
-        XCTAssertNil(a[1])
-        XCTAssertEqual(a[2], 3.0)
+        #expect(a.count == 5)
+        #expect(a.validCount == 3)
+        #expect(a.naCount == 2)
+        #expect(a[0] == 1.0)
+        #expect(a[1] == nil)
+        #expect(a[2] == 3.0)
     }
 
-    func testIsNA() {
+    @Test func testIsNA() {
         let a = NullableArray<Double>([1.0, nil, 3.0])
-        XCTAssertEqual(a.isNA(), [false, true, false])
-        XCTAssertEqual(a.notNA(), [true, false, true])
+        #expect(a.isNA() == [false, true, false])
+        #expect(a.notNA() == [true, false, true])
     }
 
-    func testFillNA() {
+    @Test func testFillNA() {
         let a = NullableArray<Double>([1.0, nil, 3.0])
         let filled = a.fillNA(value: 0.0)
-        XCTAssertEqual(filled.array, [1.0, 0.0, 3.0])
+        #expect(filled.array == [1.0, 0.0, 3.0])
     }
 
-    func testDropNA() {
+    @Test func testDropNA() {
         let a = NullableArray<Double>([1.0, nil, 3.0, nil, 5.0])
         let dropped = a.dropNA()
-        XCTAssertEqual(dropped.array, [1.0, 3.0, 5.0])
+        #expect(dropped.array == [1.0, 3.0, 5.0])
     }
 
-    func testArithmeticWithNAPropagation() {
+    @Test func testArithmeticWithNAPropagation() {
         let a = NullableArray<Double>([1.0, nil, 3.0])
         let b = NullableArray<Double>([10.0, 20.0, nil])
         let sum = a + b
-        XCTAssertEqual(sum[0], 11.0)
-        XCTAssertNil(sum[1])   // NA + 20 = NA
-        XCTAssertNil(sum[2])   // 3 + NA = NA
+        #expect(sum[0] == 11.0)
+        #expect(sum[1] == nil)   // NA + 20 = NA
+        #expect(sum[2] == nil)   // 3 + NA = NA
     }
 
-    func testReductions() {
+    @Test func testReductions() {
         let a = NullableArray<Double>([1.0, nil, 3.0, nil, 5.0])
-        XCTAssertEqual(a.sum(), 9.0)
-        XCTAssertEqual(a.mean(), 3.0)
-        XCTAssertEqual(a.min(), 1.0)
-        XCTAssertEqual(a.max(), 5.0)
+        #expect(a.sum() == 9.0)
+        #expect(a.mean() == 3.0)
+        #expect(a.min() == 1.0)
+        #expect(a.max() == 5.0)
     }
 
-    func testFactorize() {
+    @Test func testFactorize() {
         let a = NullableArray<Int64>([1, nil, 2, 1, nil, 2])
         let (codes, uniques) = a.factorize()
-        XCTAssertEqual(codes, [0, -1, 1, 0, -1, 1])
-        XCTAssertEqual(uniques.array, [1, 2])
+        #expect(codes == [0, -1, 1, 0, -1, 1])
+        #expect(uniques.array == [1, 2])
     }
 
-    func testMutation() {
+    @Test func testMutation() {
         var a = NullableArray<Double>([1.0, nil, 3.0])
         a[1] = 2.0
-        XCTAssertEqual(a[1], 2.0)
+        #expect(a[1] == 2.0)
         a[0] = nil
-        XCTAssertNil(a[0])
+        #expect(a[0] == nil)
     }
 }
 
@@ -393,35 +394,35 @@ final class NullableArrayTests: XCTestCase {
 /// - **Unique**: deduplication preserving first-occurrence order.
 /// - **fillNA**: replacing nil positions with a constant string.
 /// - **dropNA**: producing a dense `[String]` with NA positions removed.
-final class StringArrayTests: XCTestCase {
-    func testCreation() {
+@Suite struct StringArrayTests {
+    @Test func testCreation() {
         let a = StringArray(["hello", "world"])
-        XCTAssertEqual(a.count, 2)
-        XCTAssertEqual(a[0], "hello")
+        #expect(a.count == 2)
+        #expect(a[0] == "hello")
     }
 
-    func testWithNAs() {
+    @Test func testWithNAs() {
         let a = StringArray(["a", nil, "c"])
-        XCTAssertEqual(a.validCount, 2)
-        XCTAssertNil(a[1])
-        XCTAssertEqual(a.isNA(), [false, true, false])
+        #expect(a.validCount == 2)
+        #expect(a[1] == nil)
+        #expect(a.isNA() == [false, true, false])
     }
 
-    func testUnique() {
+    @Test func testUnique() {
         let a = StringArray(["a", "b", "a", "c", "b"])
         let u = a.unique()
-        XCTAssertEqual(u.storage, ["a", "b", "c"])
+        #expect(u.storage == ["a", "b", "c"])
     }
 
-    func testFillNA() {
+    @Test func testFillNA() {
         let a = StringArray(["a", nil, "c"])
         let filled = a.fillNA(value: "NA")
-        XCTAssertEqual(filled.storage, ["a", "NA", "c"])
+        #expect(filled.storage == ["a", "NA", "c"])
     }
 
-    func testDropNA() {
+    @Test func testDropNA() {
         let a = StringArray(["a", nil, "c"])
-        XCTAssertEqual(a.dropNA(), ["a", "c"])
+        #expect(a.dropNA() == ["a", "c"])
     }
 }
 
@@ -445,48 +446,48 @@ final class StringArrayTests: XCTestCase {
 /// - **take(indices:)**: reordering or subsetting a column by an array of integer
 ///   positions.
 /// - **Bool column**: factory creation via `Column.fromBools` and dtype check.
-final class ColumnTests: XCTestCase {
-    func testDoubleColumn() {
+@Suite struct ColumnTests {
+    @Test func testDoubleColumn() {
         let col = Column.fromDoubles([1.0, 2.0, 3.0])
-        XCTAssertEqual(col.dtype, .float64)
-        XCTAssertEqual(col.count, 3)
-        XCTAssertTrue(col.isNumeric)
-        XCTAssertEqual(col.sum(), 6.0)
-        XCTAssertEqual(col.mean(), 2.0)
+        #expect(col.dtype == .float64)
+        #expect(col.count == 3)
+        #expect(col.isNumeric)
+        #expect(col.sum() == 6.0)
+        #expect(col.mean() == 2.0)
     }
 
-    func testStringColumn() {
+    @Test func testStringColumn() {
         let col = Column.fromStrings(["a", "b", "c"])
-        XCTAssertEqual(col.dtype, .string)
-        XCTAssertFalse(col.isNumeric)
-        XCTAssertEqual(col.count, 3)
+        #expect(col.dtype == .string)
+        #expect(!col.isNumeric)
+        #expect(col.count == 3)
     }
 
-    func testColumnWithNAs() {
+    @Test func testColumnWithNAs() {
         let col = Column.fromOptionalDoubles([1.0, nil, 3.0])
-        XCTAssertEqual(col.validCount, 2)
-        XCTAssertEqual(col.naCount, 1)
-        XCTAssertEqual(col.formattedValue(at: 1), "NA")
+        #expect(col.validCount == 2)
+        #expect(col.naCount == 1)
+        #expect(col.formattedValue(at: 1) == "NA")
     }
 
-    func testColumnAggregations() {
+    @Test func testColumnAggregations() {
         let col = Column.fromOptionalDoubles([1.0, nil, 3.0, nil, 5.0])
-        XCTAssertEqual(col.sum(), 9.0)
-        XCTAssertEqual(col.mean(), 3.0)
-        XCTAssertEqual(col.min(), 1.0)
-        XCTAssertEqual(col.max(), 5.0)
+        #expect(col.sum() == 9.0)
+        #expect(col.mean() == 3.0)
+        #expect(col.min() == 1.0)
+        #expect(col.max() == 5.0)
     }
 
-    func testTake() {
+    @Test func testTake() {
         let col = Column.fromDoubles([10.0, 20.0, 30.0, 40.0])
         let taken = col.take(indices: [3, 1, 0])
-        XCTAssertEqual(taken.count, 3)
+        #expect(taken.count == 3)
     }
 
-    func testBoolColumn() {
+    @Test func testBoolColumn() {
         let col = Column.fromBools([true, false, true])
-        XCTAssertEqual(col.dtype, .bool)
-        XCTAssertEqual(col.count, 3)
+        #expect(col.dtype == .bool)
+        #expect(col.count == 3)
     }
 }
 
@@ -506,31 +507,31 @@ final class ColumnTests: XCTestCase {
 ///   and uniqueness.
 /// - **Int64Index**: count, label lookup by Int64, `contains` for present and
 ///   absent labels.
-final class IndexTests: XCTestCase {
-    func testRangeIndex() {
+@Suite struct IndexTests {
+    @Test func testRangeIndex() {
         let idx = RangeIndex(10)
-        XCTAssertEqual(idx.count, 10)
-        XCTAssertEqual(idx[0], 0)
-        XCTAssertEqual(idx[9], 9)
-        XCTAssertEqual(idx.getLocation(of: 5), 5)
-        XCTAssertNil(idx.getLocation(of: 10))
-        XCTAssertTrue(idx.isUnique)
+        #expect(idx.count == 10)
+        #expect(idx[0] == 0)
+        #expect(idx[9] == 9)
+        #expect(idx.getLocation(of: 5) == 5)
+        #expect(idx.getLocation(of: 10) == nil)
+        #expect(idx.isUnique)
     }
 
-    func testStringIndex() {
+    @Test func testStringIndex() {
         let idx = StringIndex(["a", "b", "c"])
-        XCTAssertEqual(idx.count, 3)
-        XCTAssertEqual(idx.getLocation(of: "b"), 1)
-        XCTAssertNil(idx.getLocation(of: "d"))
-        XCTAssertTrue(idx.isUnique)
+        #expect(idx.count == 3)
+        #expect(idx.getLocation(of: "b") == 1)
+        #expect(idx.getLocation(of: "d") == nil)
+        #expect(idx.isUnique)
     }
 
-    func testInt64Index() {
+    @Test func testInt64Index() {
         let idx = Int64Index([10, 20, 30])
-        XCTAssertEqual(idx.count, 3)
-        XCTAssertEqual(idx.getLocation(of: 20), 1)
-        XCTAssertTrue(idx.contains(30))
-        XCTAssertFalse(idx.contains(40))
+        #expect(idx.count == 3)
+        #expect(idx.getLocation(of: 20) == 1)
+        #expect(idx.contains(30))
+        #expect(!idx.contains(40))
     }
 }
 
@@ -557,309 +558,309 @@ final class IndexTests: XCTestCase {
 /// - **valueCounts**: frequency table as a new Series.
 /// - **sortValues**: ascending sort with iloc verification.
 /// - **describe**: 8-row summary (count, mean, std, min, 25%, 50%, 75%, max).
-final class SeriesTests: XCTestCase {
+@Suite struct SeriesTests {
 
     // MARK: - Construction
 
-    func testCreation() {
+    @Test func testCreation() {
         let s = Series([1.0, 2.0, 3.0], name: "values")
-        XCTAssertEqual(s.count, 3)
-        XCTAssertEqual(s.name, "values")
-        XCTAssertEqual(s.dtype, .float64)
+        #expect(s.count == 3)
+        #expect(s.name == "values")
+        #expect(s.dtype == .float64)
     }
 
-    func testFromDict() {
+    @Test func testFromDict() {
         let s = Series(["a": 1.0, "b": 2.0, "c": 3.0])
-        XCTAssertEqual(s.count, 3)
-        XCTAssertEqual(s.loc("b") as? Double, 2.0)
+        #expect(s.count == 3)
+        #expect(s.loc("b") as? Double == 2.0)
     }
 
     // MARK: - Aggregations & Statistics
 
-    func testAggregations() {
+    @Test func testAggregations() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
-        XCTAssertEqual(s.sum(), 15.0)
-        XCTAssertEqual(s.mean(), 3.0)
-        XCTAssertEqual(s.min(), 1.0)
-        XCTAssertEqual(s.max(), 5.0)
+        #expect(s.sum() == 15.0)
+        #expect(s.mean() == 3.0)
+        #expect(s.min() == 1.0)
+        #expect(s.max() == 5.0)
     }
 
-    func testMedianOdd() {
+    @Test func testMedianOdd() {
         let s = Series([3.0, 1.0, 2.0, 5.0, 4.0])
-        XCTAssertEqual(s.median(), 3.0)
+        #expect(s.median() == 3.0)
     }
 
-    func testMedianEven() {
+    @Test func testMedianEven() {
         let s = Series([1.0, 2.0, 3.0, 4.0])
-        XCTAssertEqual(s.median(), 2.5)
+        #expect(s.median() == 2.5)
     }
 
-    func testMedianWithNA() {
+    @Test func testMedianWithNA() {
         let s = Series([1.0, nil, 3.0, nil, 5.0])
-        XCTAssertEqual(s.median(), 3.0) // median of [1, 3, 5]
+        #expect(s.median() == 3.0) // median of [1, 3, 5]
     }
 
-    func testQuantile() {
+    @Test func testQuantile() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
-        XCTAssertEqual(s.quantile(0.0), 1.0)
-        XCTAssertEqual(s.quantile(0.5), 3.0)
-        XCTAssertEqual(s.quantile(1.0), 5.0)
-        XCTAssertEqual(s.quantile(0.25)!, 2.0, accuracy: 0.01)
-        XCTAssertEqual(s.quantile(0.75)!, 4.0, accuracy: 0.01)
+        #expect(s.quantile(0.0) == 1.0)
+        #expect(s.quantile(0.5) == 3.0)
+        #expect(s.quantile(1.0) == 5.0)
+        #expect(abs(s.quantile(0.25)! - 2.0) <= 0.01)
+        #expect(abs(s.quantile(0.75)! - 4.0) <= 0.01)
     }
 
-    func testDescribe() {
+    @Test func testDescribe() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let desc = s.describe()
-        XCTAssertEqual(desc.count, 8) // count, mean, std, min, 25%, 50%, 75%, max
-        XCTAssertEqual(desc.index, ["count", "mean", "std", "min", "25%", "50%", "75%", "max"])
-        XCTAssertEqual(desc.loc("50%") as? Double, 3.0)
+        #expect(desc.count == 8) // count, mean, std, min, 25%, 50%, 75%, max
+        #expect(desc.index == ["count", "mean", "std", "min", "25%", "50%", "75%", "max"])
+        #expect(desc.loc("50%") as? Double == 3.0)
     }
 
-    func testDataFrameMedian() {
+    @Test func testDataFrameMedian() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0], "b": [10.0, 20.0, 30.0]])
         let med = df.median()
-        XCTAssertEqual(med.loc("a") as? Double, 2.0)
-        XCTAssertEqual(med.loc("b") as? Double, 20.0)
+        #expect(med.loc("a") as? Double == 2.0)
+        #expect(med.loc("b") as? Double == 20.0)
     }
 
     // MARK: - NA Handling
 
-    func testNAHandling() {
+    @Test func testNAHandling() {
         let s = Series([1.0, nil, 3.0, nil, 5.0])
-        XCTAssertEqual(s.count, 5)
-        XCTAssertEqual(s.validCount, 3)
-        XCTAssertEqual(s.naCount, 2)
-        XCTAssertEqual(s.sum(), 9.0)
+        #expect(s.count == 5)
+        #expect(s.validCount == 3)
+        #expect(s.naCount == 2)
+        #expect(s.sum() == 9.0)
     }
 
-    func testDropNA() {
+    @Test func testDropNA() {
         let s = Series([1.0, nil, 3.0])
         let dropped = s.dropNA()
-        XCTAssertEqual(dropped.count, 2)
+        #expect(dropped.count == 2)
     }
 
-    func testFillNA() {
+    @Test func testFillNA() {
         let s = Series([1.0, nil, 3.0])
         let filled = s.fillNA(0.0)
-        XCTAssertEqual(filled.sum(), 4.0)
-        XCTAssertEqual(filled.naCount, 0)
+        #expect(filled.sum() == 4.0)
+        #expect(filled.naCount == 0)
     }
 
-    func testHeadTail() {
+    @Test func testHeadTail() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
-        XCTAssertEqual(s.head(3).count, 3)
-        XCTAssertEqual(s.tail(2).count, 2)
+        #expect(s.head(3).count == 3)
+        #expect(s.tail(2).count == 2)
     }
 
     // MARK: - Arithmetic
 
-    func testArithmetic() {
+    @Test func testArithmetic() {
         let a = Series([1.0, 2.0, 3.0])
         let b = Series([4.0, 5.0, 6.0])
         let sum = a + b
-        XCTAssertEqual(sum.sum(), 21.0)
+        #expect(sum.sum() == 21.0)
     }
 
-    func testScalarArithmetic() {
+    @Test func testScalarArithmetic() {
         let s = Series([1.0, 2.0, 3.0])
         let doubled = s * 2.0
-        XCTAssertEqual(doubled.sum(), 12.0)
+        #expect(doubled.sum() == 12.0)
     }
 
-    func testSubtractScalar() {
+    @Test func testSubtractScalar() {
         let s = Series([10.0, 20.0, 30.0])
         let result = s - 5.0
-        XCTAssertEqual(result.sum(), 45.0) // 5 + 15 + 25
+        #expect(result.sum() == 45.0) // 5 + 15 + 25
     }
 
-    func testDivideScalar() {
+    @Test func testDivideScalar() {
         let s = Series([10.0, 20.0, 30.0])
         let result = s / 10.0
-        XCTAssertEqual(result.sum(), 6.0) // 1 + 2 + 3
+        #expect(result.sum() == 6.0) // 1 + 2 + 3
     }
 
-    func testScalarArithmeticWithNA() {
+    @Test func testScalarArithmeticWithNA() {
         let s = Series([10.0, nil, 30.0])
         let result = s - 5.0
-        XCTAssertEqual(result.iloc(0) as? Double, 5.0)
-        XCTAssertNil(result.iloc(1) as? Double)
-        XCTAssertEqual(result.iloc(2) as? Double, 25.0)
+        #expect(result.iloc(0) as? Double == 5.0)
+        #expect(result.iloc(1) as? Double == nil)
+        #expect(result.iloc(2) as? Double == 25.0)
     }
 
     // MARK: - Cumulative Operations
 
-    func testCumsum() {
+    @Test func testCumsum() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let cs = s.cumsum()
-        XCTAssertEqual(cs.iloc(0) as? Double, 1.0)
-        XCTAssertEqual(cs.iloc(1) as? Double, 3.0)
-        XCTAssertEqual(cs.iloc(2) as? Double, 6.0)
-        XCTAssertEqual(cs.iloc(3) as? Double, 10.0)
-        XCTAssertEqual(cs.iloc(4) as? Double, 15.0)
+        #expect(cs.iloc(0) as? Double == 1.0)
+        #expect(cs.iloc(1) as? Double == 3.0)
+        #expect(cs.iloc(2) as? Double == 6.0)
+        #expect(cs.iloc(3) as? Double == 10.0)
+        #expect(cs.iloc(4) as? Double == 15.0)
     }
 
-    func testCumsumWithNA() {
+    @Test func testCumsumWithNA() {
         let s = Series([1.0, nil, 3.0, nil, 5.0])
         let cs = s.cumsum()
-        XCTAssertEqual(cs.iloc(0) as? Double, 1.0)
-        XCTAssertNil(cs.iloc(1) as? Double) // NA stays NA
-        XCTAssertEqual(cs.iloc(2) as? Double, 4.0)
-        XCTAssertNil(cs.iloc(3) as? Double)
-        XCTAssertEqual(cs.iloc(4) as? Double, 9.0)
+        #expect(cs.iloc(0) as? Double == 1.0)
+        #expect(cs.iloc(1) as? Double == nil) // NA stays NA
+        #expect(cs.iloc(2) as? Double == 4.0)
+        #expect(cs.iloc(3) as? Double == nil)
+        #expect(cs.iloc(4) as? Double == 9.0)
     }
 
     // MARK: - Comparison Operators
 
-    func testGreaterThan() {
+    @Test func testGreaterThan() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let mask = s > 3.0
-        XCTAssertEqual(mask, [false, false, false, true, true])
+        #expect(mask == [false, false, false, true, true])
     }
 
-    func testGreaterThanOrEqual() {
+    @Test func testGreaterThanOrEqual() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let mask = s >= 3.0
-        XCTAssertEqual(mask, [false, false, true, true, true])
+        #expect(mask == [false, false, true, true, true])
     }
 
-    func testLessThan() {
+    @Test func testLessThan() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let mask = s < 3.0
-        XCTAssertEqual(mask, [true, true, false, false, false])
+        #expect(mask == [true, true, false, false, false])
     }
 
-    func testLessThanOrEqual() {
+    @Test func testLessThanOrEqual() {
         let s = Series([1.0, 2.0, 3.0, 4.0, 5.0])
         let mask = s <= 3.0
-        XCTAssertEqual(mask, [true, true, true, false, false])
+        #expect(mask == [true, true, true, false, false])
     }
 
-    func testComparisonWithNA() {
+    @Test func testComparisonWithNA() {
         let s = Series([1.0, nil, 3.0, nil, 5.0])
         let mask = s > 2.0
-        XCTAssertEqual(mask, [false, false, true, false, true]) // NAs produce false
+        #expect(mask == [false, false, true, false, true]) // NAs produce false
     }
 
-    func testEqDouble() {
+    @Test func testEqDouble() {
         let s = Series([1.0, 2.0, 3.0, 2.0, 1.0])
         let mask = s.eq(2.0)
-        XCTAssertEqual(mask, [false, true, false, true, false])
+        #expect(mask == [false, true, false, true, false])
     }
 
-    func testNeDouble() {
+    @Test func testNeDouble() {
         let s = Series([1.0, 2.0, 3.0])
         let mask = s.ne(2.0)
-        XCTAssertEqual(mask, [true, false, true])
+        #expect(mask == [true, false, true])
     }
 
-    func testEqString() {
+    @Test func testEqString() {
         let s = Series(["a", "b", "c", "b"])
         let mask = s.eq("b")
-        XCTAssertEqual(mask, [false, true, false, true])
+        #expect(mask == [false, true, false, true])
     }
 
-    func testNeString() {
+    @Test func testNeString() {
         let s = Series(["a", "b", "c"])
         let mask = s.ne("b")
-        XCTAssertEqual(mask, [true, false, true])
+        #expect(mask == [true, false, true])
     }
 
-    func testStrContains() {
+    @Test func testStrContains() {
         let s = Series(["hello", "world", "help", "foo"])
         let mask = s.strContains("hel")
-        XCTAssertEqual(mask, [true, false, true, false])
+        #expect(mask == [true, false, true, false])
     }
 
-    func testStrContainsWithNA() {
+    @Test func testStrContainsWithNA() {
         let s = Series(["hello", nil, "help", nil] as [String?])
         let mask = s.strContains("hel")
-        XCTAssertEqual(mask, [true, false, true, false]) // NAs produce false
+        #expect(mask == [true, false, true, false]) // NAs produce false
     }
 
     // MARK: - Apply & Map
 
-    func testApply() {
+    @Test func testApply() {
         let s = Series([1.0, 4.0, 9.0, 16.0])
         let sqrts = s.apply { $0.squareRoot() }
-        XCTAssertEqual(sqrts.iloc(0) as? Double, 1.0)
-        XCTAssertEqual(sqrts.iloc(1) as? Double, 2.0)
-        XCTAssertEqual(sqrts.iloc(2) as? Double, 3.0)
-        XCTAssertEqual(sqrts.iloc(3) as? Double, 4.0)
+        #expect(sqrts.iloc(0) as? Double == 1.0)
+        #expect(sqrts.iloc(1) as? Double == 2.0)
+        #expect(sqrts.iloc(2) as? Double == 3.0)
+        #expect(sqrts.iloc(3) as? Double == 4.0)
     }
 
-    func testApplyWithNA() {
+    @Test func testApplyWithNA() {
         let s = Series([1.0, nil, 9.0])
         let result = s.apply { $0 * 2 }
-        XCTAssertEqual(result.iloc(0) as? Double, 2.0)
-        XCTAssertNil(result.iloc(1) as? Double) // NA stays NA
-        XCTAssertEqual(result.iloc(2) as? Double, 18.0)
+        #expect(result.iloc(0) as? Double == 2.0)
+        #expect(result.iloc(1) as? Double == nil) // NA stays NA
+        #expect(result.iloc(2) as? Double == 18.0)
     }
 
-    func testMapDouble() {
+    @Test func testMapDouble() {
         let s = Series([1.0, 2.0, 3.0, 2.0])
         let mapped = s.map([1.0: 10.0, 2.0: 20.0, 3.0: 30.0])
-        XCTAssertEqual(mapped.sum(), 80.0) // 10 + 20 + 30 + 20
+        #expect(mapped.sum() == 80.0) // 10 + 20 + 30 + 20
     }
 
-    func testMapString() {
+    @Test func testMapString() {
         let s = Series(["a", "b", "c", "a"])
         let mapped = s.map(["a": "alpha", "b": "beta"])
-        XCTAssertEqual(mapped.iloc(0) as? String, "alpha")
-        XCTAssertEqual(mapped.iloc(1) as? String, "beta")
-        XCTAssertEqual(mapped.naCount, 1) // only "c" unmapped
+        #expect(mapped.iloc(0) as? String == "alpha")
+        #expect(mapped.iloc(1) as? String == "beta")
+        #expect(mapped.naCount == 1) // only "c" unmapped
     }
 
-    func testMapStringUnmappedBecomesNA() {
+    @Test func testMapStringUnmappedBecomesNA() {
         let s = Series(["x", "y", "z"])
         let mapped = s.map(["x": "X"])
-        XCTAssertEqual(mapped.iloc(0) as? String, "X")
-        XCTAssertEqual(mapped.naCount, 2) // y, z not in mapping
+        #expect(mapped.iloc(0) as? String == "X")
+        #expect(mapped.naCount == 2) // y, z not in mapping
     }
 
     // MARK: - Unique & Duplicates
 
-    func testValueCounts() {
+    @Test func testValueCounts() {
         let s = Series(["a", "b", "a", "c", "b", "a"])
         let vc = s.valueCounts()
-        XCTAssertEqual(vc.count, 3)
+        #expect(vc.count == 3)
     }
 
-    func testSortValues() {
+    @Test func testSortValues() {
         let s = Series([3.0, 1.0, 2.0])
         let sorted = s.sortValues()
-        XCTAssertEqual(sorted.iloc(0) as? Double, 1.0)
-        XCTAssertEqual(sorted.iloc(2) as? Double, 3.0)
+        #expect(sorted.iloc(0) as? Double == 1.0)
+        #expect(sorted.iloc(2) as? Double == 3.0)
     }
 
-    func testSeriesDuplicated() {
+    @Test func testSeriesDuplicated() {
         let s = Series([1.0, 2.0, 3.0, 2.0, 1.0])
         let dupes = s.duplicated()
-        XCTAssertEqual(dupes, [false, false, false, true, true])
+        #expect(dupes == [false, false, false, true, true])
     }
 
-    func testSeriesDropDuplicates() {
+    @Test func testSeriesDropDuplicates() {
         let s = Series([1.0, 2.0, 3.0, 2.0, 1.0])
         let unique = s.dropDuplicates()
-        XCTAssertEqual(unique.count, 3)
-        XCTAssertEqual(unique.sum(), 6.0) // 1 + 2 + 3
+        #expect(unique.count == 3)
+        #expect(unique.sum() == 6.0) // 1 + 2 + 3
     }
 
-    func testSeriesNUnique() {
+    @Test func testSeriesNUnique() {
         let s = Series([1.0, 2.0, 3.0, 2.0, 1.0])
-        XCTAssertEqual(s.nUnique, 3)
+        #expect(s.nUnique == 3)
     }
 
-    func testSeriesUnique() {
+    @Test func testSeriesUnique() {
         let s = Series(["a", "b", "c", "b", "a"])
         let unique = s.unique()
-        XCTAssertEqual(unique.count, 3)
+        #expect(unique.count == 3)
     }
 
-    func testStringDuplicated() {
+    @Test func testStringDuplicated() {
         let s = Series(["hello", "world", "hello"])
         let dupes = s.duplicated()
-        XCTAssertEqual(dupes, [false, false, true])
+        #expect(dupes == [false, false, true])
     }
 }
 
@@ -888,150 +889,150 @@ final class SeriesTests: XCTestCase {
 /// - **rename**: column renaming via a mapping dictionary.
 /// - **concat**: vertical stacking of DataFrames with matching schemas.
 /// - **description**: textual representation containing column names.
-final class DataFrameTests: XCTestCase {
+@Suite struct DataFrameTests {
 
     // MARK: - Construction
 
-    func testCreation() {
+    @Test func testCreation() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0], "b": [4.0, 5.0, 6.0]])
-        XCTAssertEqual(df.shape.rows, 3)
-        XCTAssertEqual(df.shape.columns, 2)
+        #expect(df.shape.rows == 3)
+        #expect(df.shape.columns == 2)
     }
 
-    func testFromRecords() {
+    @Test func testFromRecords() {
         let records: [[String: Double]] = [
             ["name_len": 3, "age": 25],
             ["name_len": 5, "age": 30],
         ]
         let df = DataFrame(records: records)
-        XCTAssertEqual(df.rowCount, 2)
-        XCTAssertEqual(df.columnCount, 2)
+        #expect(df.rowCount == 2)
+        #expect(df.columnCount == 2)
     }
 
     // MARK: - Column Access & Mutation
 
-    func testColumnAccess() {
+    @Test func testColumnAccess() {
         let df = DataFrame(["x": [1.0, 2.0], "y": [3.0, 4.0]])
         let s = df["x"]
-        XCTAssertEqual(s.sum(), 3.0)
-        XCTAssertEqual(s.name, "x")
+        #expect(s.sum() == 3.0)
+        #expect(s.name == "x")
     }
 
-    func testColumnAssignment() {
+    @Test func testColumnAssignment() {
         var df = DataFrame(["a": [1.0, 2.0, 3.0]])
         df["b"] = Series([4.0, 5.0, 6.0])
-        XCTAssertEqual(df.columnCount, 2)
-        XCTAssertEqual(df["b"].sum(), 15.0)
+        #expect(df.columnCount == 2)
+        #expect(df["b"].sum() == 15.0)
     }
 
-    func testSelectColumns() {
+    @Test func testSelectColumns() {
         let df = DataFrame(["a": [1.0], "b": [2.0], "c": [3.0]])
         let sub = df.select(columns: ["a", "c"])
-        XCTAssertEqual(sub.columnCount, 2)
-        XCTAssertEqual(sub.columnNames, ["a", "c"])
+        #expect(sub.columnCount == 2)
+        #expect(sub.columnNames == ["a", "c"])
     }
 
-    func testDropColumns() {
+    @Test func testDropColumns() {
         let df = DataFrame(["a": [1.0], "b": [2.0], "c": [3.0]])
         let sub = df.drop(columns: ["b"])
-        XCTAssertEqual(sub.columnCount, 2)
-        XCTAssertFalse(sub.columnNames.contains("b"))
+        #expect(sub.columnCount == 2)
+        #expect(!sub.columnNames.contains("b"))
     }
 
-    func testRename() {
+    @Test func testRename() {
         let df = DataFrame(["old": [1.0, 2.0]])
         let renamed = df.rename(columns: ["old": "new"])
-        XCTAssertTrue(renamed.columnNames.contains("new"))
-        XCTAssertFalse(renamed.columnNames.contains("old"))
+        #expect(renamed.columnNames.contains("new"))
+        #expect(!renamed.columnNames.contains("old"))
     }
 
     // MARK: - Row Access
 
-    func testIloc() {
+    @Test func testIloc() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0, 4.0, 5.0]])
         let sliced = df.iloc(1..<4)
-        XCTAssertEqual(sliced.rowCount, 3)
+        #expect(sliced.rowCount == 3)
     }
 
-    func testHeadTail() {
+    @Test func testHeadTail() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0, 4.0, 5.0]])
-        XCTAssertEqual(df.head(3).rowCount, 3)
-        XCTAssertEqual(df.tail(2).rowCount, 2)
+        #expect(df.head(3).rowCount == 3)
+        #expect(df.tail(2).rowCount == 2)
     }
 
-    func testLocSingleRow() {
+    @Test func testLocSingleRow() {
         let df = DataFrame(
             columns: [("a", Column.fromDoubles([10.0, 20.0, 30.0]))],
             index: ["x", "y", "z"]
         )
         let row = df.loc("y")
-        XCTAssertNotNil(row)
-        XCTAssertEqual(row?["a"] as? Double, 20.0)
+        #expect(row != nil)
+        #expect(row?["a"] as? Double == 20.0)
     }
 
-    func testLocMultipleRows() {
+    @Test func testLocMultipleRows() {
         let df = DataFrame(
             columns: [("a", Column.fromDoubles([10.0, 20.0, 30.0, 40.0]))],
             index: ["w", "x", "y", "z"]
         )
         let sub = df.loc(["x", "z"])
-        XCTAssertEqual(sub.rowCount, 2)
-        XCTAssertEqual(sub["a"].sum(), 60.0) // 20 + 40
+        #expect(sub.rowCount == 2)
+        #expect(sub["a"].sum() == 60.0) // 20 + 40
     }
 
-    func testLocMissingLabel() {
+    @Test func testLocMissingLabel() {
         let df = DataFrame(
             columns: [("a", Column.fromDoubles([10.0]))],
             index: ["x"]
         )
-        XCTAssertNil(df.loc("missing"))
+        #expect(df.loc("missing") == nil)
     }
 
     // MARK: - Filtering
 
-    func testFilterByMask() {
+    @Test func testFilterByMask() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0, 4.0]])
         let mask = [true, false, true, false]
         let filtered = df.filter(mask: mask)
-        XCTAssertEqual(filtered.rowCount, 2)
+        #expect(filtered.rowCount == 2)
     }
 
-    func testSubscriptWithMask() {
+    @Test func testSubscriptWithMask() {
         let df = DataFrame(["age": [25.0, 35.0, 28.0, 40.0]])
         let result = df[df["age"] > 30.0]
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 
-    func testPandasStyleFiltering() {
+    @Test func testPandasStyleFiltering() {
         let df = DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie"])),
             ("score", Column.fromDoubles([85.0, 92.0, 78.0])),
         ])
         let passed = df[df["score"] >= 80.0]
-        XCTAssertEqual(passed.rowCount, 2)
+        #expect(passed.rowCount == 2)
 
         let bobs = df[df["name"].eq("Bob")]
-        XCTAssertEqual(bobs.rowCount, 1)
-        XCTAssertEqual(bobs["score"].iloc(0) as? Double, 92.0)
+        #expect(bobs.rowCount == 1)
+        #expect(bobs["score"].iloc(0) as? Double == 92.0)
     }
 
-    func testDataFrameFilterWithComparison() {
+    @Test func testDataFrameFilterWithComparison() {
         let df = DataFrame(["name_len": [3.0, 5.0, 4.0, 6.0], "age": [25.0, 35.0, 28.0, 40.0]])
         let filtered = df[df["age"] > 30.0]
-        XCTAssertEqual(filtered.rowCount, 2)
-        XCTAssertEqual(filtered["age"].min(), 35.0)
+        #expect(filtered.rowCount == 2)
+        #expect(filtered["age"].min() == 35.0)
     }
 
     // MARK: - Sorting
 
-    func testSortValues() {
+    @Test func testSortValues() {
         let df = DataFrame(["a": [3.0, 1.0, 2.0], "b": [30.0, 10.0, 20.0]])
         let sorted = df.sortValues(by: "a")
-        XCTAssertEqual(sorted["a"].iloc(0) as? Double, 1.0)
-        XCTAssertEqual(sorted["b"].iloc(0) as? Double, 10.0)
+        #expect(sorted["a"].iloc(0) as? Double == 1.0)
+        #expect(sorted["b"].iloc(0) as? Double == 10.0)
     }
 
-    func testSortByMultipleColumns() {
+    @Test func testSortByMultipleColumns() {
         let df = DataFrame(columns: [
             ("dept", Column.fromStrings(["A", "B", "A", "B"])),
             ("salary", Column.fromDoubles([50.0, 60.0, 70.0, 40.0])),
@@ -1039,82 +1040,82 @@ final class DataFrameTests: XCTestCase {
         let sorted = df.sortValues(by: ["dept", "salary"], ascending: [true, false])
         // A rows first (sorted by salary desc): 70, 50
         // B rows next (sorted by salary desc): 60, 40
-        XCTAssertEqual(sorted.columns["dept"]!.formattedValue(at: 0), "A")
-        XCTAssertEqual(sorted["salary"].iloc(0) as? Double, 70.0)
-        XCTAssertEqual(sorted["salary"].iloc(1) as? Double, 50.0)
-        XCTAssertEqual(sorted.columns["dept"]!.formattedValue(at: 2), "B")
-        XCTAssertEqual(sorted["salary"].iloc(2) as? Double, 60.0)
-        XCTAssertEqual(sorted["salary"].iloc(3) as? Double, 40.0)
+        #expect(sorted.columns["dept"]!.formattedValue(at: 0) == "A")
+        #expect(sorted["salary"].iloc(0) as? Double == 70.0)
+        #expect(sorted["salary"].iloc(1) as? Double == 50.0)
+        #expect(sorted.columns["dept"]!.formattedValue(at: 2) == "B")
+        #expect(sorted["salary"].iloc(2) as? Double == 60.0)
+        #expect(sorted["salary"].iloc(3) as? Double == 40.0)
     }
 
-    func testSortByMultipleColumnsDefaultAscending() {
+    @Test func testSortByMultipleColumnsDefaultAscending() {
         let df = DataFrame(columns: [
             ("a", Column.fromDoubles([2.0, 1.0, 2.0, 1.0])),
             ("b", Column.fromDoubles([30.0, 10.0, 20.0, 40.0])),
         ])
         let sorted = df.sortValues(by: ["a", "b"])
         // a=1 rows first (b asc): 10, 40; then a=2 rows: 20, 30
-        XCTAssertEqual(sorted["a"].iloc(0) as? Double, 1.0)
-        XCTAssertEqual(sorted["b"].iloc(0) as? Double, 10.0)
-        XCTAssertEqual(sorted["a"].iloc(1) as? Double, 1.0)
-        XCTAssertEqual(sorted["b"].iloc(1) as? Double, 40.0)
+        #expect(sorted["a"].iloc(0) as? Double == 1.0)
+        #expect(sorted["b"].iloc(0) as? Double == 10.0)
+        #expect(sorted["a"].iloc(1) as? Double == 1.0)
+        #expect(sorted["b"].iloc(1) as? Double == 40.0)
     }
 
     // MARK: - Aggregations
 
-    func testAggregations() {
+    @Test func testAggregations() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0], "b": [4.0, 5.0, 6.0]])
-        XCTAssertEqual(df.sum().sum(), 21.0)
-        XCTAssertEqual(df.mean().sum(), 7.0) // mean(a)=2 + mean(b)=5 = 7
+        #expect(df.sum().sum() == 21.0)
+        #expect(df.mean().sum() == 7.0) // mean(a)=2 + mean(b)=5 = 7
     }
 
-    func testDescribe() {
+    @Test func testDescribe() {
         let df = DataFrame(["a": [1.0, 2.0, 3.0], "b": [4.0, 5.0, 6.0]])
         let desc = df.describe()
-        XCTAssertEqual(desc.rowCount, 8) // count, mean, std, min, 25%, 50%, 75%, max
-        XCTAssertEqual(desc.columnCount, 2)
+        #expect(desc.rowCount == 8) // count, mean, std, min, 25%, 50%, 75%, max
+        #expect(desc.columnCount == 2)
     }
 
     // MARK: - Duplicates
 
-    func testDataFrameDuplicated() {
+    @Test func testDataFrameDuplicated() {
         let df = DataFrame(columns: [
             ("a", Column.fromDoubles([1.0, 2.0, 1.0, 2.0])),
             ("b", Column.fromStrings(["x", "y", "x", "z"])),
         ])
         let dupes = df.duplicated()
-        XCTAssertEqual(dupes, [false, false, true, false]) // row 2 duplicates row 0
+        #expect(dupes == [false, false, true, false]) // row 2 duplicates row 0
     }
 
-    func testDataFrameDropDuplicates() {
+    @Test func testDataFrameDropDuplicates() {
         let df = DataFrame(columns: [
             ("a", Column.fromDoubles([1.0, 2.0, 1.0, 2.0])),
             ("b", Column.fromStrings(["x", "y", "x", "z"])),
         ])
         let deduped = df.dropDuplicates()
-        XCTAssertEqual(deduped.rowCount, 3)
+        #expect(deduped.rowCount == 3)
     }
 
-    func testDataFrameDropDuplicatesSubset() {
+    @Test func testDataFrameDropDuplicatesSubset() {
         let df = DataFrame(columns: [
             ("a", Column.fromDoubles([1.0, 2.0, 1.0, 3.0])),
             ("b", Column.fromStrings(["x", "y", "z", "x"])),
         ])
         let deduped = df.dropDuplicates(subset: ["a"])
-        XCTAssertEqual(deduped.rowCount, 3) // 1.0, 2.0, 3.0
+        #expect(deduped.rowCount == 3) // 1.0, 2.0, 3.0
     }
 
     // MARK: - Concat
 
-    func testConcat() {
+    @Test func testConcat() {
         let df1 = DataFrame(["a": [1.0, 2.0]])
         let df2 = DataFrame(["a": [3.0, 4.0]])
         let combined = DataFrame.concat([df1, df2])
-        XCTAssertEqual(combined.rowCount, 4)
-        XCTAssertEqual(combined["a"].sum(), 10.0)
+        #expect(combined.rowCount == 4)
+        #expect(combined["a"].sum() == 10.0)
     }
 
-    func testConcatWithStringColumns() {
+    @Test func testConcatWithStringColumns() {
         let df1 = DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob"])),
             ("score", Column.fromDoubles([90.0, 80.0])),
@@ -1124,12 +1125,12 @@ final class DataFrameTests: XCTestCase {
             ("score", Column.fromDoubles([70.0])),
         ])
         let combined = DataFrame.concat([df1, df2])
-        XCTAssertEqual(combined.rowCount, 3)
-        XCTAssertEqual(combined["name"].iloc(2) as? String, "Charlie")
-        XCTAssertEqual(combined["score"].sum(), 240.0)
+        #expect(combined.rowCount == 3)
+        #expect(combined["name"].iloc(2) as? String == "Charlie")
+        #expect(combined["score"].sum() == 240.0)
     }
 
-    func testConcatMixedTypes() {
+    @Test func testConcatMixedTypes() {
         let df1 = DataFrame(columns: [
             ("id", Column.fromStrings(["a", "b"])),
             ("val", Column.fromDoubles([1.0, 2.0])),
@@ -1139,18 +1140,18 @@ final class DataFrameTests: XCTestCase {
             ("val", Column.fromDoubles([3.0])),
         ])
         let combined = DataFrame.concat([df1, df2])
-        XCTAssertEqual(combined.rowCount, 3)
-        XCTAssertEqual(combined.columns["id"]!.dtype, .string)
-        XCTAssertEqual(combined.columns["val"]!.dtype, .float64)
+        #expect(combined.rowCount == 3)
+        #expect(combined.columns["id"]!.dtype == .string)
+        #expect(combined.columns["val"]!.dtype == .float64)
     }
 
     // MARK: - Description
 
-    func testDescription() {
+    @Test func testDescription() {
         let df = DataFrame(["a": [1.0, 2.0], "b": [3.0, 4.0]])
         let desc = df.description
-        XCTAssertTrue(desc.contains("a"))
-        XCTAssertTrue(desc.contains("b"))
+        #expect(desc.contains("a"))
+        #expect(desc.contains("b"))
     }
 }
 
@@ -1168,62 +1169,62 @@ final class DataFrameTests: XCTestCase {
 ///   totals (A: 1+3+5=9, B: 2+4=6).
 /// - **mean**: two groups with known means.
 /// - **count**: verifying the number of rows per group.
-final class GroupByTests: XCTestCase {
+@Suite struct GroupByTests {
 
     // MARK: - Single-Column GroupBy
 
-    func testGroupBySum() {
+    @Test func testGroupBySum() {
         let df = DataFrame(columns: [
             ("category", Column.fromStrings(["A", "B", "A", "B", "A"])),
             ("value", Column.fromDoubles([1.0, 2.0, 3.0, 4.0, 5.0])),
         ])
         let result = df.groupBy("category").sum()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
         // A: 1+3+5=9, B: 2+4=6
     }
 
-    func testGroupByMean() {
+    @Test func testGroupByMean() {
         let df = DataFrame(columns: [
             ("group", Column.fromStrings(["X", "Y", "X", "Y"])),
             ("score", Column.fromDoubles([10.0, 20.0, 30.0, 40.0])),
         ])
         let result = df.groupBy("group").mean()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 
-    func testGroupByCount() {
+    @Test func testGroupByCount() {
         let df = DataFrame(columns: [
             ("type", Column.fromStrings(["A", "B", "A", "A"])),
             ("val", Column.fromDoubles([1.0, 2.0, 3.0, 4.0])),
         ])
         let result = df.groupBy("type").count()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 
-    func testGroupBySumValues() {
+    @Test func testGroupBySumValues() {
         let df = DataFrame(columns: [
             ("group", Column.fromStrings(["A", "B", "A"])),
             ("val", Column.fromDoubles([10.0, 20.0, 30.0])),
         ])
         let result = df.groupBy("group").sum()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
         let aIdx = result.indexLabels.firstIndex(of: "A")!
-        XCTAssertEqual(result["val"].iloc(aIdx) as? Double, 40.0)
+        #expect(result["val"].iloc(aIdx) as? Double == 40.0)
     }
 
     // MARK: - Multi-Column GroupBy
 
-    func testGroupByMultipleColumns() {
+    @Test func testGroupByMultipleColumns() {
         let df = DataFrame(columns: [
             ("dept", Column.fromStrings(["A", "A", "B", "B"])),
             ("level", Column.fromStrings(["Jr", "Sr", "Jr", "Sr"])),
             ("salary", Column.fromDoubles([50.0, 80.0, 60.0, 90.0])),
         ])
         let result = df.groupBy(["dept", "level"]).mean()
-        XCTAssertEqual(result.rowCount, 4) // A-Jr, A-Sr, B-Jr, B-Sr
-        XCTAssertTrue(result.columnNames.contains("dept"))
-        XCTAssertTrue(result.columnNames.contains("level"))
-        XCTAssertTrue(result.columnNames.contains("salary"))
+        #expect(result.rowCount == 4) // A-Jr, A-Sr, B-Jr, B-Sr
+        #expect(result.columnNames.contains("dept"))
+        #expect(result.columnNames.contains("level"))
+        #expect(result.columnNames.contains("salary"))
     }
 }
 
@@ -1233,8 +1234,8 @@ final class GroupByTests: XCTestCase {
 ///
 /// Merge combines two DataFrames by matching rows on a shared key column.
 /// Supports inner, left, right, and outer join types.
-final class MergeTests: XCTestCase {
-    func testInnerMerge() {
+@Suite struct MergeTests {
+    @Test func testInnerMerge() {
         let left = DataFrame(columns: [
             ("key", Column.fromStrings(["a", "b", "c"])),
             ("val1", Column.fromDoubles([1.0, 2.0, 3.0])),
@@ -1244,12 +1245,12 @@ final class MergeTests: XCTestCase {
             ("val2", Column.fromDoubles([20.0, 30.0, 40.0])),
         ])
         let merged = left.merge(right, on: "key")
-        XCTAssertEqual(merged.rowCount, 2) // b, c
-        XCTAssertTrue(merged.columnNames.contains("val1"))
-        XCTAssertTrue(merged.columnNames.contains("val2"))
+        #expect(merged.rowCount == 2) // b, c
+        #expect(merged.columnNames.contains("val1"))
+        #expect(merged.columnNames.contains("val2"))
     }
 
-    func testLeftMerge() {
+    @Test func testLeftMerge() {
         let left = DataFrame(columns: [
             ("key", Column.fromStrings(["a", "b", "c"])),
             ("val1", Column.fromDoubles([1.0, 2.0, 3.0])),
@@ -1259,9 +1260,9 @@ final class MergeTests: XCTestCase {
             ("val2", Column.fromDoubles([20.0, 30.0, 40.0])),
         ])
         let merged = left.merge(right, on: "key", how: .left)
-        XCTAssertEqual(merged.rowCount, 3) // a, b, c — all left rows preserved
-        XCTAssertTrue(merged.columnNames.contains("val1"))
-        XCTAssertTrue(merged.columnNames.contains("val2"))
+        #expect(merged.rowCount == 3) // a, b, c — all left rows preserved
+        #expect(merged.columnNames.contains("val1"))
+        #expect(merged.columnNames.contains("val2"))
     }
 }
 
@@ -1276,8 +1277,8 @@ final class MergeTests: XCTestCase {
 /// column sort, single-column GroupBy with mean aggregation, `dropDuplicates`,
 /// and quartile computation. It serves as a smoke test to ensure these features
 /// compose correctly without regressions.
-final class PandasStyleWorkflowTests: XCTestCase {
-    func testEndToEndPandasStyle() {
+@Suite struct PandasStyleWorkflowTests {
+    @Test func testEndToEndPandasStyle() {
         let df = DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie", "Diana", "Eve"])),
             ("department", Column.fromStrings(["Eng", "Sales", "Eng", "Sales", "Eng"])),
@@ -1287,39 +1288,39 @@ final class PandasStyleWorkflowTests: XCTestCase {
 
         // Pandas-style filter: df[df["salary"] > 80000]
         let highEarners = df[df["salary"] > 80000]
-        XCTAssertEqual(highEarners.rowCount, 3) // Alice, Charlie, Eve
+        #expect(highEarners.rowCount == 3) // Alice, Charlie, Eve
 
         // Filter by string
         let engineers = df[df["department"].eq("Eng")]
-        XCTAssertEqual(engineers.rowCount, 3)
+        #expect(engineers.rowCount == 3)
 
         // Apply
         let salaryInK = df["salary"].apply { $0 / 1000.0 }
-        XCTAssertEqual(salaryInK.iloc(0) as? Double, 95.0)
+        #expect(salaryInK.iloc(0) as? Double == 95.0)
 
         // Cumsum
         let cumSalary = df["salary"].cumsum()
-        XCTAssertEqual(cumSalary.iloc(0) as? Double, 95000)
-        XCTAssertEqual(cumSalary.iloc(4) as? Double, 455000)
+        #expect(cumSalary.iloc(0) as? Double == 95000)
+        #expect(cumSalary.iloc(4) as? Double == 455000)
 
         // Median
-        XCTAssertEqual(df["salary"].median(), 95000)
+        #expect(df["salary"].median() == 95000)
 
         // Multi-column sort
         let sorted = df.sortValues(by: ["department", "salary"], ascending: [true, false])
-        XCTAssertEqual(sorted.columns["name"]!.formattedValue(at: 0), "Eve") // Eng, highest salary
+        #expect(sorted.columns["name"]!.formattedValue(at: 0) == "Eve") // Eng, highest salary
 
         // GroupBy
         let deptStats = df.select(columns: ["department", "salary"]).groupBy("department")
         let avgSalary = deptStats.mean()
-        XCTAssertEqual(avgSalary.rowCount, 2)
+        #expect(avgSalary.rowCount == 2)
 
         // Drop duplicates
         let depts = df["department"].dropDuplicates()
-        XCTAssertEqual(depts.count, 2) // Eng, Sales
+        #expect(depts.count == 2) // Eng, Sales
 
         // Quantiles
-        XCTAssertNotNil(df["salary"].quantile(0.25))
-        XCTAssertNotNil(df["salary"].quantile(0.75))
+        #expect(df["salary"].quantile(0.25) != nil)
+        #expect(df["salary"].quantile(0.75) != nil)
     }
 }

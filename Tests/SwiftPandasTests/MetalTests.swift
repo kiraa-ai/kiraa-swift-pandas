@@ -31,7 +31,7 @@
 // return nil — the tests handle this gracefully.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import XCTest
+import Testing
 @testable import SwiftPandas
 
 // MARK: - Metal Dispatch Tests
@@ -46,25 +46,25 @@ import XCTest
 ///   true at or above threshold.
 /// - That custom thresholds can be set and are respected, and that the original
 ///   value is restored via `defer`.
-final class MetalDispatchTests: XCTestCase {
-    func testIsAvailable() {
+@Suite struct MetalDispatchTests {
+    @Test func testIsAvailable() {
         // On Apple Silicon / macOS, Metal should be available
-        XCTAssertTrue(MetalDispatch.isAvailable)
+        #expect(MetalDispatch.isAvailable)
     }
 
-    func testThresholdLogic() {
-        XCTAssertFalse(MetalDispatch.shouldUseGPU(rowCount: 500, threshold: 1_000))
-        XCTAssertTrue(MetalDispatch.shouldUseGPU(rowCount: 1_000, threshold: 1_000))
-        XCTAssertTrue(MetalDispatch.shouldUseGPU(rowCount: 10_000, threshold: 1_000))
+    @Test func testThresholdLogic() {
+        #expect(!MetalDispatch.shouldUseGPU(rowCount: 500, threshold: 1_000))
+        #expect(MetalDispatch.shouldUseGPU(rowCount: 1_000, threshold: 1_000))
+        #expect(MetalDispatch.shouldUseGPU(rowCount: 10_000, threshold: 1_000))
     }
 
-    func testCustomThreshold() {
+    @Test func testCustomThreshold() {
         let oldThreshold = MetalDispatch.groupByThreshold
         defer { MetalDispatch.groupByThreshold = oldThreshold }
 
         MetalDispatch.groupByThreshold = 100
-        XCTAssertTrue(MetalDispatch.shouldUseGPU(rowCount: 100, threshold: MetalDispatch.groupByThreshold))
-        XCTAssertFalse(MetalDispatch.shouldUseGPU(rowCount: 99, threshold: MetalDispatch.groupByThreshold))
+        #expect(MetalDispatch.shouldUseGPU(rowCount: 100, threshold: MetalDispatch.groupByThreshold))
+        #expect(!MetalDispatch.shouldUseGPU(rowCount: 99, threshold: MetalDispatch.groupByThreshold))
     }
 }
 
@@ -92,7 +92,7 @@ final class MetalDispatchTests: XCTestCase {
 /// - **Large dataset stress test** (100 000 rows, 50 groups).
 /// - **Integration**: verifying that `df.groupBy().sum()` transparently uses
 ///   the GPU path when the threshold is lowered.
-final class MetalGroupByTests: XCTestCase {
+@Suite(.serialized) struct MetalGroupByTests {
 
     /// Builds a CPU-only reference GroupBy result for comparison against the GPU path.
     ///
@@ -135,14 +135,12 @@ final class MetalGroupByTests: XCTestCase {
     ///   - gpu: The GPU-computed GroupBy result.
     ///   - cpu: The CPU-computed reference result.
     ///   - tolerance: Maximum allowed absolute difference between GPU and CPU values.
-    ///   - file: Source file for XCTAssert reporting (auto-filled).
-    ///   - line: Source line for XCTAssert reporting (auto-filled).
     private func assertGroupByResultsClose(
         _ gpu: DataFrame, _ cpu: DataFrame,
         tolerance: Double = 0.01,
-        file: StaticString = #file, line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) {
-        XCTAssertEqual(gpu.rowCount, cpu.rowCount, "Row count mismatch", file: file, line: line)
+        #expect(gpu.rowCount == cpu.rowCount, "Row count mismatch", sourceLocation: sourceLocation)
         guard gpu.rowCount == cpu.rowCount else { return }
 
         // Build key→row mapping for each DataFrame using the index
@@ -154,7 +152,7 @@ final class MetalGroupByTests: XCTestCase {
 
         for (gpuRow, gpuKey) in gpuIndex.enumerated() {
             guard let cpuRow = cpuKeyToRow[gpuKey] else {
-                XCTFail("GPU has key '\(gpuKey)' not found in CPU result", file: file, line: line)
+                Issue.record("GPU has key '\(gpuKey)' not found in CPU result", sourceLocation: sourceLocation)
                 continue
             }
             for colName in cpu.columnNames {
@@ -167,33 +165,33 @@ final class MetalGroupByTests: XCTestCase {
                 let cpuVal = cpuDoubles[cpuRow]
                 if gpuVal == nil && cpuVal == nil { continue }
                 guard let g = gpuVal, let c = cpuVal else {
-                    XCTFail("Nil mismatch at \(colName) key=\(gpuKey)", file: file, line: line)
+                    Issue.record("Nil mismatch at \(colName) key=\(gpuKey)", sourceLocation: sourceLocation)
                     continue
                 }
                 if g.isNaN && c.isNaN { continue }
-                XCTAssertEqual(g, c, accuracy: tolerance,
+                #expect(abs(g - c) <= tolerance,
                                "Mismatch at \(colName) key=\(gpuKey): GPU=\(g), CPU=\(c)",
-                               file: file, line: line)
+                               sourceLocation: sourceLocation)
             }
         }
     }
 
-    func testGroupBySumSmall() {
+    @Test func testGroupBySumSmall() {
         let df = DataFrame(columns: [
             ("city", Column.fromStrings(["NYC", "LA", "NYC", "LA", "NYC"])),
             ("sales", Column.fromDoubles([100, 200, 150, 250, 300])),
         ])
 
         guard let result = MetalGroupBy.aggregate(dataFrame: df, by: ["city"], op: .sum) else {
-            XCTFail("GPU GroupBy returned nil")
+            Issue.record("GPU GroupBy returned nil")
             return
         }
 
         // Check we got both groups
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 
-    func testGroupBySumCorrectness() {
+    @Test func testGroupBySumCorrectness() {
         // Large enough to trigger GPU path
         let n = 2_000
         var cities = [String]()
@@ -213,15 +211,15 @@ final class MetalGroupByTests: XCTestCase {
         let cpuResult = cpuGroupBy(df, by: ["city"], op: "sum")
 
         guard let gpuResult = MetalGroupBy.aggregate(dataFrame: df, by: ["city"], op: .sum) else {
-            XCTFail("GPU GroupBy returned nil")
+            Issue.record("GPU GroupBy returned nil")
             return
         }
 
-        XCTAssertEqual(gpuResult.rowCount, cpuResult.rowCount)
+        #expect(gpuResult.rowCount == cpuResult.rowCount)
         assertGroupByResultsClose(gpuResult, cpuResult, tolerance: 1.0) // float32 tolerance
     }
 
-    func testGroupByMeanCorrectness() {
+    @Test func testGroupByMeanCorrectness() {
         let n = 2_000
         var categories = [String]()
         var values = [Double]()
@@ -239,15 +237,15 @@ final class MetalGroupByTests: XCTestCase {
         let cpuResult = cpuGroupBy(df, by: ["cat"], op: "mean")
 
         guard let gpuResult = MetalGroupBy.aggregate(dataFrame: df, by: ["cat"], op: .mean) else {
-            XCTFail("GPU GroupBy returned nil")
+            Issue.record("GPU GroupBy returned nil")
             return
         }
 
-        XCTAssertEqual(gpuResult.rowCount, cpuResult.rowCount)
+        #expect(gpuResult.rowCount == cpuResult.rowCount)
         assertGroupByResultsClose(gpuResult, cpuResult, tolerance: 1.0)
     }
 
-    func testGroupByCountCorrectness() {
+    @Test func testGroupByCountCorrectness() {
         let n = 2_000
         var groups = [String]()
         var values = [Double]()
@@ -265,15 +263,15 @@ final class MetalGroupByTests: XCTestCase {
         let cpuResult = cpuGroupBy(df, by: ["grp"], op: "count")
 
         guard let gpuResult = MetalGroupBy.aggregate(dataFrame: df, by: ["grp"], op: .count) else {
-            XCTFail("GPU GroupBy returned nil")
+            Issue.record("GPU GroupBy returned nil")
             return
         }
 
-        XCTAssertEqual(gpuResult.rowCount, cpuResult.rowCount)
+        #expect(gpuResult.rowCount == cpuResult.rowCount)
         assertGroupByResultsClose(gpuResult, cpuResult, tolerance: 0.01)
     }
 
-    func testGroupByMinMaxCorrectness() {
+    @Test func testGroupByMinMaxCorrectness() {
         let n = 2_000
         var groups = [String]()
         var values = [Double]()
@@ -293,7 +291,7 @@ final class MetalGroupByTests: XCTestCase {
 
         guard let gpuMin = MetalGroupBy.aggregate(dataFrame: df, by: ["grp"], op: .min),
               let gpuMax = MetalGroupBy.aggregate(dataFrame: df, by: ["grp"], op: .max) else {
-            XCTFail("GPU GroupBy returned nil")
+            Issue.record("GPU GroupBy returned nil")
             return
         }
 
@@ -301,7 +299,7 @@ final class MetalGroupByTests: XCTestCase {
         assertGroupByResultsClose(gpuMax, cpuMax, tolerance: 0.01)
     }
 
-    func testGroupByLargeDataset() {
+    @Test func testGroupByLargeDataset() {
         // 100K rows stress test
         let n = 100_000
         var groups = [String]()
@@ -319,17 +317,17 @@ final class MetalGroupByTests: XCTestCase {
         ])
 
         guard let gpuResult = MetalGroupBy.aggregate(dataFrame: df, by: ["grp"], op: .sum) else {
-            XCTFail("GPU GroupBy returned nil for 100K rows")
+            Issue.record("GPU GroupBy returned nil for 100K rows")
             return
         }
 
-        XCTAssertEqual(gpuResult.rowCount, 50)
+        #expect(gpuResult.rowCount == 50)
 
         let cpuResult = cpuGroupBy(df, by: ["grp"], op: "sum")
         assertGroupByResultsClose(gpuResult, cpuResult, tolerance: 100.0) // float32 accumulation tolerance
     }
 
-    func testGroupByIntegration() {
+    @Test func testGroupByIntegration() {
         // Test that df.groupBy().sum() uses GPU path transparently
         let n = 2_000
         var groups = [String]()
@@ -351,7 +349,7 @@ final class MetalGroupByTests: XCTestCase {
         defer { MetalDispatch.groupByThreshold = oldThreshold }
 
         let result = df.groupBy("grp").sum()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 }
 
@@ -378,9 +376,9 @@ final class MetalGroupByTests: XCTestCase {
 ///   GPU path when the merge threshold is lowered.
 /// - **Column naming**: when both sides share a non-key column name, the right
 ///   side's column should be suffixed with `_right`.
-final class MetalMergeTests: XCTestCase {
+@Suite(.serialized) struct MetalMergeTests {
 
-    func testInnerJoinSmall() {
+    @Test func testInnerJoinSmall() {
         let left = DataFrame(columns: [
             ("id", Column.fromStrings(["a", "b", "c"])),
             ("val", Column.fromDoubles([1, 2, 3])),
@@ -395,10 +393,10 @@ final class MetalMergeTests: XCTestCase {
             return
         }
 
-        XCTAssertEqual(result.rowCount, 2) // b and c match
+        #expect(result.rowCount == 2) // b and c match
     }
 
-    func testInnerJoinCorrectness() {
+    @Test func testInnerJoinCorrectness() {
         // Large enough for GPU
         let n = 2_000
         var leftIds = [String]()
@@ -423,18 +421,18 @@ final class MetalMergeTests: XCTestCase {
         ])
 
         guard let gpuResult = MetalMerge.innerJoin(left: left, right: right, on: "id") else {
-            XCTFail("GPU Merge returned nil")
+            Issue.record("GPU Merge returned nil")
             return
         }
 
         // Each of 100 keys has 20 left rows * 20 right rows = 400 matches
         // Total = 100 * 400 = 40,000
-        XCTAssertEqual(gpuResult.rowCount, 40_000)
-        XCTAssertTrue(gpuResult.columnNames.contains("lval"))
-        XCTAssertTrue(gpuResult.columnNames.contains("rval"))
+        #expect(gpuResult.rowCount == 40_000)
+        #expect(gpuResult.columnNames.contains("lval"))
+        #expect(gpuResult.columnNames.contains("rval"))
     }
 
-    func testInnerJoinNoMatches() {
+    @Test func testInnerJoinNoMatches() {
         let left = DataFrame(columns: [
             ("id", Column.fromStrings(["a", "b"])),
             ("val", Column.fromDoubles([1, 2])),
@@ -448,10 +446,10 @@ final class MetalMergeTests: XCTestCase {
             return // nil is acceptable
         }
 
-        XCTAssertEqual(result.rowCount, 0)
+        #expect(result.rowCount == 0)
     }
 
-    func testInnerJoinDuplicateKeys() {
+    @Test func testInnerJoinDuplicateKeys() {
         // Many-to-many join
         let left = DataFrame(columns: [
             ("id", Column.fromStrings(["x", "x", "y"])),
@@ -467,10 +465,10 @@ final class MetalMergeTests: XCTestCase {
         }
 
         // x matches: 2 left * 2 right = 4, y matches: 1 * 1 = 1, total = 5
-        XCTAssertEqual(result.rowCount, 5)
+        #expect(result.rowCount == 5)
     }
 
-    func testMergeIntegration() {
+    @Test func testMergeIntegration() {
         // Test that df.merge() uses GPU path transparently for inner joins
         let n = 2_000
         var ids = [String]()
@@ -495,10 +493,10 @@ final class MetalMergeTests: XCTestCase {
         defer { MetalDispatch.mergeThreshold = oldThreshold }
 
         let result = left.merge(right, on: "id")
-        XCTAssertTrue(result.rowCount > 0)
+        #expect(result.rowCount > 0)
     }
 
-    func testMergeColumnNaming() {
+    @Test func testMergeColumnNaming() {
         // When both sides have same non-key column, right gets _right suffix
         let left = DataFrame(columns: [
             ("id", Column.fromStrings(["a", "b"])),
@@ -513,7 +511,7 @@ final class MetalMergeTests: XCTestCase {
             return
         }
 
-        XCTAssertTrue(result.columnNames.contains("val"))
-        XCTAssertTrue(result.columnNames.contains("val_right"))
+        #expect(result.columnNames.contains("val"))
+        #expect(result.columnNames.contains("val_right"))
     }
 }

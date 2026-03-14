@@ -27,7 +27,8 @@
 //
 // Run with: ./run_csv_demo.sh
 
-import XCTest
+import Testing
+import Foundation
 @testable import SwiftPandas
 
 /// Comprehensive documentation and demo test suite for the SwiftPandas library.
@@ -35,7 +36,7 @@ import XCTest
 /// Each test method documents and exercises a specific API area, producing
 /// formatted console output suitable for use as an API reference. Assertions
 /// at the end of each test verify correctness of the demonstrated operations.
-final class CSVDataFrameTests: XCTestCase {
+@Suite struct CSVDataFrameTests {
 
     // ┌─────────────────────────────────────────────────────────────────────┐
     // │  Helper: section / subsection / note printers                       │
@@ -111,7 +112,7 @@ final class CSVDataFrameTests: XCTestCase {
 
     /// Prints the full API table of contents covering all SwiftPandas modules.
     /// Named with "AA" prefix to ensure it runs first alphabetically.
-    func testAA_TableOfContents() {
+    @Test func testAA_TableOfContents() {
         Self.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} API REFERENCE")
 
         print("""
@@ -186,7 +187,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Documents and tests the Series API: construction, properties, indexing,
     /// NA handling, aggregations, arithmetic, comparisons, apply/map, cumulative
     /// operations, unique/duplicate handling, and sorting.
-    func testSeriesDocumentation() {
+    @Test func testSeriesDocumentation() {
         Self.section("1", "Series \u{2014} 1D Labeled Array")
 
         // --- Construction ---
@@ -382,10 +383,10 @@ final class CSVDataFrameTests: XCTestCase {
         print(Series([30, 10, 50, 20, 40.0], name: "unsorted").sortValues(ascending: false))
 
         // Assertions
-        XCTAssertEqual(s1.count, 5)
-        XCTAssertEqual(s2.naCount, 2)
-        XCTAssertEqual(agg.sum(), 150.0)
-        XCTAssertEqual(agg.median(), 30.0)
+        #expect(s1.count == 5)
+        #expect(s2.naCount == 2)
+        #expect(agg.sum() == 150.0)
+        #expect(agg.median() == 30.0)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -395,7 +396,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Documents and tests the DataFrame API: construction from dictionaries,
     /// typed columns, records, and CSV; properties; column/row access; boolean
     /// filtering; sorting (single and multi-column); aggregations; duplicates; and apply.
-    func testDataFrameDocumentation() {
+    @Test func testDataFrameDocumentation() {
         Self.section("2", "DataFrame \u{2014} 2D Labeled Table")
 
         // --- Construction ---
@@ -551,9 +552,9 @@ final class CSVDataFrameTests: XCTestCase {
         print(normalized.head(5))
 
         // Assertions
-        XCTAssertEqual(df.rowCount, 15)
-        XCTAssertEqual(highSalary.rowCount, 4) // Charlie, Eve, Kate, Noah
-        XCTAssertEqual(stars.rowCount, 5)
+        #expect(df.rowCount == 15)
+        #expect(highSalary.rowCount == 4) // Charlie, Eve, Kate, Noah
+        #expect(stars.rowCount == 5)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -563,7 +564,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Documents and tests GroupBy split-apply-combine operations: single-column
     /// grouping with all five aggregation functions, group inspection via `.groups`,
     /// and multi-column grouping with composite keys.
-    func testGroupByDocumentation() {
+    @Test func testGroupByDocumentation() {
         Self.section("3", "GroupBy \u{2014} Split-Apply-Combine")
         let df = DataFrame.readCSV(employeeCSV)
 
@@ -606,7 +607,7 @@ final class CSVDataFrameTests: XCTestCase {
         // Assertions
         let countDf = grouped.count()
         let engIdx = countDf.indexLabels.firstIndex(of: "Engineering")!
-        XCTAssertEqual(countDf["salary"].iloc(engIdx) as? Double, 6.0)
+        #expect(countDf["salary"].iloc(engIdx) as? Double == 6.0)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -615,7 +616,7 @@ final class CSVDataFrameTests: XCTestCase {
 
     /// Documents and tests merge (inner/left join) and concat (vertical stack)
     /// operations for combining multiple DataFrames.
-    func testMergeConcatDocumentation() {
+    @Test func testMergeConcatDocumentation() {
         Self.section("4", "Merge & Concat \u{2014} Combining DataFrames")
 
         // --- Merge ---
@@ -656,8 +657,8 @@ final class CSVDataFrameTests: XCTestCase {
 
         // Assertions
         let merged = employees.merge(departments, on: "dept_id")
-        XCTAssertEqual(merged.rowCount, 4)
-        XCTAssertEqual(DataFrame.concat([q1, q2]).rowCount, 6)
+        #expect(merged.rowCount == 4)
+        #expect(DataFrame.concat([q1, q2]).rowCount == 6)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -667,7 +668,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Documents and tests CSV I/O: reading from strings and files, custom parser
     /// configuration (separators, headers, NA values), writing to strings and files,
     /// custom writer settings, and round-trip data integrity verification.
-    func testCSVDocumentation() {
+    @Test func testCSVDocumentation() {
         Self.section("5", "CSV I/O \u{2014} Read & Write")
 
         // --- Read ---
@@ -707,8 +708,8 @@ final class CSVDataFrameTests: XCTestCase {
         Self.note("Salary sum matches: \(abs(df["salary"].sum()! - dfBack["salary"].sum()!) < 0.01)")
 
         // Assertions
-        XCTAssertEqual(df.rowCount, dfBack.rowCount)
-        XCTAssertEqual(df.columnCount, dfBack.columnCount)
+        #expect(df.rowCount == dfBack.rowCount)
+        #expect(df.columnCount == dfBack.columnCount)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -720,7 +721,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// (1-bit validity bitmap with bitwise operators), NativeArray (contiguous
     /// typed storage with CoW), NullableArray (NativeArray + BitVector for NA),
     /// and StringArray (string storage with NA support).
-    func testCoreTypesDocumentation() {
+    @Test func testCoreTypesDocumentation() {
         Self.section("6", "Core Types \u{2014} Storage & Type System")
 
         // --- Column types ---
@@ -802,9 +803,9 @@ final class CSVDataFrameTests: XCTestCase {
         Self.note("  unique     = \(sa.unique())")
 
         // Assertions
-        XCTAssertEqual(bv.popcount, 3)
-        XCTAssertEqual(nullable.validCount, 3)
-        XCTAssertEqual(sa.naCount, 2)
+        #expect(bv.popcount == 3)
+        #expect(nullable.validCount == 3)
+        #expect(sa.naCount == 2)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -813,7 +814,7 @@ final class CSVDataFrameTests: XCTestCase {
 
     /// Documents and tests index types: RangeIndex (memory-efficient integer range),
     /// StringIndex (hash-backed string label lookup), and Int64Index (integer label lookup).
-    func testIndexDocumentation() {
+    @Test func testIndexDocumentation() {
         Self.section("7", "Index Types \u{2014} Label Management")
 
         Self.sub("RangeIndex (memory-efficient integer range)")
@@ -834,8 +835,8 @@ final class CSVDataFrameTests: XCTestCase {
         Self.note("getLocation(200) = \(ii.getLocation(of: 200) ?? -1)")
 
         // Assertions
-        XCTAssertEqual(ri.count, 10)
-        XCTAssertEqual(si.getLocation(of: "wed"), 2)
+        #expect(ri.count == 10)
+        #expect(si.getLocation(of: "wed") == 2)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -845,7 +846,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Runs an end-to-end pipeline demo: load CSV, inspect, describe, GroupBy,
     /// filter, sort, transform (salary per year), merge with department budgets,
     /// concat quarterly reports, and CSV round-trip verification.
-    func testFullPipelineDocumentation() {
+    @Test func testFullPipelineDocumentation() {
         Self.section("8", "End-to-End Pipeline Demo")
         let df = DataFrame.readCSV(employeeCSV)
 
@@ -899,12 +900,12 @@ final class CSVDataFrameTests: XCTestCase {
         print("  " + String(repeating: "\u{2550}", count: Self.W - 4))
 
         // Assertions
-        XCTAssertEqual(df.rowCount, 15)
-        XCTAssertEqual(seniors.rowCount, 6)
-        XCTAssertEqual(top5.rowCount, 5)
-        XCTAssertEqual(withBudget.rowCount, 15)
-        XCTAssertEqual(combined.rowCount, 10)
-        XCTAssertEqual(df.rowCount, dfBack.rowCount)
+        #expect(df.rowCount == 15)
+        #expect(seniors.rowCount == 6)
+        #expect(top5.rowCount == 5)
+        #expect(withBudget.rowCount == 15)
+        #expect(combined.rowCount == 10)
+        #expect(df.rowCount == dfBack.rowCount)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -914,21 +915,21 @@ final class CSVDataFrameTests: XCTestCase {
     /// Tests loading a CSV file from the test resource bundle to validate
     /// that file-based CSV reading works with both Swift Package Manager
     /// and Xcode bundle resource layouts.
-    func testLoadCSVFromFile() throws {
+    @Test func testLoadCSVFromFile() throws {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
         let csvURL = bundle.url(forResource: "employees", withExtension: "csv", subdirectory: "SampleData")
         #else
-        let bundle = Bundle(for: type(of: self))
+        let bundle = Bundle(for: CSVDataFrameTests.self)
         let csvURL = bundle.url(forResource: "employees", withExtension: "csv", subdirectory: "SampleData")
             ?? bundle.url(forResource: "employees", withExtension: "csv")
         #endif
         guard let csvURL else {
-            XCTFail("Sample CSV file not found in test bundle")
+            Issue.record("Sample CSV file not found in test bundle")
             return
         }
         let df = try DataFrame.readCSV(path: csvURL.path)
-        XCTAssertEqual(df.rowCount, 15)
-        XCTAssertEqual(df.columnCount, 6)
+        #expect(df.rowCount == 15)
+        #expect(df.columnCount == 6)
     }
 }

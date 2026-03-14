@@ -48,7 +48,7 @@
 //                               in filter predicates.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import XCTest
+import Testing
 @testable import SwiftPandas
 
 // MARK: - Predicate Tests
@@ -71,7 +71,7 @@ import XCTest
 /// - Boolean AND, OR, NOT combinators.
 /// - `.referencedColumns` introspection.
 /// - `.description` formatting.
-final class PredicateTests: XCTestCase {
+@Suite struct PredicateTests {
     let df = DataFrame([
         "name": [String](),
         "revenue": [Double](),
@@ -87,106 +87,106 @@ final class PredicateTests: XCTestCase {
         ])
     }
 
-    func testComparisonGT() {
+    @Test func testComparisonGT() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") > 1000
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, false, true, true, false])
+        #expect(mask == [false, false, true, true, false])
     }
 
-    func testComparisonGE() {
+    @Test func testComparisonGE() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") >= 500
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, true, true, true, false])
+        #expect(mask == [false, true, true, true, false])
     }
 
-    func testComparisonLT() {
+    @Test func testComparisonLT() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") < 500
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, false, false, false, true])
+        #expect(mask == [true, false, false, false, true])
     }
 
-    func testComparisonLE() {
+    @Test func testComparisonLE() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") <= 500
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, true, false, false, true])
+        #expect(mask == [true, true, false, false, true])
     }
 
-    func testComparisonEQ() {
+    @Test func testComparisonEQ() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") == 500.0
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, true, false, false, false])
+        #expect(mask == [false, true, false, false, false])
     }
 
-    func testComparisonNE() {
+    @Test func testComparisonNE() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") != 500.0
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, false, true, true, true])
+        #expect(mask == [true, false, true, true, true])
     }
 
-    func testIntComparison() {
+    @Test func testIntComparison() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("revenue") > 1000
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, false, true, true, false])
+        #expect(mask == [false, false, true, true, false])
     }
 
-    func testStringEQ() {
+    @Test func testStringEQ() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("region") == "East"
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, false, true, false, true])
+        #expect(mask == [true, false, true, false, true])
     }
 
-    func testStringNE() {
+    @Test func testStringNE() {
         let df = sampleDF()
         let pred: ColumnPredicate = col("region") != "East"
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, true, false, true, false])
+        #expect(mask == [false, true, false, true, false])
     }
 
-    func testStringContains() {
+    @Test func testStringContains() {
         let df = sampleDF()
         let pred = col("name").contains("li")
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, false, true, false, false])
+        #expect(mask == [true, false, true, false, false])
     }
 
-    func testAND() {
+    @Test func testAND() {
         let df = sampleDF()
         let pred = (col("revenue") > 400) & (col("region") == "West")
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, true, false, true, false])
+        #expect(mask == [false, true, false, true, false])
     }
 
-    func testOR() {
+    @Test func testOR() {
         let df = sampleDF()
         let pred = (col("revenue") > 1000) | (col("region") == "East")
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [true, false, true, true, true])
+        #expect(mask == [true, false, true, true, true])
     }
 
-    func testNOT() {
+    @Test func testNOT() {
         let df = sampleDF()
         let pred = !(col("region") == "East")
         let mask = pred.evaluate(on: df)
-        XCTAssertEqual(mask, [false, true, false, true, false])
+        #expect(mask == [false, true, false, true, false])
     }
 
-    func testReferencedColumns() {
+    @Test func testReferencedColumns() {
         let pred = (col("revenue") > 1000) & (col("region") == "East")
-        XCTAssertEqual(pred.referencedColumns, ["revenue", "region"])
+        #expect(pred.referencedColumns == ["revenue", "region"])
     }
 
-    func testPredicateDescription() {
+    @Test func testPredicateDescription() {
         let pred: ColumnPredicate = col("revenue") > 1000.0
-        XCTAssertTrue(pred.description.contains("revenue"))
-        XCTAssertTrue(pred.description.contains(">"))
+        #expect(pred.description.contains("revenue"))
+        #expect(pred.description.contains(">"))
     }
 }
 
@@ -202,7 +202,7 @@ final class PredicateTests: XCTestCase {
 ///
 /// The sample DataFrame used across tests contains 5 rows with columns: name
 /// (String), revenue (Double), region (String), and cost (Double).
-final class LazyDataFrameTests: XCTestCase {
+@Suite struct LazyDataFrameTests {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie", "Diana", "Eve"])),
@@ -212,7 +212,7 @@ final class LazyDataFrameTests: XCTestCase {
         ])
     }
 
-    func testLazyFilterMatchesEager() {
+    @Test func testLazyFilterMatchesEager() {
         let df = sampleDF()
         let eagerMask = df["revenue"] > 1000
         let eager = df.filter(mask: eagerMask)
@@ -221,17 +221,17 @@ final class LazyDataFrameTests: XCTestCase {
             .filter(col("revenue") > 1000)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(lazy.columnNames, eager.columnNames)
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(lazy.columnNames == eager.columnNames)
         for col in lazy.columnNames {
             for i in 0..<lazy.rowCount {
-                XCTAssertEqual(lazy.columns[col]!.formattedValue(at: i),
+                #expect(lazy.columns[col]!.formattedValue(at: i) ==
                               eager.columns[col]!.formattedValue(at: i))
             }
         }
     }
 
-    func testLazySelectMatchesEager() {
+    @Test func testLazySelectMatchesEager() {
         let df = sampleDF()
         let eager = df.select(columns: ["name", "revenue"])
 
@@ -239,11 +239,11 @@ final class LazyDataFrameTests: XCTestCase {
             .select("name", "revenue")
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(lazy.columnNames, eager.columnNames)
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(lazy.columnNames == eager.columnNames)
     }
 
-    func testLazyDropMatchesEager() {
+    @Test func testLazyDropMatchesEager() {
         let df = sampleDF()
         let eager = df.drop(columns: ["cost"])
 
@@ -251,11 +251,11 @@ final class LazyDataFrameTests: XCTestCase {
             .drop(["cost"])
             .collect()
 
-        XCTAssertEqual(lazy.columnNames, eager.columnNames)
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.columnNames == eager.columnNames)
+        #expect(lazy.rowCount == eager.rowCount)
     }
 
-    func testLazySortMatchesEager() {
+    @Test func testLazySortMatchesEager() {
         let df = sampleDF()
         let eager = df.sortValues(by: ["revenue"], ascending: [false])
 
@@ -263,14 +263,14 @@ final class LazyDataFrameTests: XCTestCase {
             .sort(by: "revenue", ascending: false)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
         for i in 0..<lazy.rowCount {
-            XCTAssertEqual(lazy.columns["revenue"]!.formattedValue(at: i),
+            #expect(lazy.columns["revenue"]!.formattedValue(at: i) ==
                           eager.columns["revenue"]!.formattedValue(at: i))
         }
     }
 
-    func testLazyHeadMatchesEager() {
+    @Test func testLazyHeadMatchesEager() {
         let df = sampleDF()
         let eager = df.head(3)
 
@@ -278,11 +278,11 @@ final class LazyDataFrameTests: XCTestCase {
             .head(3)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(lazy.rowCount, 3)
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(lazy.rowCount == 3)
     }
 
-    func testLazyGroupBySumMatchesEager() {
+    @Test func testLazyGroupBySumMatchesEager() {
         let df = sampleDF()
         let eager = df.groupBy("region").sum()
 
@@ -290,12 +290,12 @@ final class LazyDataFrameTests: XCTestCase {
             .groupBy("region").sum()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
         // Both should have same index labels (group keys)
-        XCTAssertEqual(Set(lazy.indexLabels), Set(eager.indexLabels))
+        #expect(Set(lazy.indexLabels) == Set(eager.indexLabels))
     }
 
-    func testLazyGroupByMeanMatchesEager() {
+    @Test func testLazyGroupByMeanMatchesEager() {
         let df = sampleDF()
         let eager = df.groupBy("region").mean()
 
@@ -303,10 +303,10 @@ final class LazyDataFrameTests: XCTestCase {
             .groupBy("region").mean()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
     }
 
-    func testLazyGroupByCountMatchesEager() {
+    @Test func testLazyGroupByCountMatchesEager() {
         let df = sampleDF()
         let eager = df.groupBy("region").count()
 
@@ -314,10 +314,10 @@ final class LazyDataFrameTests: XCTestCase {
             .groupBy("region").count()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
     }
 
-    func testLazyGroupByMinMatchesEager() {
+    @Test func testLazyGroupByMinMatchesEager() {
         let df = sampleDF()
         let eager = df.groupBy("region").min()
 
@@ -325,10 +325,10 @@ final class LazyDataFrameTests: XCTestCase {
             .groupBy("region").min()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
     }
 
-    func testLazyGroupByMaxMatchesEager() {
+    @Test func testLazyGroupByMaxMatchesEager() {
         let df = sampleDF()
         let eager = df.groupBy("region").max()
 
@@ -336,10 +336,10 @@ final class LazyDataFrameTests: XCTestCase {
             .groupBy("region").max()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
     }
 
-    func testLazyMergeMatchesEager() {
+    @Test func testLazyMergeMatchesEager() {
         let left = DataFrame(columns: [
             ("key", Column.fromStrings(["a", "b", "c"])),
             ("val1", Column.fromDoubles([1.0, 2.0, 3.0])),
@@ -355,8 +355,8 @@ final class LazyDataFrameTests: XCTestCase {
             .merge(right.lazy(), on: "key", how: .inner)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(Set(lazy.columnNames), Set(eager.columnNames))
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(Set(lazy.columnNames) == Set(eager.columnNames))
     }
 }
 
@@ -377,7 +377,7 @@ final class LazyDataFrameTests: XCTestCase {
 /// - **Multiple filters**: two consecutive `.filter()` calls that the optimizer
 ///   should fuse into a single AND predicate.
 /// - **Sort then head**: sort all rows, then take the top N.
-final class LazyChainedTests: XCTestCase {
+@Suite struct LazyChainedTests {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie", "Diana", "Eve"])),
@@ -387,7 +387,7 @@ final class LazyChainedTests: XCTestCase {
         ])
     }
 
-    func testFilterThenSelect() {
+    @Test func testFilterThenSelect() {
         let df = sampleDF()
 
         // Eager
@@ -400,17 +400,17 @@ final class LazyChainedTests: XCTestCase {
             .select("name", "revenue")
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(lazy.columnNames, eager.columnNames)
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(lazy.columnNames == eager.columnNames)
         for i in 0..<lazy.rowCount {
-            XCTAssertEqual(lazy.columns["name"]!.formattedValue(at: i),
+            #expect(lazy.columns["name"]!.formattedValue(at: i) ==
                           eager.columns["name"]!.formattedValue(at: i))
-            XCTAssertEqual(lazy.columns["revenue"]!.formattedValue(at: i),
+            #expect(lazy.columns["revenue"]!.formattedValue(at: i) ==
                           eager.columns["revenue"]!.formattedValue(at: i))
         }
     }
 
-    func testFilterThenGroupBySum() {
+    @Test func testFilterThenGroupBySum() {
         let df = sampleDF()
 
         // Eager
@@ -423,11 +423,11 @@ final class LazyChainedTests: XCTestCase {
             .groupBy("region").sum()
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
-        XCTAssertEqual(Set(lazy.indexLabels), Set(eager.indexLabels))
+        #expect(lazy.rowCount == eager.rowCount)
+        #expect(Set(lazy.indexLabels) == Set(eager.indexLabels))
     }
 
-    func testFilterSelectGroupByChain() {
+    @Test func testFilterSelectGroupByChain() {
         let df = sampleDF()
 
         // The full chain: filter → select → groupBy → sum
@@ -438,11 +438,11 @@ final class LazyChainedTests: XCTestCase {
             .collect()
 
         // Verify it produces valid output
-        XCTAssertTrue(result.rowCount > 0)
-        XCTAssertTrue(result.columnNames.contains("revenue"))
+        #expect(result.rowCount > 0)
+        #expect(result.columnNames.contains("revenue"))
     }
 
-    func testMultipleFilters() {
+    @Test func testMultipleFilters() {
         let df = sampleDF()
 
         // Eager
@@ -456,14 +456,14 @@ final class LazyChainedTests: XCTestCase {
             .filter(col("revenue") < 2000)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, eager.rowCount)
+        #expect(lazy.rowCount == eager.rowCount)
         for i in 0..<lazy.rowCount {
-            XCTAssertEqual(lazy.columns["revenue"]!.formattedValue(at: i),
+            #expect(lazy.columns["revenue"]!.formattedValue(at: i) ==
                           eager.columns["revenue"]!.formattedValue(at: i))
         }
     }
 
-    func testSortThenHead() {
+    @Test func testSortThenHead() {
         let df = sampleDF()
         let eager = df.sortValues(by: "revenue", ascending: false).head(3)
 
@@ -472,9 +472,9 @@ final class LazyChainedTests: XCTestCase {
             .head(3)
             .collect()
 
-        XCTAssertEqual(lazy.rowCount, 3)
+        #expect(lazy.rowCount == 3)
         for i in 0..<lazy.rowCount {
-            XCTAssertEqual(lazy.columns["revenue"]!.formattedValue(at: i),
+            #expect(lazy.columns["revenue"]!.formattedValue(at: i) ==
                           eager.columns["revenue"]!.formattedValue(at: i))
         }
     }
@@ -500,7 +500,7 @@ final class LazyChainedTests: XCTestCase {
 ///   source DataFrame is removed entirely, leaving a bare `.scan`.
 /// - **End-to-end correctness**: an optimized plan produces the same DataFrame
 ///   as the unoptimized plan, verified cell-by-cell.
-final class QueryOptimizerTests: XCTestCase {
+@Suite struct QueryOptimizerTests {
     func sampleDF() -> DataFrame {
         DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob", "Charlie"])),
@@ -509,7 +509,7 @@ final class QueryOptimizerTests: XCTestCase {
         ])
     }
 
-    func testFilterFusion() {
+    @Test func testFilterFusion() {
         let df = sampleDF()
         let plan: QueryPlan = .filter(
             col("revenue") > 100,
@@ -522,14 +522,14 @@ final class QueryOptimizerTests: XCTestCase {
             if case .and = pred {
                 // Correct: two filters fused into AND
             } else {
-                XCTFail("Expected fused AND predicate, got \(pred)")
+                Issue.record("Expected fused AND predicate, got \(pred)")
             }
         } else {
-            XCTFail("Expected single filter node, got \(optimized)")
+            Issue.record("Expected single filter node, got \(optimized)")
         }
     }
 
-    func testPredicatePushdownBelowSort() {
+    @Test func testPredicatePushdownBelowSort() {
         let df = sampleDF()
         let plan: QueryPlan = .filter(
             col("revenue") > 100,
@@ -542,27 +542,27 @@ final class QueryOptimizerTests: XCTestCase {
             if case .filter = child {
                 // Correct: filter pushed below sort
             } else {
-                XCTFail("Expected filter below sort, got \(child)")
+                Issue.record("Expected filter below sort, got \(child)")
             }
         } else {
-            XCTFail("Expected sort at top, got \(optimized)")
+            Issue.record("Expected sort at top, got \(optimized)")
         }
     }
 
-    func testRedundantLimitElimination() {
+    @Test func testRedundantLimitElimination() {
         let df = sampleDF()
         let plan: QueryPlan = .limit(5, .limit(10, .scan(df)))
         let optimized = QueryOptimizer.optimize(plan)
 
         // Should be reduced to limit(5, scan)
         if case .limit(let n, .scan) = optimized {
-            XCTAssertEqual(n, 5)
+            #expect(n == 5)
         } else {
-            XCTFail("Expected limit(5, scan), got \(optimized)")
+            Issue.record("Expected limit(5, scan), got \(optimized)")
         }
     }
 
-    func testIdentitySelectRemoval() {
+    @Test func testIdentitySelectRemoval() {
         let df = sampleDF()
         let plan: QueryPlan = .select(df.columnNames, .scan(df))
         let optimized = QueryOptimizer.optimize(plan)
@@ -571,11 +571,11 @@ final class QueryOptimizerTests: XCTestCase {
         if case .scan = optimized {
             // Correct: identity select removed
         } else {
-            XCTFail("Expected bare scan, got \(optimized)")
+            Issue.record("Expected bare scan, got \(optimized)")
         }
     }
 
-    func testOptimizerPreservesCorrectness() {
+    @Test func testOptimizerPreservesCorrectness() {
         // Most important test: optimized plan produces same result as unoptimized
         let df = sampleDF()
         let plan: QueryPlan = .filter(
@@ -589,10 +589,10 @@ final class QueryOptimizerTests: XCTestCase {
         let unoptimized = QueryExecutor.execute(plan)
         let optimized = QueryExecutor.execute(QueryOptimizer.optimize(plan))
 
-        XCTAssertEqual(unoptimized.rowCount, optimized.rowCount)
+        #expect(unoptimized.rowCount == optimized.rowCount)
         for colName in unoptimized.columnNames {
             for i in 0..<unoptimized.rowCount {
-                XCTAssertEqual(unoptimized.columns[colName]!.formattedValue(at: i),
+                #expect(unoptimized.columns[colName]!.formattedValue(at: i) ==
                               optimized.columns[colName]!.formattedValue(at: i))
             }
         }
@@ -613,8 +613,8 @@ final class QueryOptimizerTests: XCTestCase {
 ///   expected node names like "GroupBy", "Filter", "Select", or "Scan".
 /// - **Raw vs optimized**: a pipeline with two consecutive filters should show
 ///   two Filter nodes in the raw plan and a fused Filter in the optimized plan.
-final class ExplainTests: XCTestCase {
-    func testExplainOutput() {
+@Suite struct ExplainTests {
+    @Test func testExplainOutput() {
         let df = DataFrame(columns: [
             ("name", Column.fromStrings(["Alice", "Bob"])),
             ("revenue", Column.fromDoubles([100.0, 500.0])),
@@ -627,11 +627,11 @@ final class ExplainTests: XCTestCase {
             .groupBy("region").sum()
             .explain()
 
-        XCTAssertTrue(explanation.contains("GroupBy"))
-        XCTAssertTrue(explanation.contains("Filter") || explanation.contains("Select") || explanation.contains("Scan"))
+        #expect(explanation.contains("GroupBy"))
+        #expect(explanation.contains("Filter") || explanation.contains("Select") || explanation.contains("Scan"))
     }
 
-    func testExplainRawVsOptimized() {
+    @Test func testExplainRawVsOptimized() {
         let df = DataFrame(columns: [
             ("revenue", Column.fromDoubles([100.0, 500.0])),
             ("region", Column.fromStrings(["East", "West"])),
@@ -645,10 +645,10 @@ final class ExplainTests: XCTestCase {
         let optimized = lazy.explain()
 
         // Raw should have two separate Filter nodes
-        XCTAssertTrue(raw.contains("Filter"))
+        #expect(raw.contains("Filter"))
 
         // Optimized should have fused them (still contains Filter)
-        XCTAssertTrue(optimized.contains("Filter"))
+        #expect(optimized.contains("Filter"))
     }
 }
 
@@ -667,51 +667,51 @@ final class ExplainTests: XCTestCase {
 /// - **head larger than DataFrame**: requesting more rows than exist returns all.
 /// - **NA values in filter**: NA positions in the predicate column are treated as
 ///   `false`, so they are excluded from the result.
-final class LazyEdgeCaseTests: XCTestCase {
-    func testEmptyDataFrame() {
+@Suite struct LazyEdgeCaseTests {
+    @Test func testEmptyDataFrame() {
         let df = DataFrame()
         // Should not crash
         let result = df.lazy().collect()
-        XCTAssertEqual(result.rowCount, 0)
+        #expect(result.rowCount == 0)
     }
 
-    func testSingleRowDataFrame() {
+    @Test func testSingleRowDataFrame() {
         let df = DataFrame(columns: [
             ("x", Column.fromDoubles([42.0])),
         ])
         let result = df.lazy()
             .filter(col("x") > 0)
             .collect()
-        XCTAssertEqual(result.rowCount, 1)
+        #expect(result.rowCount == 1)
     }
 
-    func testFilterRemovesAllRows() {
+    @Test func testFilterRemovesAllRows() {
         let df = DataFrame(columns: [
             ("x", Column.fromDoubles([1.0, 2.0, 3.0])),
         ])
         let result = df.lazy()
             .filter(col("x") > 100)
             .collect()
-        XCTAssertEqual(result.rowCount, 0)
+        #expect(result.rowCount == 0)
     }
 
-    func testHeadZero() {
+    @Test func testHeadZero() {
         let df = DataFrame(columns: [
             ("x", Column.fromDoubles([1.0, 2.0, 3.0])),
         ])
         let result = df.lazy().head(0).collect()
-        XCTAssertEqual(result.rowCount, 0)
+        #expect(result.rowCount == 0)
     }
 
-    func testHeadLargerThanDataFrame() {
+    @Test func testHeadLargerThanDataFrame() {
         let df = DataFrame(columns: [
             ("x", Column.fromDoubles([1.0, 2.0])),
         ])
         let result = df.lazy().head(100).collect()
-        XCTAssertEqual(result.rowCount, 2)
+        #expect(result.rowCount == 2)
     }
 
-    func testWithNAValues() {
+    @Test func testWithNAValues() {
         let df = DataFrame(columns: [
             ("x", Column.fromOptionalDoubles([1.0, nil, 3.0, nil, 5.0])),
             ("region", Column.fromStrings(["a", "b", "a", "b", "a"])),
@@ -722,6 +722,6 @@ final class LazyEdgeCaseTests: XCTestCase {
             .filter(col("x") > 2)
             .collect()
 
-        XCTAssertEqual(result.rowCount, 2) // 3.0 and 5.0
+        #expect(result.rowCount == 2) // 3.0 and 5.0
     }
 }
