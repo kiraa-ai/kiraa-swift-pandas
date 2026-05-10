@@ -1,0 +1,26 @@
+SwiftPandas
+Copyright 2025-2026 SwiftPandas Contributors
+
+This product includes software developed by:
+
+  * The pandas development team (https://github.com/pandas-dev/pandas)
+    Copyright (c) 2008-2024, AQR Capital Management, LLC, Lambda Foundry, Inc.
+    and PyData Development Team. All rights reserved.
+    Licensed under the BSD 3-Clause License.
+
+  * Attractive Chaos -- klib (khash) (https://github.com/attractivechaos/klib)
+    Copyright (c) 2008- Attractive Chaos <attractor@live.co.uk>
+    Licensed under the MIT License.
+
+  * ESN Social Software AB and Jonas Tarnstrom -- UltraJSON
+    (https://github.com/ultrajson/ultrajson)
+    Copyright (c) 2011-2013, ESN Social Software AB and Jonas Tarnstrom.
+    All rights reserved. Licensed under the BSD 2-Clause License.
+
+  * Skiplist data structure, originally written by Raymond Hettinger as a
+    Python recipe and ported to C by Wes McKinney for the pandas project.
+    Copyright (c) 2008-2023 the pandas development team.
+    Licensed under the BSD 3-Clause License.
+
+The full text of each upstream license is available in the LICENSES/
+directory of this distribution.
