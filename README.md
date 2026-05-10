@@ -153,23 +153,36 @@ To use in your own Xcode project, add the `SwiftPandas.framework` as a dependenc
 
 ### Adding as a Dependency
 
-SPM shaders are compiled at runtime from embedded source strings (vs precompiled `.metallib` in Xcode):
+Add SwiftPandas to your `Package.swift`. Pin to a tagged release for stability, or track `main` for the latest development:
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
-],
-targets: [
-    .target(
-        name: "YourTarget",
-        dependencies: [
-            .product(name: "SwiftPandas", package: "kiraa-swift-pandas"),
-        ]
-    ),
-]
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "YourPackage",
+    platforms: [.macOS(.v13), .iOS(.v16)],
+    dependencies: [
+        // Recommended: pin to a tagged release
+        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.5.0-beta"),
+
+        // Or track the latest development:
+        // .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
+    ],
+    targets: [
+        .target(
+            name: "YourTarget",
+            dependencies: [
+                .product(name: "SwiftPandas", package: "kiraa-swift-pandas"),
+            ]
+        ),
+    ]
+)
 ```
 
-> **Note**: SPM builds use `unsafeFlags(["-O3"])` for C libraries, which prevents distribution via SPM package registries. The Xcode project is the recommended distribution method.
+Then `import SwiftPandas` in your Swift sources. Metal shaders are compiled at runtime from embedded source strings (vs precompiled `.metallib` in the Xcode project).
+
+> **Note on registry distribution**: SwiftPandas uses `unsafeFlags(["-O3"])` for its vendored C libraries, which prevents distribution via the Swift Package Registry. Depending via the git URL (as shown above) is fully supported.
 
 ## Quick Start
 
