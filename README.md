@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.4.0-beta
+# SwiftPandas v0.5.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -634,8 +634,8 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 
 ### Benchmark Results
 
-**Scorecard: Swift wins 23 | pandas wins 7** (30 benchmarks)
-**Overall: SwiftPandas is 25.7% faster than pandas on average**
+    **Scorecard: Swift wins 23 | pandas wins 7** (30 benchmarks)
+    **Overall: SwiftPandas is 25.7% faster than pandas on average**
 
 | Operation | SwiftPandas | Python pandas | Winner | vs Python |
 |---|---|---|---|---|
@@ -760,11 +760,11 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 
 ## License
 
-This project is licensed under the BSD 3-Clause License, consistent with the original pandas project.
+This project is licensed under the [Apache License, Version 2.0](LICENSE).
 
 The vendored C libraries retain their original licenses:
 - klib (khash): MIT License
 - UltraJSON: BSD License
 - Skiplist: BSD License
 
-See the [pandas LICENSE](https://github.com/pandas-dev/pandas/blob/main/LICENSE) for the original project license.
+The original pandas project, from which this work is derived, is licensed under the [BSD 3-Clause License](https://github.com/pandas-dev/pandas/blob/main/LICENSE).
