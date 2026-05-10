@@ -5,16 +5,18 @@
 ### Option A: Download the binary (recommended)
 
 ```bash
-# Download the latest release
-gh release download --repo kiraa-ai/kiraa-swift-pandas --pattern '*.zip'
+# Download the latest CLI binary release
+gh release download --repo kiraa-ai/kiraa-swift-pandas --pattern 'swiftpandas-*-macos*.zip'
 
 # Extract and install
-unzip swiftpandas-*.zip
+unzip swiftpandas-*-macos*.zip
 sudo cp swiftpandas /usr/local/bin/
 
 # Verify
 swiftpandas --help
 ```
+
+> The pattern excludes `SwiftPandas.xcframework.zip`, which is the prebuilt **library** for SwiftPM consumers — see the main README's *Installation → Option B* for that workflow.
 
 ### Option B: Build from source
 
