@@ -6,7 +6,7 @@
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
-A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library, targeting **macOS** with **Metal GPU acceleration** for compute-heavy operations and a **Polars-style lazy evaluation engine** with query optimization.
+A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas) data analysis library for **macOS and iOS**, with **Metal GPU acceleration** for compute-heavy operations and a **Polars-style lazy evaluation engine** with query optimization. Linux source builds are supported with reduced functionality (no Accelerate, no Metal).
 
 SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, Metal compute shaders for GPU-accelerated GroupBy and Merge, and a lazy evaluation engine with filter fusion, predicate pushdown, and projection pushdown.
 
