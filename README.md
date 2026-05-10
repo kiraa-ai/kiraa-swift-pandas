@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.4.0-beta
+# SwiftPandas v0.5.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -634,8 +634,8 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 
 ### Benchmark Results
 
-**Scorecard: Swift wins 23 | pandas wins 7** (30 benchmarks)
-**Overall: SwiftPandas is 25.7% faster than pandas on average**
+    **Scorecard: Swift wins 23 | pandas wins 7** (30 benchmarks)
+    **Overall: SwiftPandas is 25.7% faster than pandas on average**
 
 | Operation | SwiftPandas | Python pandas | Winner | vs Python |
 |---|---|---|---|---|
@@ -760,11 +760,52 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 
 ## License
 
-This project is licensed under the BSD 3-Clause License, consistent with the original pandas project.
+SwiftPandas is licensed under the [Apache License, Version 2.0](LICENSE) (the "License"); you may not use this project except in compliance with the License. You may obtain a copy of the License at:
 
-The vendored C libraries retain their original licenses:
-- klib (khash): MIT License
-- UltraJSON: BSD License
-- Skiplist: BSD License
+> http://www.apache.org/licenses/LICENSE-2.0
 
-See the [pandas LICENSE](https://github.com/pandas-dev/pandas/blob/main/LICENSE) for the original project license.
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an **"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND**, either express or implied. See the [License](LICENSE) for the specific language governing permissions and limitations under the License.
+
+```
+Copyright 2025-2026 SwiftPandas Contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+### Required notices for redistribution
+
+If you redistribute SwiftPandas (in source or binary form, modified or unmodified), Apache 2.0 §4 requires that you:
+
+1. Include a copy of the [LICENSE](LICENSE) file with the distribution.
+2. Include the [NOTICE](NOTICE) file (or its contents) in your distribution, displayed wherever third-party notices normally appear.
+3. Mark any modified files with prominent notices stating that you changed them.
+4. Retain all copyright, patent, trademark, and attribution notices from the source.
+
+The [NOTICE](NOTICE) file lists the upstream projects whose code is incorporated into SwiftPandas and must be carried forward in any derivative work.
+
+### Attribution to the original pandas project
+
+SwiftPandas is a Swift port of, and incorporates code from, the [pandas](https://github.com/pandas-dev/pandas) project, which is licensed under the [BSD 3-Clause License](https://github.com/pandas-dev/pandas/blob/main/LICENSE).
+
+> Copyright (c) 2008-2024, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team. All rights reserved.
+
+The relicensing of SwiftPandas to Apache 2.0 applies only to the original Swift code and project-specific work in this repository. The vendored upstream sources continue to be governed by their original licenses (listed below), as permitted by each upstream license.
+
+### Vendored third-party components
+
+The following third-party components are compiled directly into SwiftPandas as framework targets and retain their original licenses. The full text of each license is included in the [LICENSES/](LICENSES/) directory of this repository.
+
+| Component | Upstream | License | Full text |
+|-----------|----------|---------|-----------|
+| **klib (khash)** | [attractivechaos/klib](https://github.com/attractivechaos/klib) | MIT | [LICENSES/KLIB_LICENSE](LICENSES/KLIB_LICENSE) |
+| **UltraJSON** | [ultrajson/ultrajson](https://github.com/ultrajson/ultrajson) | BSD 2-Clause | [LICENSES/ULTRAJSON_LICENSE](LICENSES/ULTRAJSON_LICENSE) |
+| **Skiplist** | Raymond Hettinger / Wes McKinney (pandas) | BSD 3-Clause | [LICENSES/SKIPLIST_LICENSE](LICENSES/SKIPLIST_LICENSE) |
+| **pandas** (algorithms ported to Swift) | [pandas-dev/pandas](https://github.com/pandas-dev/pandas) | BSD 3-Clause | [pandas LICENSE](https://github.com/pandas-dev/pandas/blob/main/LICENSE) |
+
+### Contributions
+
+By submitting a contribution to SwiftPandas, you agree, per Apache 2.0 §5, that your contribution is licensed under the same Apache License, Version 2.0, without any additional terms or conditions.
