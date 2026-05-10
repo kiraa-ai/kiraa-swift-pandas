@@ -18,6 +18,10 @@ This library is in **beta**. The core API is stabilizing but may still change. W
 - Validating correctness against Python pandas on real-world datasets
 - Documenting all public APIs with comprehensive Swift doc comments
 
+### Breaking changes in v0.5.0-beta
+
+- **`SwiftPandas.version` is now `SwiftPandasInfo.version`.** The library-metadata namespace was renamed because a public type named `SwiftPandas` collided with the module name `SwiftPandas`, which broke distribution builds (`BUILD_LIBRARY_FOR_DISTRIBUTION=YES`) needed to produce the new XCFramework. Update `SwiftPandas.version` → `SwiftPandasInfo.version` at any call sites.
+
 ## Authors
 
 - **Markos Abdallah**
@@ -119,57 +123,94 @@ The following vendored C libraries from the pandas project are compiled directly
 
 ## Installation
 
-### Swift Package Manager (Recommended)
+SwiftPandas supports two SwiftPM consumption modes from a single `Package.swift`:
 
-SwiftPandas is a Swift Package Manager project. Package.swift applies `-O` optimization for both library and test targets, and `-O3` for vendored C libraries.
+| Mode | Set up | First build | Re-builds | Platforms | Debugger steps into source |
+|---|---|---|---|---|---|
+| **Source build** *(default)* | One `.package` line | ~30 s (compiles C deps + Swift) | fast | macOS, iOS, Linux¹ | yes |
+| **Precompiled XCFramework** | Same `.package` line + `SWIFTPANDAS_USE_BINARY=1` env var | seconds (downloads zip) | instant | macOS, iOS | no |
 
-```bash
-# Build
-swift build
+¹ On Linux, Accelerate and Metal are unavailable, so SwiftPandas falls back to scalar implementations and CPU GroupBy.
 
-# Run tests
-swift test
+### Option A — Source build (default)
 
-# Build in release mode
-swift build -c release
-```
-
-### Xcode Project
-
-An Xcode project with precompiled Metal shaders is also available:
-
-```bash
-# Install xcodegen if needed
-brew install xcodegen
-
-# Generate Xcode project
-xcodegen generate
-
-# Build framework
-xcodebuild build -scheme SwiftPandas -configuration Release
-```
-
-To use in your own Xcode project, add the `SwiftPandas.framework` as a dependency.
-
-### Adding as a Dependency
-
-SPM shaders are compiled at runtime from embedded source strings (vs precompiled `.metallib` in Xcode):
+Add SwiftPandas to your `Package.swift` and pin to the v0.5.0-beta tag (or track `main` for development):
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
-],
-targets: [
-    .target(
-        name: "YourTarget",
-        dependencies: [
-            .product(name: "SwiftPandas", package: "kiraa-swift-pandas"),
-        ]
-    ),
-]
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "YourPackage",
+    platforms: [.macOS(.v13), .iOS(.v16)],
+    dependencies: [
+        // Recommended: pin to a tagged release
+        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.5.0-beta"),
+
+        // Or track the latest development:
+        // .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
+    ],
+    targets: [
+        .target(
+            name: "YourTarget",
+            dependencies: [
+                .product(name: "SwiftPandas", package: "kiraa-swift-pandas"),
+            ]
+        ),
+    ]
+)
 ```
 
-> **Note**: SPM builds use `unsafeFlags(["-O3"])` for C libraries, which prevents distribution via SPM package registries. The Xcode project is the recommended distribution method.
+Then `import SwiftPandas` in your Swift sources. The Metal shaders compile at runtime from embedded source strings.
+
+### Option B — Precompiled XCFramework (Apple platforms only)
+
+Use the prebuilt `SwiftPandas.xcframework` published with each tagged release. Same `Package.swift` as above — just set `SWIFTPANDAS_USE_BINARY=1` in the environment when SwiftPM resolves and builds:
+
+```bash
+# Resolve dependencies once with the binary flag set
+SWIFTPANDAS_USE_BINARY=1 swift package resolve
+
+# Subsequent builds and Xcode integration honour the resolved graph
+SWIFTPANDAS_USE_BINARY=1 swift build
+```
+
+In Xcode, set the environment variable on the scheme (Edit Scheme → Run → Arguments → Environment Variables → `SWIFTPANDAS_USE_BINARY=1`) and re-resolve packages (File → Packages → Reset Package Caches).
+
+The XCFramework bundles three slices (`macos-arm64_x86_64`, `ios-arm64`, `ios-arm64_x86_64-simulator`), is built with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES` for module stability, and ships at ~2 MB zipped. SwiftPM downloads, verifies the SHA-256 checksum, and caches it like any other binary target — no `xcodegen`, no C compilation, no Metal preflight.
+
+> The binary mode trades source debuggability for build speed. If you need to step into SwiftPandas internals (e.g., to investigate behaviour or contribute upstream), unset the env var to fall back to source mode.
+
+### Option C — Direct framework integration (non-SwiftPM Xcode projects)
+
+For Xcode app targets that don't use SwiftPM, download `SwiftPandas.xcframework.zip` from the [Releases page](https://github.com/kiraa-ai/kiraa-swift-pandas/releases), unzip it, and drag `SwiftPandas.xcframework` into your project. In the target's General settings, set **Frameworks, Libraries, and Embedded Content** → **Embed & Sign** for `SwiftPandas.xcframework`.
+
+### Building the XCFramework locally
+
+If you need to produce a custom XCFramework (e.g., to test an unreleased branch or to add a platform slice):
+
+```bash
+brew install xcodegen          # one-time
+./scripts/build-xcframework.sh
+```
+
+The script regenerates the Xcode project from `project.yml`, archives macOS + iOS device + iOS simulator slices with library evolution enabled, bundles them into `dist/SwiftPandas.xcframework`, zips the result, and prints the SPM checksum. Replace `xcframeworkURL` and `xcframeworkChecksum` in `Package.swift` to point consumers at your locally-hosted artifact.
+
+### Building from source for development
+
+To work on SwiftPandas itself (run tests, build the demo app, or run benchmarks):
+
+```bash
+swift build                              # SwiftPM source build
+swift test                               # run library + CLI tests
+swift build -c release                   # release-optimised build
+
+xcodegen generate                        # regenerate SwiftPandas.xcodeproj
+xcodebuild build -scheme SwiftPandas \
+    -configuration Release               # build the macOS framework target
+```
+
+> **Note on Swift Package Registry**: SwiftPandas uses `unsafeFlags(["-O3"])` for its vendored C libraries, which prevents publishing the source package to the official Swift Package Registry. Both git-URL source pinning and the binary-target XCFramework distribution shown above are fully supported and unaffected.
 
 ## Quick Start
 

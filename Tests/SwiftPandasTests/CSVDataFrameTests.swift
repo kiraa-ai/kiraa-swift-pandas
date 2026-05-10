@@ -112,7 +112,7 @@ final class CSVDataFrameTests: XCTestCase {
     /// Prints the full API table of contents covering all SwiftPandas modules.
     /// Named with "AA" prefix to ensure it runs first alphabetically.
     func testAA_TableOfContents() {
-        Self.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} API REFERENCE")
+        Self.banner("SWIFTPANDAS \(SwiftPandasInfo.version) \u{2014} API REFERENCE")
 
         print("""
 
@@ -895,7 +895,7 @@ final class CSVDataFrameTests: XCTestCase {
         Self.note("Data integrity: \(abs(df["salary"].sum()! - dfBack["salary"].sum()!) < 0.01 ? "PASS" : "FAIL")")
 
         print("\n  " + String(repeating: "\u{2550}", count: Self.W - 4))
-        print("  SwiftPandas \(SwiftPandas.version) \u{2014} All demos complete.")
+        print("  SwiftPandas \(SwiftPandasInfo.version) \u{2014} All demos complete.")
         print("  " + String(repeating: "\u{2550}", count: Self.W - 4))
 
         // Assertions

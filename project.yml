@@ -2,6 +2,7 @@ name: SwiftPandas
 options:
   deploymentTarget:
     macOS: "13.0"
+    iOS: "16.0"
   xcodeVersion: "15.0"
   bundleIdPrefix: com.swiftpandas
   createIntermediateGroups: true
@@ -10,6 +11,7 @@ options:
 settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "13.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
 
 targets:
   SwiftPandas:
@@ -49,6 +51,44 @@ targets:
     scheme:
       testTargets:
         - SwiftPandasTests
+
+  SwiftPandas-iOS:
+    type: framework
+    platform: iOS
+    productName: SwiftPandas
+    sources:
+      - path: Sources/SwiftPandas
+      - path: Sources/CKHash
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+      - path: Sources/CSkipList
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+      - path: Sources/CUltraJSON
+        headerVisibility: project
+        compilerFlags:
+          - "-O3"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.SwiftPandas
+        PRODUCT_NAME: SwiftPandas
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCELERATE_AVAILABLE
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Sources/CKHash/include"
+          - "$(SRCROOT)/Sources/CSkipList/include"
+          - "$(SRCROOT)/Sources/CUltraJSON/include"
+        MTL_HEADER_SEARCH_PATHS: "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders"
+        DEFINES_MODULE: YES
+        SWIFT_VERSION: "5.9"
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        TARGETED_DEVICE_FAMILY: "1,2"
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
 
   SwiftPandasApp:
     type: application

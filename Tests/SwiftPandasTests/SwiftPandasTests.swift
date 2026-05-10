@@ -40,10 +40,10 @@ import XCTest
 @testable import SwiftPandas
 
 /// Tests for the library-level version constant.
-/// Ensures the public `SwiftPandas.version` string matches the expected release.
+/// Ensures the public `SwiftPandasInfo.version` string matches the expected release.
 final class SwiftPandasTests: XCTestCase {
     func testVersion() {
-        XCTAssertEqual(SwiftPandas.version, "0.4.0-beta")
+        XCTAssertEqual(SwiftPandasInfo.version, "0.5.0-beta")
     }
 }
 
