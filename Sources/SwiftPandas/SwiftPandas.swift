@@ -32,13 +32,13 @@
 // (via the `ACCELERATE_AVAILABLE` compilation flag) to leverage vDSP for vectorized numeric
 // operations on contiguous arrays.
 
-/// Root namespace for the SwiftPandas library.
+/// Library-wide metadata namespace for SwiftPandas.
 ///
-/// `SwiftPandas` is declared as a caseless `enum` (rather than a `struct` or `class`) to
-/// prevent instantiation — it serves purely as a namespace for library-wide metadata such
-/// as the version string. All functional types (`DataFrame`, `Series`, `GroupBy`, etc.) are
-/// defined as top-level public types within the `SwiftPandas` module.
-public enum SwiftPandas {
+/// Declared as a caseless `enum` to prevent instantiation — it serves purely as a
+/// namespace for library metadata such as the version string. Renamed from `SwiftPandas`
+/// to `SwiftPandasInfo` to avoid shadowing the module name, which breaks distribution
+/// builds (`BUILD_LIBRARY_FOR_DISTRIBUTION=YES`) used to produce XCFrameworks.
+public enum SwiftPandasInfo {
     /// The current semantic version of the SwiftPandas library.
-    public static let version = "0.4.0-beta"
+    public static let version = "0.5.0-beta"
 }

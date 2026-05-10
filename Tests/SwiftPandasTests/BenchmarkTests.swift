@@ -286,7 +286,7 @@ final class BenchmarkTests: XCTestCase {
     /// Prints the benchmark suite header, methodology description, and section index.
     /// Runs first due to the `AA` prefix.
     func testAA_BenchmarkHeader() {
-        BenchmarkTests.banner("SWIFTPANDAS \(SwiftPandas.version) \u{2014} PERFORMANCE BENCHMARKS")
+        BenchmarkTests.banner("SWIFTPANDAS \(SwiftPandasInfo.version) \u{2014} PERFORMANCE BENCHMARKS")
 
         print("")
         print("  Methodology")
