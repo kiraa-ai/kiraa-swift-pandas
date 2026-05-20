@@ -9,6 +9,7 @@
 # Xcode
 xcuserdata/
 DerivedData/
+build/                                   # XcodeGen / xcodebuild local output
 
 # Python
 __pycache__/

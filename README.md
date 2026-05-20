@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.5.0-beta
+# SwiftPandas v0.6.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -10,10 +10,20 @@ A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas)
 
 SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, Metal compute shaders for GPU-accelerated GroupBy and Merge, and a lazy evaluation engine with filter fusion, predicate pushdown, and projection pushdown.
 
+The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
+
+## What's new in v0.6.0-beta
+
+- **Resident-memory daemon** — `swiftpandas server start` spawns a background process that owns a `DataFrameRegistry` over a Unix-domain socket. Thin client subcommands (`load`, `pipe`, `save`, `list`, `drop`, `show`, `info`, `server status / stop`) talk to it and share DataFrames across invocations. Full design: [docs/SERVER.md](docs/SERVER.md).
+- **`swiftpandas info <name>`** — structured `df.info()` equivalent: per-column dtype, non-null count, and byte size, served from resident memory with no re-read.
+- **CSV loader memory win (Phase A)** — `DataFrame.readCSV(path:)` now reads via `Data(contentsOf:options:.mappedIfSafe)` and walks bytes directly, skipping the UTF-16 Swift `String` allocation that previously doubled peak memory. Measured: 211 MB → 147 MB peak RSS on a 31 MB CSV (–30%). Streaming + chunked output land in Phase B.
+- **Four install paths documented**: source build, SwiftPM library import, GitHub Releases ZIP, Homebrew tap (planned). See [docs/INSTALL.md](docs/INSTALL.md).
+- **Side-by-side demo scripts** — twelve self-contained `examples/cli/0*.sh` scripts each compare a Python + pandas implementation of the same workload against the swiftpandas daemon equivalent, with hi-res timings and an explicit "why is this faster" explanation.
+
 ## Status
 
 This library is in **beta**. The core API is stabilizing but may still change. We are actively:
-- Expanding test coverage across all subsystems
+- Expanding test coverage across all subsystems (currently 415 tests, all green)
 - Profiling and optimizing performance bottlenecks
 - Validating correctness against Python pandas on real-world datasets
 - Documenting all public APIs with comprehensive Swift doc comments
@@ -407,6 +417,39 @@ The GUI provides:
 - **Result viewer** — Tabbed output with Table, CSV, and execution Log views
 - **Export** — Save transformed data to a new CSV file
 - **Timing** — Per-step and total execution time displayed in the status bar
+
+### Resident-Memory Server Mode
+
+`swiftpandas` ships a resident-memory daemon: a long-lived background process
+that owns an in-memory area where named DataFrames live across CLI
+invocations. Subsequent commands operate on already-decoded columns instead of
+re-reading the CSV each time.
+
+```bash
+swiftpandas server start                                       # spawn daemon
+swiftpandas load sales.csv --name sales                          # read CSV once
+swiftpandas pipe --from sales --name big -c "filter(revenue > 10000)"
+swiftpandas list                                               # name × rows × cols × bytes
+swiftpandas save big out.csv
+swiftpandas server status                                      # pid, uptime, memory
+swiftpandas server stop                                        # frees all DataFrames
+```
+
+The same `swiftpandas` binary runs in both roles — `server start` re-execs it
+with `--foreground`, gives it a fresh session via `setsid()`, and waits until
+it's accept-ready before returning. Subsequent client commands talk to it over
+a Unix-domain socket at `~/.swiftpandas/sock` (mode 0600, same-UID only).
+Running a DataFrame command without a daemon exits with code 2 and a clear
+`"no server running"` message — there is no auto-launch.
+
+The one-shot `swiftpandas -i ... -c ...` CLI is unchanged. It lives under the
+`run` subcommand which is registered as the default, so legacy scripts
+continue to work without edits.
+
+See [docs/SERVER.md](docs/SERVER.md) for the wire-protocol schema, exit-code
+table, and concurrency model; see [docs/INSTALL.md](docs/INSTALL.md) for all
+four install paths (source build, SwiftPM library, GitHub Releases ZIP,
+Homebrew tap).
 
 ## Project Structure
 

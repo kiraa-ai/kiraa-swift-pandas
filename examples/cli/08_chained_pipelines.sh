@@ -1,5 +1,5 @@
 #!/bin/bash
-# 06 — JSON file pipeline: run transforms defined in a .json file
+# 08 — Chained pipelines with memory snapshots
 set -euo pipefail
 # ── Inlined helpers (was: source _lib.sh) ──────────────────────────────
 # Each demo is self-contained for copy-paste reproducibility. The block
@@ -297,73 +297,61 @@ pandas_skipped_notice() {
 # ── End of inlined helpers ─────────────────────────────────────────────
 ensure_demo_daemon
 
-JSON="$ROOT_DIR/examples/data/transforms.json"
-
-script_banner "06 — JSON Pipeline" "Run a pipeline declared as JSON instead of inline DSL"
-script_meta "Input:"     "$DEMO_CSV"
-script_meta "Transform:" "$JSON"
-script_meta "Why:"       "Reusable / version-controllable pipelines for non-interactive runs"
+script_banner "08 — Chained Pipelines" "3 sequential stages; each intermediate kept resident"
+script_meta "Input:" "$DEMO_CSV"
+script_meta "Why:"   "Impossible in one-shot CLI mode without rewriting CSVs each stage"
 
 demo_intro <<EOF
 What it does:
-  Load a pipeline spec from a .json file and execute it. The pandas side
-  has to interpret the JSON by hand — pandas has no built-in
-  "run-pipeline-from-spec" feature.
+  Three sequential stages, each producing a named intermediate that the
+  next stage reads:
+    sales → actives → by_region → top
 
-Expected outcome: swiftpandas ~3-5× faster than pandas.
+Expected outcome: swiftpandas ~2-3× faster on this single-shot timing,
+                  but the real win is what's NOT measured.
 
 Why:
-  • Same import tax for pandas: ~650 ms before any work happens.
-  • swiftpandas has a native JSONTransformParser that recognises the
-    same operation vocabulary as the inline DSL; the daemon parses
-    the JSON and runs the pipeline in one shot.
-  • Beyond timing, this is also a clear ergonomics win: the JSON spec
-    is portable across SDKs and trivially version-controlled, while
-    the Python equivalent is a non-trivial chunk of code that has to
-    be hand-written for every workflow.
+  • In this script, the pandas process runs ALL THREE stages inside one
+    Python invocation — so it pays its 650 ms startup tax only once
+    and chains everything in-memory. That's pandas at its best.
+  • swiftpandas runs the three stages as THREE SEPARATE CLI invocations,
+    each a fresh process. Each pays only the wire round trip (~5 ms).
+  • The bigger story: in a real workflow you'd run these stages from
+    different terminals, different cron jobs, different shell sessions —
+    pandas can't share state across that, so each invocation pays the
+    650 ms tax again. swiftpandas pays it once, when 'sales' was loaded.
+  • This script also shows live memory snapshots between stages — visible
+    proof that the intermediates ARE actually held in resident memory.
 EOF
 
 PANDAS_T="—"
 if pandas_available; then
     pandas_section
     show_code "Python equivalent" <<'EOF'
-# pandas has no built-in pipeline-from-JSON executor — you write the
-# python by hand. This snippet walks the JSON and replicates each step.
-spec = json.load(open("transforms.json"))
-df   = pd.read_csv("sales.csv")
-for op in spec["operations"]:
-    ...
-print(df.to_csv(index=False), end="")
+df       = pd.read_csv("sales.csv")
+actives  = df[df["status"] == "active"]
+by_region = (actives.groupby("region")
+                    .agg(revenue=("revenue", "sum"),
+                         margin=("margin", "mean"))
+                    .reset_index())
+top      = by_region.sort_values("revenue", ascending=False).head(3)
 EOF
     output_label
     time_start
     $PY <<PYEOF
-import json, pandas as pd
-with open("$JSON") as f:
-    spec = json.load(f)
+import pandas as pd
 df = pd.read_csv("$DEMO_CSV")
-for op in spec["operations"]:
-    name = op["op"]; args = op["args"]
-    if name == "filter":
-        col = args["column"]; o = args["operator"]; v = args["value"]
-        ops = {"==": df[col] == v, ">": df[col] > v, ">=": df[col] >= v,
-               "<": df[col] < v,   "<=": df[col] <= v, "!=": df[col] != v}
-        df = df[ops[o]]
-    elif name == "groupby":
-        df.attrs["_groupby"] = args["columns"]
-    elif name == "agg":
-        keys = df.attrs.pop("_groupby")
-        named = {s["col"]: (s["col"], s["fn"]) for s in args["specs"]}
-        df = df.groupby(keys).agg(**named).reset_index()
-    elif name == "sort":
-        cols = [s["column"] for s in args["columns"]]
-        ascs = [s["direction"] == "asc" for s in args["columns"]]
-        df = df.sort_values(cols, ascending=ascs)
-    elif name == "rename":
-        df = df.rename(columns={args["from"]: args["to"]})
-    elif name == "round":
-        df[args["column"]] = df[args["column"]].round(args["decimals"])
-print(df.to_csv(index=False), end="")
+actives = df[df["status"] == "active"]
+print(f"Stage 1: actives = {len(actives)} rows")
+by_region = (actives.groupby("region")
+                    .agg(revenue=("revenue", "sum"),
+                         margin=("margin", "mean"))
+                    .reset_index())
+print(f"Stage 2: by_region = {len(by_region)} rows")
+top = by_region.sort_values("revenue", ascending=False).head(3)
+print(f"Stage 3: top = {len(top)} rows")
+print()
+print(top.to_csv(index=False), end="")
 PYEOF
     time_marker_and_save "$(time_end_ms)" PANDAS_T
 else
@@ -374,14 +362,39 @@ swiftpandas_section
 show_code "swiftpandas commands" <<EOF
 swiftpandas server start                       # (started by helpers below)
 swiftpandas load sales.csv --name sales      # (already done above)
-swiftpandas pipe --from sales --name r06 -f transforms.json
-swiftpandas show r06
+swiftpandas pipe --from sales    --name actives   -c 'filter(status == "active")'
+swiftpandas pipe --from actives  --name by_region -c 'groupby(region) | agg(sum:revenue, mean:margin)'
+swiftpandas pipe --from by_region --name top      -c 'sort(revenue, desc) | head(3)'
+swiftpandas show top
 swiftpandas server stop                        # (stopped on script exit)
 EOF
+
+mem_snapshot() {
+    "$SWIFTPANDAS" server status | grep -E "dataframes|memory" | sed 's/^/      /'
+}
+
 output_label
 time_start
-"$SWIFTPANDAS" pipe --from sales --name r06 -f "$JSON" >/dev/null
-"$SWIFTPANDAS" show r06 | sed 's/^/    /'
+echo "    Stage 1 → actives"
+"$SWIFTPANDAS" pipe --from sales --name actives -c 'filter(status == "active")' | sed 's/^/      /'
+mem_snapshot
+
+echo "    Stage 2 → by_region"
+"$SWIFTPANDAS" pipe --from actives --name by_region \
+  -c 'groupby(region) | agg(sum:revenue, mean:margin)' | sed 's/^/      /'
+mem_snapshot
+
+echo "    Stage 3 → top"
+"$SWIFTPANDAS" pipe --from by_region --name top \
+  -c 'sort(revenue, desc) | head(3)' | sed 's/^/      /'
+mem_snapshot
+
+echo "    --- top ---"
+"$SWIFTPANDAS" show top | sed 's/^/    /'
+
+"$SWIFTPANDAS" drop actives   >/dev/null
+"$SWIFTPANDAS" drop by_region >/dev/null
+"$SWIFTPANDAS" drop top       >/dev/null
 time_marker_and_save "$(time_end_ms)" SP_T
 
 summary_block "$PANDAS_T" "$SP_T"
