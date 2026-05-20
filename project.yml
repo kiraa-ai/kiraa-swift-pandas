@@ -13,6 +13,14 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "13.0"
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
 
+# Swift package dependencies. The CLI target links ArgumentParser; the
+# library itself has no external Swift dependencies. Keep the version pin in
+# lockstep with Package.swift (currently >= 1.3.0; resolved at 1.7.0).
+packages:
+  swift-argument-parser:
+    url: https://github.com/apple/swift-argument-parser
+    from: "1.3.0"
+
 targets:
   SwiftPandas:
     type: framework
@@ -126,3 +134,59 @@ targets:
       configs:
         Release:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
+
+  # ──────────────────────────────────────────────────────────────────────
+  # `swiftpandas` CLI executable + resident-memory daemon (see
+  # docs/SERVER.md). Compiled from the same sources SwiftPM uses for the
+  # `swiftpandas` product, so Xcode and `swift build` stay in sync.
+  # ──────────────────────────────────────────────────────────────────────
+  SwiftPandasCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/SwiftPandasCLI
+    dependencies:
+      - target: SwiftPandas
+      - package: swift-argument-parser
+        product: ArgumentParser
+    settings:
+      base:
+        PRODUCT_NAME: swiftpandas
+        # Keep the binary name `swiftpandas` but expose the Swift module as
+        # `SwiftPandasCLI` so `@testable import SwiftPandasCLI` in the test
+        # bundle resolves the same way SwiftPM names it.
+        PRODUCT_MODULE_NAME: SwiftPandasCLI
+        PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.cli
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        # Bare command-line tools that link a framework target need the
+        # framework on the dyld runpath at runtime. `$(BUILT_PRODUCTS_DIR)`
+        # covers Xcode's DerivedData layout; `@executable_path` covers the
+        # case where the binary is copied next to the framework for
+        # distribution.
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path @loader_path $(BUILT_PRODUCTS_DIR)"
+        # ENABLE_TESTABILITY exposes internal symbols for future CLI tests
+        # (see note on the SwiftPandasCLITests target below).
+        ENABLE_TESTABILITY: YES
+      configs:
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          ENABLE_TESTABILITY: NO
+
+  # NOTE on CLI test bundle: SwiftPandasCLITests is intentionally *not* a
+  # target in the XcodeGen-generated project. The CLI is built as a Swift
+  # executable (`tool` target), and macOS executables do not export their
+  # symbols for downstream linkage — so an Xcode test bundle that
+  # `@testable import SwiftPandasCLI` fails at link time with hundreds of
+  # "Undefined symbols" errors. Cleanly fixing this requires splitting the
+  # CLI into a framework (containing all logic) + a thin executable
+  # (containing only `main.swift`), which is a larger refactor than belongs
+  # in this XcodeGen surface change.
+  #
+  # Until then, CLI tests run via `swift test` (which already exercises
+  # them — 41 cases covering Registry, Protocol, Handlers, CLI subcommands,
+  # and DataFrame memory accounting). Xcode users editing CLI code can:
+  #   1. Use the SwiftPandasCLI scheme to build & run the executable.
+  #   2. Run the CLI test bundle from the terminal:
+  #        swift test --filter 'RegistryTests|ProtocolTests|HandlersTests|CLISubcommandTests|DataFrameMemoryTests'

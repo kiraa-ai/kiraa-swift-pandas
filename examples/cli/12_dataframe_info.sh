@@ -1,5 +1,5 @@
 #!/bin/bash
-# 06 — JSON file pipeline: run transforms defined in a .json file
+# 12 — df.info() equivalent: per-column dtype + non-null + size
 set -euo pipefail
 # ── Inlined helpers (was: source _lib.sh) ──────────────────────────────
 # Each demo is self-contained for copy-paste reproducibility. The block
@@ -297,91 +297,65 @@ pandas_skipped_notice() {
 # ── End of inlined helpers ─────────────────────────────────────────────
 ensure_demo_daemon
 
-JSON="$ROOT_DIR/examples/data/transforms.json"
-
-script_banner "06 — JSON Pipeline" "Run a pipeline declared as JSON instead of inline DSL"
-script_meta "Input:"     "$DEMO_CSV"
-script_meta "Transform:" "$JSON"
-script_meta "Why:"       "Reusable / version-controllable pipelines for non-interactive runs"
+script_banner "12 — DataFrame Info" "Per-column dtype, non-null count, and size"
+script_meta "Input:" "$DEMO_CSV"
+script_meta "Both:"  "Report column schema with sizes — the structured cousin of df.head()"
 
 demo_intro <<EOF
 What it does:
-  Load a pipeline spec from a .json file and execute it. The pandas side
-  has to interpret the JSON by hand — pandas has no built-in
-  "run-pipeline-from-spec" feature.
+  Reveal the schema + memory layout of a loaded DataFrame.
+  • pandas: df.info() prints a human-readable summary (columns, dtypes,
+    non-null counts, memory footprint).
+  • swiftpandas: 'swiftpandas info <name>' returns the same data, but
+    sourced server-side from the resident DataFrame and rendered as a
+    proper aligned table.
 
 Expected outcome: swiftpandas ~3-5× faster than pandas.
 
 Why:
-  • Same import tax for pandas: ~650 ms before any work happens.
-  • swiftpandas has a native JSONTransformParser that recognises the
-    same operation vocabulary as the inline DSL; the daemon parses
-    the JSON and runs the pipeline in one shot.
-  • Beyond timing, this is also a clear ergonomics win: the JSON spec
-    is portable across SDKs and trivially version-controlled, while
-    the Python equivalent is a non-trivial chunk of code that has to
-    be hand-written for every workflow.
+  • Same import / startup tax for pandas (~650 ms before any work).
+  • swiftpandas serves 'info' straight from the daemon's resident
+    columns — no file re-read, no parse. The wire reply is a small
+    JSON object with one entry per column.
+  • The output is **structured** (each column row is a separate JSON
+    record over the wire), so shell scripts can pipe it into jq or
+    grep without parsing free-form Python prose.
+  • For large DataFrames, this is the difference between "load + describe
+    the schema" (slow, every time, in pandas) and "describe the schema"
+    (just the schema, instant, in swiftpandas).
 EOF
 
+# ── Python + pandas ──
 PANDAS_T="—"
 if pandas_available; then
     pandas_section
     show_code "Python equivalent" <<'EOF'
-# pandas has no built-in pipeline-from-JSON executor — you write the
-# python by hand. This snippet walks the JSON and replicates each step.
-spec = json.load(open("transforms.json"))
-df   = pd.read_csv("sales.csv")
-for op in spec["operations"]:
-    ...
-print(df.to_csv(index=False), end="")
+df = pd.read_csv("sales.csv")
+df.info()
 EOF
     output_label
     time_start
     $PY <<PYEOF
-import json, pandas as pd
-with open("$JSON") as f:
-    spec = json.load(f)
+import pandas as pd
 df = pd.read_csv("$DEMO_CSV")
-for op in spec["operations"]:
-    name = op["op"]; args = op["args"]
-    if name == "filter":
-        col = args["column"]; o = args["operator"]; v = args["value"]
-        ops = {"==": df[col] == v, ">": df[col] > v, ">=": df[col] >= v,
-               "<": df[col] < v,   "<=": df[col] <= v, "!=": df[col] != v}
-        df = df[ops[o]]
-    elif name == "groupby":
-        df.attrs["_groupby"] = args["columns"]
-    elif name == "agg":
-        keys = df.attrs.pop("_groupby")
-        named = {s["col"]: (s["col"], s["fn"]) for s in args["specs"]}
-        df = df.groupby(keys).agg(**named).reset_index()
-    elif name == "sort":
-        cols = [s["column"] for s in args["columns"]]
-        ascs = [s["direction"] == "asc" for s in args["columns"]]
-        df = df.sort_values(cols, ascending=ascs)
-    elif name == "rename":
-        df = df.rename(columns={args["from"]: args["to"]})
-    elif name == "round":
-        df[args["column"]] = df[args["column"]].round(args["decimals"])
-print(df.to_csv(index=False), end="")
+df.info()
 PYEOF
     time_marker_and_save "$(time_end_ms)" PANDAS_T
 else
     pandas_skipped_notice
 fi
 
+# ── swiftpandas (daemon) ──
 swiftpandas_section
 show_code "swiftpandas commands" <<EOF
 swiftpandas server start                       # (started by helpers below)
 swiftpandas load sales.csv --name sales      # (already done above)
-swiftpandas pipe --from sales --name r06 -f transforms.json
-swiftpandas show r06
+swiftpandas info sales
 swiftpandas server stop                        # (stopped on script exit)
 EOF
 output_label
 time_start
-"$SWIFTPANDAS" pipe --from sales --name r06 -f "$JSON" >/dev/null
-"$SWIFTPANDAS" show r06 | sed 's/^/    /'
+"$SWIFTPANDAS" info sales | sed 's/^/    /'
 time_marker_and_save "$(time_end_ms)" SP_T
 
 summary_block "$PANDAS_T" "$SP_T"
