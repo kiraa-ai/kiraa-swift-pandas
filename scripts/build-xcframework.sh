@@ -14,13 +14,20 @@
 # Xcode/Swift versions.
 #
 # Usage:
+#   # Build only — print upload + Package.swift bump instructions
 #   ./scripts/build-xcframework.sh
+#
+#   # Build + auto-upload to an existing GitHub release
+#   ./scripts/build-xcframework.sh --release-tag v0.6.1-beta
+#
+#   # Build + upload + auto-patch Package.swift's url/checksum constants
+#   ./scripts/build-xcframework.sh --release-tag v0.6.1-beta --update-package-swift
 #
 # Output:
 #   dist/SwiftPandas.xcframework      — the unzipped framework bundle
 #   dist/SwiftPandas.xcframework.zip  — the artifact to upload to GitHub Releases
 #
-# After running:
+# After running (without --release-tag):
 #   1. Attach dist/SwiftPandas.xcframework.zip to the GitHub release that
 #      matches the current git tag (e.g. v0.5.0-beta).
 #   2. Update Package.swift's `xcframeworkURL` and `xcframeworkChecksum`
@@ -30,9 +37,38 @@
 # Prerequisites:
 #   - Xcode + command line tools installed
 #   - xcodegen installed (brew install xcodegen)
+#   - gh CLI installed + authenticated when using --release-tag
 #
 # ============================================================================
 set -euo pipefail
+
+# ── Parse flags ──
+RELEASE_TAG=""
+UPDATE_PACKAGE_SWIFT=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --release-tag)
+            shift
+            [ $# -gt 0 ] || { echo "--release-tag needs a value" >&2; exit 1; }
+            RELEASE_TAG="$1"
+            ;;
+        --release-tag=*)
+            RELEASE_TAG="${1#--release-tag=}"
+            ;;
+        --update-package-swift)
+            UPDATE_PACKAGE_SWIFT=true
+            ;;
+        -h|--help)
+            sed -n '2,35p' "$0"   # print the header comment as help
+            exit 0
+            ;;
+        *)
+            echo "Unknown flag: $1 (see --help)" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -113,9 +149,71 @@ info "checksum: $CHECKSUM"
 # ── Detect current tag (if any) ──
 CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "")
 
+# Determine which tag to use for upload / Package.swift bump. Precedence:
+#   1. --release-tag <TAG> from the command line
+#   2. The exact-match git tag on HEAD
+#   3. Empty (manual instructions only)
+EFFECTIVE_TAG="${RELEASE_TAG:-$CURRENT_TAG}"
+
+# ── Optional: upload to GitHub release ──
+if [ -n "$RELEASE_TAG" ]; then
+    step "Uploading dist/SwiftPandas.xcframework.zip to release $RELEASE_TAG"
+    command -v gh >/dev/null || fail "gh CLI not installed; can't auto-upload"
+    if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+        fail "Release $RELEASE_TAG not found. Cut it first via scripts/build-release.sh."
+    fi
+    # `--clobber` overwrites if a previous attempt left a partial asset.
+    gh release upload "$RELEASE_TAG" "$DIST_DIR/SwiftPandas.xcframework.zip" --clobber
+    info "uploaded → https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/$RELEASE_TAG/SwiftPandas.xcframework.zip"
+fi
+
+# ── Optional: patch Package.swift in place ──
+if [ "$UPDATE_PACKAGE_SWIFT" = true ]; then
+    [ -n "$EFFECTIVE_TAG" ] || fail "--update-package-swift needs a release tag (use --release-tag, or run from a tagged commit)"
+    NEW_URL="https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/$EFFECTIVE_TAG/SwiftPandas.xcframework.zip"
+    step "Patching Package.swift xcframeworkURL + xcframeworkChecksum"
+    # macOS sed needs '' after -i; using perl avoids cross-platform pain.
+    perl -i -pe \
+        "s|^let xcframeworkURL = \".*\"|let xcframeworkURL = \"$NEW_URL\"|" \
+        "$PROJECT_DIR/Package.swift"
+    perl -i -pe \
+        "s|^let xcframeworkChecksum = \".*\"|let xcframeworkChecksum = \"$CHECKSUM\"|" \
+        "$PROJECT_DIR/Package.swift"
+    info "Package.swift updated"
+    grep -E '^let xcframework(URL|Checksum)' "$PROJECT_DIR/Package.swift" | sed 's/^/    /'
+fi
+
 # ── Final instructions ──
 step "Next steps"
-cat <<EOF
+if [ "$UPDATE_PACKAGE_SWIFT" = true ]; then
+    cat <<EOF
+
+  Package.swift is staged with the new URL + checksum. To finish:
+
+    1. Verify binary mode resolves cleanly:
+         SWIFTPANDAS_USE_BINARY=1 swift package resolve
+
+    2. Commit and push the bump:
+         git add Package.swift
+         git commit -m "${EFFECTIVE_TAG}: refresh XCFramework binary"
+         git push  # via PR if main is protected
+
+EOF
+elif [ -n "$RELEASE_TAG" ]; then
+    cat <<EOF
+
+  Asset uploaded to release $RELEASE_TAG. Update Package.swift by hand
+  (or re-run with --update-package-swift):
+
+    let xcframeworkURL      = "https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/${RELEASE_TAG}/SwiftPandas.xcframework.zip"
+    let xcframeworkChecksum = "$CHECKSUM"
+
+  Then verify:
+    SWIFTPANDAS_USE_BINARY=1 swift package resolve
+
+EOF
+else
+    cat <<EOF
 
   1. Upload the artifact to GitHub Releases:
 
@@ -123,11 +221,14 @@ cat <<EOF
 
   2. Update Package.swift with the new coordinates:
 
-       let xcframeworkURL = "https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/${CURRENT_TAG:-<TAG>}/SwiftPandas.xcframework.zip"
+       let xcframeworkURL      = "https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/${CURRENT_TAG:-<TAG>}/SwiftPandas.xcframework.zip"
        let xcframeworkChecksum = "$CHECKSUM"
 
   3. Verify a binary build resolves cleanly:
 
        SWIFTPANDAS_USE_BINARY=1 swift package resolve
 
+  Tip: run with --release-tag <TAG> --update-package-swift to skip steps 1+2.
+
 EOF
+fi
