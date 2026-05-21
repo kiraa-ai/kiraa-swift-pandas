@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.6.0-beta
+# SwiftPandas v0.6.2-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -11,6 +11,18 @@ A native Swift port of the [Python pandas](https://github.com/pandas-dev/pandas)
 SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data manipulation in Swift, with compiled C libraries (khash, skiplist, UltraJSON) for performance-critical operations, Apple Accelerate/vDSP for SIMD vectorization, Metal compute shaders for GPU-accelerated GroupBy and Merge, and a lazy evaluation engine with filter fusion, predicate pushdown, and projection pushdown.
 
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
+
+## What's new in v0.6.2-beta
+
+Rolling release that consolidates distribution, embedding, and reproducibility work done since v0.6.0-beta:
+
+- **Daemon self-exec fix** — `swiftpandas server start` now resolves its own binary path via `Bundle.main.executablePath`, so backgrounding works when the binary is invoked from `PATH` (e.g. through the Homebrew install). Previously failed on the brew-installed CLI with *"file doesn't exist"*.
+- **Homebrew tap auto-update workflow** — corrected the heredoc in `release.yml` that was clobbering the tap formula's `head do … end` block on each release. Future releases regenerate the tap formula without manual hot-fixes.
+- **Embedding documentation** — new [docs/EMBEDDING.md](docs/EMBEDDING.md) walks both binary-consumption paths (SwiftPM with `SWIFTPANDAS_USE_BINARY=1`, drag XCFramework into Xcode) with full Xcode-UI walkthroughs.
+- **Build-XCFramework script enhancements** — `scripts/build-xcframework.sh` learns `--release-tag <TAG>` (auto-upload to release) and `--update-package-swift` (patch `Package.swift` constants in place); the previous three-step release collapses to one command.
+- **Reproducible pandas-vs-swiftpandas tutorial** — new [docs/TUTORIAL.md](docs/TUTORIAL.md): ~20-minute end-to-end walkthrough that runs the same analytics pipeline in both libraries against a deterministic 200k-row dataset, with byte-for-byte expected output and a 10-iteration timing harness.
+- **Feature roadmap** — new [docs/ROADMAP.md](docs/ROADMAP.md): honest gap analysis between today's state and *"production analytics"*. Tracks Path-to-1.0 work (API freeze, Phase B streaming CSV, pandas correctness baseline) plus what's explicitly out of scope (Linux feature parity, GUI growth, cloud mode).
+- **Package.swift XCFramework refresh** — bumped to point at the v0.6.1-beta XCFramework; SwiftPM consumers using binary mode get the daemon-fixed library.
 
 ## What's new in v0.6.0-beta
 
