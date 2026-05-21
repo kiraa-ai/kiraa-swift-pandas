@@ -22,10 +22,19 @@ The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas serv
 
 ## Status
 
-This library is in **beta**. The core API is stabilizing but may still change. We are actively:
-- Expanding test coverage across all subsystems (currently 415 tests, all green)
-- Profiling and optimizing performance bottlenecks
-- Validating correctness against Python pandas on real-world datasets
+> **Positioning:** SwiftPandas is a Swift-native analytical dataframe engine for **local, Apple-first, production analytics.**
+
+This library is in **beta** today. The active gap-list between the current state and a defensible "production" claim is tracked in **[docs/ROADMAP.md](docs/ROADMAP.md)** — read that for what's planned, what's deferred, and what's explicitly out of scope. Highlights of in-flight work:
+
+- **v1.0 API freeze + deprecation policy** — eliminates the "may change between releases" caveat that blocks team adoption.
+- **CSV streaming reader (Phase B)** — another ~30% peak-RSS reduction on top of Phase A, takes multi-GB CSVs from "impossible" to "comfortable".
+- **Parquet I/O** — the most discoverable I/O gap for Apple-first analytics users.
+- **Daemon snapshot / restore** — resident DataFrames survive `server stop` and crashes.
+- **Real benchmarks page + correctness baseline against pandas** — published numbers + golden-file suite.
+
+Currently green on the fundamentals:
+- 415 tests, all passing; integration tests against the actual `swiftpandas` binary
+- Expanding test coverage across every subsystem
 - Documenting all public APIs with comprehensive Swift doc comments
 
 ### Breaking changes in v0.5.0-beta
