@@ -70,6 +70,12 @@ attached to the matching tagged release. See [Package.swift](../Package.swift) l
 > SwiftPandas types in your own process; install the binary if you want a
 > standalone server.
 
+### Embedding the binary in an Xcode project (no SwiftPM)
+
+If your project doesn't use a `Package.swift` — pure-Xcode apps, workspaces, build-script-heavy targets — you can drag `SwiftPandas.xcframework` straight into Xcode's **Frameworks, Libraries, and Embedded Content**. Full step-by-step walkthrough in **[docs/EMBEDDING.md → Path B](EMBEDDING.md#b-drag-xcframework-into-xcode-no-swiftpm)**.
+
+The same doc covers Path A (the SwiftPM binary route above) in more depth and explains how maintainers re-issue the XCFramework on each release via `scripts/build-xcframework.sh --release-tag <TAG> --update-package-swift`.
+
 ---
 
 ## GitHub Releases ZIP
