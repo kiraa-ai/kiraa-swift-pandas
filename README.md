@@ -12,6 +12,8 @@ SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data m
 
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
 
+**Want to try it for yourself?** [docs/TUTORIAL.md](docs/TUTORIAL.md) walks you through a complete analytics workflow twice — first in Python with pandas, then in `swiftpandas` running as a Homebrew-installed daemon. Same dataset, same operations, side-by-side timings. ~20 minutes start to finish.
+
 ## What's new in v0.6.0-beta
 
 - **Resident-memory daemon** — `swiftpandas server start` spawns a background process that owns a `DataFrameRegistry` over a Unix-domain socket. Thin client subcommands (`load`, `pipe`, `save`, `list`, `drop`, `show`, `info`, `server status / stop`) talk to it and share DataFrames across invocations. Full design: [docs/SERVER.md](docs/SERVER.md).
