@@ -41,6 +41,7 @@
 		4965441BA87D882E5AF58F35 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 408C06FD62F2C489D8DB191B /* MetalContext.swift */; };
 		499F95EA6EC3DD1BC773C09F /* SwiftPandasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */; };
 		4D187B59E6ED2333906051CA /* DataFrame+Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED8D61E4DE52C89E91401CEE /* DataFrame+Memory.swift */; };
+		5328C0C64F92D40ED738034B /* PIDFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16797A232569C45CB018FD1D /* PIDFile.swift */; };
 		57CF234A5BDD021FE3C07ABC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F845FA91A1F9266A74A73600 /* ContentView.swift */; };
 		5B790ED8BAB7DEA8B371046F /* MetalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A57050F20F42C904FEFFA187 /* MetalTests.swift */; };
 		5D6039BD81DC65009BBCDBC5 /* BenchmarkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C398A65678403C674A2C11 /* BenchmarkView.swift */; };
@@ -55,10 +56,12 @@
 		6893BD2302FDBAC647DA9DB2 /* ultrajsondec.c in Sources */ = {isa = PBXBuildFile; fileRef = 33D3A3C57157A8B084612879 /* ultrajsondec.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		6AD6B351907B7156063097B3 /* ShaderCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = DCD547CE28268E228BA21D66 /* ShaderCommon.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		6C22784BB1119F7F9D551759 /* LazyDataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B64E9FF0CA17AF9767C2C /* LazyDataFrame.swift */; };
+		75957B345E886AA68B611C55 /* Paths.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0430BB8B3D08AF271317895 /* Paths.swift */; };
 		765DC70429EEE386FC2EEDBF /* employees.csv in Resources */ = {isa = PBXBuildFile; fileRef = F144E9A25383F5A6574D65C3 /* employees.csv */; };
 		7708CE8FA8C9593365A8CC1C /* QueryPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1194ED9E8BDF89558FD6968 /* QueryPlan.swift */; };
 		7814EC209B984E84282B4F52 /* NullableArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */; };
 		789C0EBEF45CDFC8C3CA059B /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464B03A7DE52D165D759490 /* Buffer.swift */; };
+		79D5976E2B2E3D00DC865719 /* Daemon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F32C7C94134212AA97B6684 /* Daemon.swift */; };
 		7B12FB5FA55C994067F68B82 /* NewFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */; };
 		7BD6D351001680F45CBB3A62 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2181EEE84B163800594FA046 /* Protocol.swift */; };
 		7C27A5E497B2C844A912DE6C /* QueryOptimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0B19D5EA718C085C27AB2A /* QueryOptimizer.swift */; };
@@ -72,6 +75,7 @@
 		84F60AFAB78AC00365E40986 /* VectorOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */; };
 		85DCE13E5A6EFD34D67D6D2E /* NativeArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3376038DA3DA74732D8ADC79 /* NativeArray.swift */; };
 		8737AC28EBFDD391A49EAB33 /* khash.h in Headers */ = {isa = PBXBuildFile; fileRef = 0E209DB760F4CBFC327B5BBC /* khash.h */; };
+		888CBC70913668172AE3C7CF /* Transport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCD61785C1C8586D7F55DFDC /* Transport.swift */; };
 		89499AAD1E196D302D68F90F /* DType.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24D37B50C94748102DA0EC9 /* DType.swift */; };
 		89D120C41FE11291E343F014 /* RunCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73838E78124769627CA76F32 /* RunCommand.swift */; };
 		8C6EDF782DC146BB2C0386E9 /* MetalGroupBy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */; };
@@ -114,12 +118,14 @@
 		E88188C536FCA32684BB4D12 /* JSONTransformParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77873A3969C7EF9C55513707 /* JSONTransformParser.swift */; };
 		E9FE6C6DAA3824B3744C1474 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 8BD9F9ED31DE93676024BFFA /* ArgumentParser */; };
 		EACE7D3C5AB72581F28193E1 /* MetalShaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46E84DEBD0790B057CABF32 /* MetalShaders.swift */; };
+		EC1C0D5DDFD7904F1B81B5B4 /* Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C94339382772F892E30D8 /* Client.swift */; };
 		EC6777C9B6466BA0BBC683BD /* GroupByDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */; };
 		EEAA9A7327E58065497F9F5C /* GroupByShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 19D846DA71CE9577F41EE749 /* GroupByShaders.metal */; };
 		F0A342F3697757C62A77D911 /* MetalDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */; };
 		F403E6B88DB9C471BC82B86F /* MergeShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4525D3C37734796C534282A9 /* MergeShaders.metal */; };
 		F4E22D3B590A4C43C20533D3 /* MetalMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F8BF25398E15233CBBFD30 /* MetalMerge.swift */; };
 		F811B63410C0786B85E41750 /* SwiftPandas.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; };
+		F811F956FB159B326F88977B /* CSVMappedReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */; };
 		F9402D2323F3FEE4877690A5 /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464B03A7DE52D165D759490 /* Buffer.swift */; };
 		FCB90F4E4E784844D1578B80 /* SwiftPandasCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AE9EBED26B06D39CBA9A43 /* SwiftPandasCLI.swift */; };
 		FE11CEB0642DFC4C90558977 /* TransformRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 731BCEBCFC2803714E8BCF12 /* TransformRunner.swift */; };
@@ -180,6 +186,7 @@
 		081080B40C197B1CD08C875C /* Style.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Style.swift; sourceTree = "<group>"; };
 		0A8679BEFC622508CAF1EE07 /* Column.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Column.swift; sourceTree = "<group>"; };
 		0E209DB760F4CBFC327B5BBC /* khash.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = khash.h; sourceTree = "<group>"; };
+		16797A232569C45CB018FD1D /* PIDFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PIDFile.swift; sourceTree = "<group>"; };
 		19D846DA71CE9577F41EE749 /* GroupByShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GroupByShaders.metal; sourceTree = "<group>"; };
 		1B8817FEF468D972F755B00C /* SwiftPandasTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftPandasTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C71DD80FE58C1F98A5AED83 /* SwiftPandasCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = SwiftPandasCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -217,11 +224,13 @@
 		755EA62922A9F0EB0A476736 /* skiplist.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = skiplist.h; sourceTree = "<group>"; };
 		77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupByDemoView.swift; sourceTree = "<group>"; };
 		77873A3969C7EF9C55513707 /* JSONTransformParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONTransformParser.swift; sourceTree = "<group>"; };
+		7F32C7C94134212AA97B6684 /* Daemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Daemon.swift; sourceTree = "<group>"; };
 		8E3AE7F83FF3067EDC7E12DB /* ClientCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCommands.swift; sourceTree = "<group>"; };
 		9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalGroupBy.swift; sourceTree = "<group>"; };
 		97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalDispatch.swift; sourceTree = "<group>"; };
 		9957741BCE97B414826DCE85 /* Parser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Parser.swift; sourceTree = "<group>"; };
 		9A99DFCEF5DDD4349827FEF3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
+		9D2C94339382772F892E30D8 /* Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Client.swift; sourceTree = "<group>"; };
 		9F877B1C6BBEB8C3A073AD2E /* portable.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = portable.h; sourceTree = "<group>"; };
 		A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandas.swift; sourceTree = "<group>"; };
 		A57050F20F42C904FEFFA187 /* MetalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTests.swift; sourceTree = "<group>"; };
@@ -235,6 +244,7 @@
 		C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVDataFrameTests.swift; sourceTree = "<group>"; };
 		C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorOps.swift; sourceTree = "<group>"; };
 		C8125BF0E9BBF9363E7E6098 /* Operation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Operation.swift; sourceTree = "<group>"; };
+		D0430BB8B3D08AF271317895 /* Paths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Paths.swift; sourceTree = "<group>"; };
 		D43E4688A860B3EA57425A30 /* StringArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringArray.swift; sourceTree = "<group>"; };
 		D54DADED754D5BC12DF98593 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandasTests.swift; sourceTree = "<group>"; };
@@ -244,11 +254,13 @@
 		DCD547CE28268E228BA21D66 /* ShaderCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderCommon.h; sourceTree = "<group>"; };
 		E1194ED9E8BDF89558FD6968 /* QueryPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryPlan.swift; sourceTree = "<group>"; };
 		E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ultrajsonenc.c; sourceTree = "<group>"; };
+		E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVMappedReadTests.swift; sourceTree = "<group>"; };
 		ED8D61E4DE52C89E91401CEE /* DataFrame+Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataFrame+Memory.swift"; sourceTree = "<group>"; };
 		EDD9E552B3EE0341E8D16FBD /* BitVector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitVector.swift; sourceTree = "<group>"; };
 		F144E9A25383F5A6574D65C3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
 		F845FA91A1F9266A74A73600 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F951783B44D4F86D221F5EB5 /* Predicate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Predicate.swift; sourceTree = "<group>"; };
+		FCD61785C1C8586D7F55DFDC /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
 		FE13536785EE5BFC02BD2E0D /* LazyDataFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LazyDataFrameTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -529,6 +541,7 @@
 				8E3A36BDB8F68DC137BA46F1 /* SampleData */,
 				4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */,
 				C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */,
+				E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */,
 				6CFE849A42B05EAE9DA9B79F /* DataFrameMemoryTests.swift */,
 				FE13536785EE5BFC02BD2E0D /* LazyDataFrameTests.swift */,
 				A57050F20F42C904FEFFA187 /* MetalTests.swift */,
@@ -576,9 +589,14 @@
 		D0D1DF986A977C0D16B949C8 /* Server */ = {
 			isa = PBXGroup;
 			children = (
+				9D2C94339382772F892E30D8 /* Client.swift */,
+				7F32C7C94134212AA97B6684 /* Daemon.swift */,
 				320FA2071D12E12240B0C548 /* Handlers.swift */,
+				D0430BB8B3D08AF271317895 /* Paths.swift */,
+				16797A232569C45CB018FD1D /* PIDFile.swift */,
 				2181EEE84B163800594FA046 /* Protocol.swift */,
 				32F16E6823D7026563D61A01 /* Registry.swift */,
+				FCD61785C1C8586D7F55DFDC /* Transport.swift */,
 			);
 			path = Server;
 			sourceTree = "<group>";
@@ -833,12 +851,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				A40B773439A18810B9480637 /* CLIError.swift in Sources */,
+				EC1C0D5DDFD7904F1B81B5B4 /* Client.swift in Sources */,
 				49607F913D7D582D19952FD8 /* ClientCommands.swift in Sources */,
+				79D5976E2B2E3D00DC865719 /* Daemon.swift in Sources */,
 				640332D1DF3C4723CE6C7E09 /* GUIApp.swift in Sources */,
 				BC6A4500F2483120052255F5 /* Handlers.swift in Sources */,
 				E88188C536FCA32684BB4D12 /* JSONTransformParser.swift in Sources */,
 				9F64D3A8DFB9657BF5503015 /* Operation.swift in Sources */,
+				5328C0C64F92D40ED738034B /* PIDFile.swift in Sources */,
 				46FCE5E338E44542C629FB93 /* Parser.swift in Sources */,
+				75957B345E886AA68B611C55 /* Paths.swift in Sources */,
 				7BD6D351001680F45CBB3A62 /* Protocol.swift in Sources */,
 				18753325E7B2AE901D00F867 /* Registry.swift in Sources */,
 				89D120C41FE11291E343F014 /* RunCommand.swift in Sources */,
@@ -847,6 +869,7 @@
 				FCB90F4E4E784844D1578B80 /* SwiftPandasCLI.swift in Sources */,
 				32F7E1188305E2DBE1B68309 /* Token.swift in Sources */,
 				FE11CEB0642DFC4C90558977 /* TransformRunner.swift in Sources */,
+				888CBC70913668172AE3C7CF /* Transport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -898,6 +921,7 @@
 			files = (
 				837D57E390A3B5D9CA75CB7B /* BenchmarkTests.swift in Sources */,
 				5DC583AF471388A23624240B /* CSVDataFrameTests.swift in Sources */,
+				F811F956FB159B326F88977B /* CSVMappedReadTests.swift in Sources */,
 				BF5C02E03467964E891D2873 /* DataFrameMemoryTests.swift in Sources */,
 				1DE34837FAB9CAF41D7BB2C1 /* LazyDataFrameTests.swift in Sources */,
 				5B790ED8BAB7DEA8B371046F /* MetalTests.swift in Sources */,
