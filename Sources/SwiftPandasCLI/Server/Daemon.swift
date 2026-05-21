@@ -196,11 +196,22 @@ public enum Daemon {
             // Stale — runForeground will clean it up after exec.
         }
 
-        // Resolve our own binary path (CommandLine.arguments[0] is what the
-        // shell exec'd us as; resolve symlinks for a stable re-exec path).
-        let selfPath = URL(fileURLWithPath: CommandLine.arguments[0])
-            .resolvingSymlinksInPath()
-            .path
+        // Resolve our own binary path. `CommandLine.arguments[0]` is only
+        // reliable when the binary was invoked with an absolute path — when
+        // it's resolved via PATH (e.g. /opt/homebrew/bin/swiftpandas → "swiftpandas"),
+        // arguments[0] is just the basename and URL(fileURLWithPath:) treats
+        // it as relative to CWD, producing a path that doesn't exist.
+        //
+        // Bundle.main.executablePath calls _NSGetExecutablePath() under the
+        // hood, which returns the actual executable path regardless of how
+        // the process was launched. Fall back to the old behaviour if that
+        // ever returns nil (shouldn't happen for a real binary).
+        let selfPath: String = {
+            if let bundlePath = Bundle.main.executablePath {
+                return URL(fileURLWithPath: bundlePath).resolvingSymlinksInPath().path
+            }
+            return URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
+        }()
 
         let child = Process()
         child.executableURL = URL(fileURLWithPath: selfPath)

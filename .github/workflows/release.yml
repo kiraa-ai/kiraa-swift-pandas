@@ -117,10 +117,12 @@ jobs:
             sha256  "${SHA256}"
             version "${VERSION}"
 
-            head "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"
-
             depends_on macos: :ventura
-            depends_on xcode: ["15.0", :build] => :head
+
+            head do
+              url "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"
+              depends_on xcode: ["15.0", :build]
+            end
 
             def install
               if build.head?
