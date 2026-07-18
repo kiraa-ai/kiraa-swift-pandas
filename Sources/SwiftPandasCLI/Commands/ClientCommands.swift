@@ -28,6 +28,9 @@ struct Load: ParsableCommand {
     @Option(name: .long, help: "Column delimiter (default: comma).")
     var sep: String = ","
 
+    @Option(name: .long, help: "Taxonomy tag (default: transaction). Used by the GUI to group resident DataFrames. Well-known values: 'transaction', 'metadata'. Any free-form string is accepted.")
+    var kind: String = "transaction"
+
     @Option(name: .long, help: "Unix-domain socket path.")
     var socket: String?
 
@@ -35,13 +38,13 @@ struct Load: ParsableCommand {
     var timeout: Double = Client.defaultTimeout
 
     func run() throws {
-        let req = WireRequest(cmd: .load, path: path, name: name, sep: sep)
+        let req = WireRequest(cmd: .load, path: path, name: name, sep: sep, kind: kind)
         let resp = try ClientRunner.send(req, socket: socket, timeout: timeout)
         if let w = resp.warning { logStderr("\(Style.yellow)warning:\(Style.reset) \(w)") }
         guard case .load(let boundName, let rows, let cols, let bytes) = resp.data else {
             throw ClientRunner.unexpectedPayload(resp)
         }
-        print("\(Style.green)loaded\(Style.reset) \(Style.bold)\(boundName)\(Style.reset): \(formatCount(rows)) rows × \(formatCount(cols)) cols  \(Style.dim)(\(formatBytes(bytes)))\(Style.reset)")
+        print("\(Style.green)loaded\(Style.reset) \(Style.bold)\(boundName)\(Style.reset) \(Style.dim)[\(kind)]\(Style.reset): \(formatCount(rows)) rows × \(formatCount(cols)) cols  \(Style.dim)(\(formatBytes(bytes)))\(Style.reset)")
     }
 }
 
@@ -157,20 +160,36 @@ struct List: ParsableCommand {
             print("\(Style.dim)no resident dataframes\(Style.reset)")
             return
         }
-        // Column widths
+        // Group by kind (transactions / metadata / etc.) so the output mirrors
+        // what the GUI dropdown shows. Within each group, preserve the
+        // server's age-ascending sort.
+        let groups: [(String, [DataFrameRegistry.Entry])] = {
+            var seen: [String] = []
+            var byKind: [String: [DataFrameRegistry.Entry]] = [:]
+            for e in items {
+                if byKind[e.kind] == nil { seen.append(e.kind) }
+                byKind[e.kind, default: []].append(e)
+            }
+            return seen.map { ($0, byKind[$0]!) }
+        }()
+
         let nameW = max(4, items.map { $0.name.count }.max() ?? 4)
         let rowsW = max(4, items.map { formatCount($0.rows).count }.max() ?? 4)
         let colsW = max(4, items.map { formatCount($0.cols).count }.max() ?? 4)
         let sizeW = max(4, items.map { formatBytes($0.bytes).count }.max() ?? 4)
+        let totalW = nameW + rowsW + colsW + sizeW + 12 + 3
 
         print("")
-        print("  \(Style.bold)\(pad("NAME", nameW))  \(pad("ROWS", rowsW))  \(pad("COLS", colsW))  \(pad("SIZE", sizeW))  AGE\(Style.reset)")
-        print("  \(Style.dim)\(String(repeating: "─", count: nameW + rowsW + colsW + sizeW + 12 + 3))\(Style.reset)")
-        for e in items {
-            let age = formatTime(Date().timeIntervalSince(e.createdAt))
-            print("  \(pad(e.name, nameW))  \(pad(formatCount(e.rows), rowsW))  \(pad(formatCount(e.cols), colsW))  \(pad(formatBytes(e.bytes), sizeW))  \(Style.dim)\(age)\(Style.reset)")
+        for (kind, rows) in groups {
+            print("  \(Style.bold)\(Style.cyan)[\(kind)]\(Style.reset)")
+            print("  \(Style.bold)\(pad("NAME", nameW))  \(pad("ROWS", rowsW))  \(pad("COLS", colsW))  \(pad("SIZE", sizeW))  AGE\(Style.reset)")
+            print("  \(Style.dim)\(String(repeating: "─", count: totalW))\(Style.reset)")
+            for e in rows {
+                let age = formatTime(Date().timeIntervalSince(e.createdAt))
+                print("  \(pad(e.name, nameW))  \(pad(formatCount(e.rows), rowsW))  \(pad(formatCount(e.cols), colsW))  \(pad(formatBytes(e.bytes), sizeW))  \(Style.dim)\(age)\(Style.reset)")
+            }
+            print("")
         }
-        print("")
     }
 
     private func pad(_ s: String, _ n: Int) -> String {

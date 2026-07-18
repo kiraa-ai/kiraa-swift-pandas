@@ -120,12 +120,31 @@ public struct StringArray {
 
     /// Approximate memory usage in bytes.
     ///
-    /// Computed as the sum of UTF-8 byte lengths of all non-nil strings. This
-    /// does not account for Swift String object overhead, ARC reference
-    /// counting metadata, or the `[String?]` array's own allocation overhead,
-    /// so it is a lower bound on true memory usage.
+    /// Models Swift's actual String storage so cache budgets based on this
+    /// value track real allocations:
+    ///
+    /// - **16 bytes per element** for the `[String?]` slot itself
+    ///   (`MemoryLayout<String?>.stride`), NA or not.
+    /// - **Small strings** (UTF-8 length ≤ 15) are stored inline in the
+    ///   String struct — no additional heap allocation.
+    /// - **Large strings** (UTF-8 length > 15) heap-allocate a buffer:
+    ///   counted as the UTF-8 payload plus a 32-byte object header
+    ///   (`_StringStorage` header + capacity rounding, approximated).
+    ///
+    /// The estimate intentionally excludes ARC metadata churn and allocator
+    /// bucket rounding; it is specified to land within ±20% of measured
+    /// allocations for typical string columns (see `EstimatedBytesTests`).
     public var nbytes: Int {
-        storage.reduce(0) { $0 + ($1?.utf8.count ?? 0) }
+        var total = storage.count * MemoryLayout<String?>.stride
+        for element in storage {
+            if let s = element {
+                let payload = s.utf8.count
+                if payload > 15 {
+                    total += payload + 32
+                }
+            }
+        }
+        return total
     }
 
     /// The number of valid (non-NA) values.

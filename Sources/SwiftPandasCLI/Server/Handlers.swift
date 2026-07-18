@@ -38,7 +38,10 @@ public enum Handlers {
         } catch {
             return .failure(id: req.id, WireError(code: WireErrorCode.io, message: "Failed to read CSV: \(error.localizedDescription)"))
         }
-        let overwritten = await registry.bind(name, df)
+        // `req.kind` is the GUI's "transaction" / "metadata" tag. When
+        // unset, the registry falls back to its own default
+        // (`DataFrameRegistry.defaultKind`).
+        let overwritten = await registry.bind(name, df, kind: req.kind)
         return .success(
             id: req.id,
             data: .load(name: name, rows: df.rowCount, cols: df.columnCount, bytes: df.estimatedBytes),
@@ -86,7 +89,16 @@ public enum Handlers {
             return .failure(id: req.id, WireError.from(error))
         }
 
-        let overwritten = await registry.bind(target, result)
+        // `kind` propagation for pipe:
+        //   * If the request explicitly sets `kind`, use it.
+        //   * Otherwise inherit the source's kind so a pipeline like
+        //     `sales` (transaction) → `big_sales` (pipe result) stays in
+        //     the "transaction" GUI group.
+        //   * Falls back to the registry default when both are nil and
+        //     the target name is new.
+        let sourceKind = await registry.kind(source)
+        let inheritedKind: String? = req.kind ?? sourceKind
+        let overwritten = await registry.bind(target, result, kind: inheritedKind)
         return .success(
             id: req.id,
             data: .pipe(
