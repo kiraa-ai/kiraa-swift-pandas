@@ -223,6 +223,11 @@ public enum DTypeEnum: Hashable, CustomStringConvertible, Sendable {
     case string
     case datetime
     case timedelta
+    /// A fixed-dimensionality Float32 vector column. The dimensionality is
+    /// part of the type identity (like Arrow's `FixedSizeList<Float32>[d]`):
+    /// two vector columns with different dims compare dtype-unequal, which
+    /// gives `concat`/SPB dims validation for free.
+    case floatVector(dims: Int)
 
     /// A pandas-compatible string representation of this dtype.
     ///
@@ -244,6 +249,7 @@ public enum DTypeEnum: Hashable, CustomStringConvertible, Sendable {
         case .string: return "string"
         case .datetime: return "datetime64[ns]"
         case .timedelta: return "timedelta64[ns]"
+        case .floatVector(let dims): return "floatVector(\(dims))"
         }
     }
 

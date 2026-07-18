@@ -1388,6 +1388,15 @@ public struct Series: CustomStringConvertible, Sendable {
     ///
     /// - Returns: A ``Series`` of descriptive statistics.
     public func describe() -> Series {
+        if case .floatVector(let a) = data {
+            // Vector series report count / nulls / dims only — element-wise
+            // statistics are undefined for vector cells.
+            return Series(
+                data: .fromDoubles([Double(a.count), Double(a.count - a.validCount), Double(a.dims)]),
+                index: ["count", "nulls", "dims"],
+                name: name
+            )
+        }
         guard let doubles = data.asDouble() else {
             return Series(
                 data: .fromDoubles([Double(count), Double(validCount)]),

@@ -511,4 +511,60 @@ public enum VectorOps {
         _ = a.update(from: sorted)
         #endif
     }
+
+    // MARK: - Float32 kernels (vector columns)
+
+    /// Compute the Float32 dot product of two equal-length buffers.
+    ///
+    /// This is the primitive underlying the similarity-search bit-parity
+    /// contract: on Apple platforms it is exactly `vDSP_dotpr` — single
+    /// precision, vDSP's accumulation order, no widening. Consumers pin their
+    /// scores to this routine's bit pattern, so the Accelerate path MUST NOT
+    /// be replaced with a manually fused or reordered loop.
+    ///
+    /// **Scalar fallback** (non-Apple platforms): a plain in-order Float32
+    /// accumulation loop. Bit-parity with the vDSP path is *not* guaranteed
+    /// across platforms — the contract is per-platform.
+    public static func dotF(
+        _ a: UnsafeBufferPointer<Float>,
+        _ b: UnsafeBufferPointer<Float>
+    ) -> Float {
+        precondition(a.count == b.count)
+        guard a.count > 0 else { return 0 }
+        #if ACCELERATE_AVAILABLE
+        var result: Float = 0
+        vDSP_dotpr(a.baseAddress!, 1, b.baseAddress!, 1, &result, vDSP_Length(a.count))
+        return result
+        #else
+        var result: Float = 0
+        for i in 0..<a.count { result += a[i] * b[i] }
+        return result
+        #endif
+    }
+
+    /// Compute the Float32 squared Euclidean distance between two
+    /// equal-length buffers.
+    ///
+    /// **Accelerate path:** exactly `vDSP_distancesq` — part of the pinned
+    /// float-order for the euclidean metric (`Double(sqrt(distancesq))`).
+    /// **Scalar fallback:** in-order Float32 `(a-b)²` accumulation.
+    public static func distanceSqF(
+        _ a: UnsafeBufferPointer<Float>,
+        _ b: UnsafeBufferPointer<Float>
+    ) -> Float {
+        precondition(a.count == b.count)
+        guard a.count > 0 else { return 0 }
+        #if ACCELERATE_AVAILABLE
+        var result: Float = 0
+        vDSP_distancesq(a.baseAddress!, 1, b.baseAddress!, 1, &result, vDSP_Length(a.count))
+        return result
+        #else
+        var result: Float = 0
+        for i in 0..<a.count {
+            let d = a[i] - b[i]
+            result += d * d
+        }
+        return result
+        #endif
+    }
 }

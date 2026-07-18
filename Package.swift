@@ -91,7 +91,11 @@ let sourceTargets: [Target] = [
         name: "SwiftPandas",
         dependencies: ["CSkipList", "CKHash", "CUltraJSON"],
         path: "Sources/SwiftPandas",
-        exclude: ["Metal/Shaders/GroupByShaders.metal", "Metal/Shaders/MergeShaders.metal"],
+        exclude: [
+            "Metal/Shaders/GroupByShaders.metal",
+            "Metal/Shaders/MergeShaders.metal",
+            "Metal/Shaders/VectorSearchShaders.metal",
+        ],
         swiftSettings: [
             .define("ACCELERATE_AVAILABLE", .when(platforms: [.macOS, .iOS])),
             .unsafeFlags(["-O"]),

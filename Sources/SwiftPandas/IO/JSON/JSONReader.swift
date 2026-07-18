@@ -171,13 +171,22 @@ extension DataFrame {
     }
 
     /// Writes this ``DataFrame`` to a JSON file at the given path.
+    ///
+    /// - Throws: ``VectorError/unsupportedOperation(op:dtype:)`` if the frame
+    ///   contains a vector column (JSON text serialization of vectors is
+    ///   unspecified; SPB is the durable format for vector frames).
     public func toJSON(path: String) throws {
+        try rejectVectorColumns(op: "toJSON")
         let json = toJSON()
         try json.write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     /// Writes this ``DataFrame`` to a JSON file at the given URL.
+    ///
+    /// - Throws: ``VectorError/unsupportedOperation(op:dtype:)`` if the frame
+    ///   contains a vector column.
     public func toJSON(url: URL) throws {
+        try rejectVectorColumns(op: "toJSON")
         let json = toJSON()
         try json.write(to: url, atomically: true, encoding: .utf8)
     }

@@ -376,6 +376,11 @@ internal enum MetalGroupBy {
                 let (codes, uniques) = a.factorize()
                 let keys = (0..<uniques.count).map { "\(uniques[$0])" }
                 return (codes, keys)
+            case .floatVector:
+                // Vector group keys are rejected on the CPU path; returning
+                // the empty tuple makes the GPU aggregate bail out to that
+                // path (existing fallback philosophy).
+                return ([], [])
             default:
                 return ([], [])
             }

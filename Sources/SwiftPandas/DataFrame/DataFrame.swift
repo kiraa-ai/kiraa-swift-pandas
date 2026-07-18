@@ -713,7 +713,10 @@ public struct DataFrame: CustomStringConvertible, Sendable {
                 }
             case .string(let a):
                 sortKeys.append(.string(a, asc))
-            default:
+            case .bool, .floatVector:
+                // No ordering defined; the column is skipped as a sort key
+                // (explicit cases rather than `default:` per the vector
+                // exhaustive-switch audit).
                 break
             }
         }
@@ -822,7 +825,9 @@ public struct DataFrame: CustomStringConvertible, Sendable {
                 }
                 indices = validPositions + naPositions
             }
-        default:
+        case .bool, .floatVector:
+            // No ordering defined; returning the frame unchanged matches the
+            // long-standing `.bool` behavior of this non-throwing API.
             return self
         }
         return takeRows(indices)
@@ -1130,6 +1135,21 @@ public struct DataFrame: CustomStringConvertible, Sendable {
                 }
                 let combinedMask = BitVector.concat(masks)
                 resultCols.append((name, .bool(NullableArray(data: combinedData, mask: combinedMask))))
+            case .floatVector(let firstArr):
+                var arrays = [VectorArray]()
+                arrays.reserveCapacity(frames.count)
+                for frame in frames {
+                    guard case .floatVector(let arr) = frame.columns[name] else { continue }
+                    arrays.append(arr)
+                }
+                // concat is non-throwing; mismatched dims across frames is a
+                // schema violation on par with mismatched dtypes, surfaced as
+                // a precondition rather than silently dropping rows.
+                guard let combined = try? VectorArray.concat(arrays) else {
+                    preconditionFailure(
+                        "concat: floatVector column '\(name)' has mismatched dims across frames (expected \(firstArr.dims))")
+                }
+                resultCols.append((name, .floatVector(combined)))
             }
         }
 
@@ -1183,6 +1203,17 @@ public struct DataFrame: CustomStringConvertible, Sendable {
     ) -> DataFrame {
         guard let leftCol = columns[key], let rightCol = right.columns[key] else {
             fatalError("Key column '\(key)' not found in both DataFrames")
+        }
+        if case .floatVector(let a) = leftCol {
+            // Without this guard a vector key would fall into the text-join
+            // fallback, where every valid row shares the placeholder key text
+            // and cross-joins. Consistent with the missing-key fatalError of
+            // this non-throwing API. Vector columns still pass through merges
+            // as payload.
+            fatalError("merge: floatVector(\(a.dims)) columns cannot be join keys")
+        }
+        if case .floatVector(let a) = rightCol {
+            fatalError("merge: floatVector(\(a.dims)) columns cannot be join keys")
         }
 
         // GPU fast path for inner joins on large datasets
@@ -1533,6 +1564,10 @@ public struct GroupBy: Sendable {
             case .int64(let a):
                 let f = a.factorize()
                 codes = f.codes; nUnique = f.uniques.count
+            case .floatVector(let a):
+                // Without this guard all rows would silently collapse into a
+                // single group via the fallback below.
+                preconditionFailure("groupBy: floatVector(\(a.dims)) columns cannot be group keys")
             default:
                 codes = [Int](repeating: 0, count: n); nUnique = 1
             }
@@ -1556,6 +1591,8 @@ public struct GroupBy: Sendable {
                 case .int64(let a):
                     let f = a.factorize()
                     codes = f.codes; nUnique = f.uniques.count
+                case .floatVector(let a):
+                    preconditionFailure("groupBy: floatVector(\(a.dims)) columns cannot be group keys")
                 default:
                     codes = [Int](repeating: 0, count: n); nUnique = 1
                 }
