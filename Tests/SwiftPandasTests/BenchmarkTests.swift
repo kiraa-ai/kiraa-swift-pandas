@@ -747,6 +747,67 @@ final class BenchmarkTests: XCTestCase {
 
     // ─── Summary ────────────────────────────────────────────────────────
 
+    // ─── 13. Vector Search (R8 performance contract) ────────────────────
+
+    /// Benchmarks the vector column workload sized to the primary consumer
+    /// contract: 100K rows x 1024 dims Float32 (~400 MB plane).
+    ///
+    /// R8 indicative targets (Apple Silicon M2-class): cosine topK=10 CPU
+    /// <= 150 ms; Metal (incl. transfer) <= 30 ms; fromVectors <= 500 ms;
+    /// writeSPB/readSPB <= 2 s each.
+    func testVA_VectorSearch() throws {
+        BenchmarkTests.section("13", "Vector Search (100,000 x 1024 dims Float32)")
+
+        let rows = 100_000
+        let dims = 1024
+        var rng = BenchmarkTests.LCG()
+        var vectors = [[Float]]()
+        vectors.reserveCapacity(rows)
+        for _ in 0..<rows {
+            vectors.append((0..<dims).map { _ in Float(rng.next()) - 0.5 })
+        }
+
+        BenchmarkTests.tableHeader()
+
+        var column: Column! = nil
+        let tConstruct = BenchmarkTests.benchmark(1) {
+            column = try! Column.fromVectors(vectors, dims: dims)
+        }
+        BenchmarkTests.benchRow("fromVectors 100Kx1024", ns: tConstruct)
+
+        let df = DataFrame(columns: [
+            ("id", .fromInts(Array(0..<rows))),
+            ("embedding", column),
+        ])
+        let query = vectors[500]
+
+        let tCosine = BenchmarkTests.benchmark {
+            _ = try! df.similaritySearch(on: "embedding", query: query)
+        }
+        BenchmarkTests.benchRow("cosine topK=10 (cpu-vdsp)", ns: tCosine)
+
+        if MetalDispatch.isAvailable {
+            var gpuOptions = SearchOptions()
+            gpuOptions.backend = .metal
+            let tMetal = BenchmarkTests.benchmark {
+                _ = try! df.similaritySearch(on: "embedding", query: query, options: gpuOptions)
+            }
+            BenchmarkTests.benchRow("cosine topK=10 (metal)", ns: tMetal)
+        }
+
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("spb_bench_\(UUID().uuidString).spb")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let tWrite = BenchmarkTests.benchmark(1) {
+            try! df.writeSPB(to: url)
+        }
+        BenchmarkTests.benchRow("writeSPB (~400 MB)", ns: tWrite)
+        let tRead = BenchmarkTests.benchmark(1) {
+            _ = try! DataFrame.readSPB(from: url)
+        }
+        BenchmarkTests.benchRow("readSPB (~400 MB)", ns: tRead)
+    }
+
     /// Prints a summary of all optimizations applied by SwiftPandas and Metal GPU details.
     /// Runs last due to the `ZZ` prefix.
     func testZZ_BenchmarkSummary() {

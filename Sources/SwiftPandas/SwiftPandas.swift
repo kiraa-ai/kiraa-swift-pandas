@@ -40,5 +40,5 @@
 /// builds (`BUILD_LIBRARY_FOR_DISTRIBUTION=YES`) used to produce XCFrameworks.
 public enum SwiftPandasInfo {
     /// The current semantic version of the SwiftPandas library.
-    public static let version = "0.7.0-beta"
+    public static let version = "0.8.0-beta"
 }

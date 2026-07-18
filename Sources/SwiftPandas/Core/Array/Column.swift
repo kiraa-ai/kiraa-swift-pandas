@@ -84,6 +84,17 @@ public enum Column: CustomStringConvertible, Sendable {
     /// needed.
     case int64(NullableArray<Int64>)
 
+    /// A fixed-dims Float32 vector column backed by ``VectorArray``.
+    ///
+    /// Vectors are stored as one flat, contiguous, row-major plane
+    /// (`count * dims` floats) plus a validity bitmap — never as an
+    /// array-of-arrays. Null rows are zero-filled in the plane (normative for
+    /// deterministic SPB bytes). Vector columns are non-numeric-scalar:
+    /// ``asDouble()`` returns `nil`, so scalar aggregations skip them the same
+    /// way they skip strings. Like `.bool`, take/copy require manual handling
+    /// (a `[Float]` row is not `ExpressibleByIntegerLiteral`).
+    case floatVector(VectorArray)
+
     // MARK: - Properties
 
     /// The number of elements in this column (including NAs).
@@ -93,6 +104,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a.count
         case .bool(let a): return a.count
         case .int64(let a): return a.count
+        case .floatVector(let a): return a.count
         }
     }
 
@@ -107,6 +119,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string: return .string
         case .bool: return .bool
         case .int64: return .int64
+        case .floatVector(let a): return .floatVector(dims: a.dims)
         }
     }
 
@@ -130,6 +143,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a.validCount
         case .bool(let a): return a.validCount
         case .int64(let a): return a.validCount
+        case .floatVector(let a): return a.validCount
         }
     }
 
@@ -151,6 +165,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a.isNA()
         case .bool(let a): return a.isNA()
         case .int64(let a): return a.isNA()
+        case .floatVector(let a): return a.isNA()
         }
     }
 
@@ -165,6 +180,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a.nbytes
         case .bool(let a): return a.nbytes
         case .int64(let a): return a.nbytes
+        case .floatVector(let a): return a.nbytes
         }
     }
 
@@ -204,6 +220,9 @@ public enum Column: CustomStringConvertible, Sendable {
         case .int64(let a):
             guard let v = a[index] else { return "NA" }
             return "\(v)"
+        case .floatVector(let a):
+            guard a.row(index) != nil else { return "NA" }
+            return "<vector[\(a.dims)]>"
         }
     }
 
@@ -222,6 +241,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a[index]
         case .bool(let a): return a[index]
         case .int64(let a): return a[index]
+        case .floatVector(let a): return a.row(index)
         }
     }
 
@@ -246,7 +266,11 @@ public enum Column: CustomStringConvertible, Sendable {
         case .int64(let a):
             let doubleData = NativeArray<Double>(a.data.array.map { Double($0) })
             return NullableArray(data: doubleData, mask: a.mask)
-        default: return nil
+        case .string, .bool, .floatVector:
+            // Explicit (not `default:`) per the vector exhaustive-switch
+            // audit: there is no scalar-numeric promotion for these dtypes,
+            // so numeric aggregations skip them.
+            return nil
         }
     }
 
@@ -347,6 +371,7 @@ public enum Column: CustomStringConvertible, Sendable {
             }
             return .bool(NullableArray(data: NativeArray(values), mask: BitVector(bools)))
         case .int64(let a): return .int64(a.take(indices: indices))
+        case .floatVector(let a): return .floatVector(a.take(indices: indices))
         }
     }
 
@@ -386,6 +411,7 @@ public enum Column: CustomStringConvertible, Sendable {
             }
             return .bool(NullableArray(data: NativeArray(values), mask: BitVector(bools)))
         case .int64(let a): return .int64(a.take(mask: mask, trueCount: trueCount))
+        case .floatVector(let a): return .floatVector(a.take(mask: mask, trueCount: trueCount))
         }
     }
 
@@ -402,6 +428,7 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return .string(a.copy())
         case .bool(let a): return .bool(a.copy())
         case .int64(let a): return .int64(a.copy())
+        case .floatVector(let a): return .floatVector(a.copy())
         }
     }
 
@@ -456,6 +483,8 @@ public enum Column: CustomStringConvertible, Sendable {
         case .string(let a): return a.description
         case .bool(let a): return a.description
         case .int64(let a): return a.description
+        case .floatVector(let a):
+            return "VectorArray(count: \(a.count), dims: \(a.dims), nulls: \(a.count - a.validCount))"
         }
     }
 }
@@ -469,6 +498,7 @@ extension Column: Equatable {
         case (.string(let a), .string(let b)): return a == b
         case (.bool(let a), .bool(let b)): return a == b
         case (.int64(let a), .int64(let b)): return a == b
+        case (.floatVector(let a), .floatVector(let b)): return a == b
         default: return false
         }
     }
@@ -485,6 +515,21 @@ extension Column {
             if let v = v { data[i] = Int64(v); valid[i] = true }
         }
         return .int64(NullableArray(data: NativeArray(data), mask: BitVector(valid)))
+    }
+
+    /// Creates a `.floatVector` column from dense vectors.
+    ///
+    /// - Throws: ``VectorError/dimensionMismatch(expected:got:)`` if any
+    ///   element's count differs from `dims`;
+    ///   ``VectorError/invalidArgument(_:)`` if `dims < 1`.
+    public static func fromVectors(_ vectors: [[Float]], dims: Int) throws -> Column {
+        .floatVector(try VectorArray(vectors: vectors, dims: dims))
+    }
+
+    /// Creates a `.floatVector` column from optional vectors; `nil` elements
+    /// become null rows (bitmap-cleared, zero-filled plane slot).
+    public static func fromOptionalVectors(_ vectors: [[Float]?], dims: Int) throws -> Column {
+        .floatVector(try VectorArray(vectors: vectors, dims: dims))
     }
 
     /// Creates a column from an array of optional booleans.

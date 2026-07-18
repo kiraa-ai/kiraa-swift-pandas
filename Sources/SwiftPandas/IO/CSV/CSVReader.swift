@@ -1176,6 +1176,16 @@ public struct CSVWriter: Sendable {
                 formattedCols.append(strs)
                 needsQuoting.append(false)
 
+            case .floatVector(let arr):
+                // CSV is explicitly out of scope for vector columns (SPB is
+                // the durable format). The throwing toCSV entry points reject
+                // vector frames with VectorError.unsupportedOperation before
+                // reaching this writer; this precondition backstops direct
+                // CSVWriter.write callers, whose signature cannot throw.
+                preconditionFailure(
+                    "CSV serialization is unsupported for floatVector(\(arr.dims)) columns; "
+                    + "drop/select the other columns or use writeSPB")
+
             case .string(let arr):
                 var strs = [String]()
                 strs.reserveCapacity(rowCount)
@@ -1371,9 +1381,21 @@ extension DataFrame {
         index: Bool = false,
         quoting: CSVQuoting = .minimal
     ) throws {
+        try rejectVectorColumns(op: "toCSV")
         let writer = CSVWriter(separator: separator, includeHeader: header,
                                includeIndex: index, quoting: quoting)
         try writer.write(self, toPath: path)
+    }
+
+    /// CSV/JSON serialization is out of scope for vector columns (SPB is the
+    /// durable format). Throwing IO entry points call this before writing;
+    /// callers who want the scalar columns can `drop`/`select` them first.
+    internal func rejectVectorColumns(op: String) throws {
+        for name in columnNames {
+            if case .floatVector(let a) = columns[name]! {
+                throw VectorError.unsupportedOperation(op: op, dtype: "floatVector(\(a.dims))")
+            }
+        }
     }
 
     /// Creates a ``DataFrame`` by reading and parsing a CSV file at the given `URL`.
@@ -1393,6 +1415,7 @@ extension DataFrame {
         header: Bool = true,
         index: Bool = false
     ) throws {
+        try rejectVectorColumns(op: "toCSV")
         let csv = toCSV(separator: separator, header: header, index: index)
         try csv.write(to: url, atomically: true, encoding: .utf8)
     }

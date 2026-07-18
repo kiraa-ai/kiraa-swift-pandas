@@ -115,6 +115,11 @@ extension DataFrame {
         case .bool(let a):
             guard let v = a[row] else { return "" }
             return v ? "True" : "False"
+        case .floatVector:
+            // Vector columns are rejected as join keys before any key-text
+            // path runs (merge throws VectorError.unsupportedOperation); this
+            // arm exists only to keep the switch exhaustive without `default:`.
+            return ""
         }
     }
 }

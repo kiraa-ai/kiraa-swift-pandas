@@ -159,7 +159,7 @@ internal enum MetalShaders {
     /// Combined MSL source for all shaders, formed by concatenating the
     /// common type definitions, GroupBy kernels, and Merge kernels into a
     /// single compilation unit.
-    static let allSource: String = commonTypes + groupByShaders + mergeShaders
+    static let allSource: String = commonTypes + groupByShaders + mergeShaders + vectorSearchShaders
 
     // MARK: - Common Types & Hashing
 
@@ -584,6 +584,47 @@ internal enum MetalShaders {
             // Hash collision (different key) — linear probe
             slot = (slot + 1) & mask;
         }
+    }
+    """
+
+    // MARK: - Vector Search Shaders
+
+    /// MSL source for the similarity-search batch-cosine kernel. Kept in
+    /// lockstep with `Shaders/VectorSearchShaders.metal` (the Xcode/metallib
+    /// twin) — edit both together.
+    static let vectorSearchShaders: String = """
+
+    // -----------------------------------------------------------------------
+    // Vector Search: Batch Cosine
+    // -----------------------------------------------------------------------
+    // One thread per candidate row of a compacted Float32 plane. Emits the
+    // raw cosine score per candidate; threshold/topK/tie-break always run on
+    // the CPU side (VectorSearchEngine), so ranking semantics live in one
+    // place. sqrt(|query|^2) is computed once on the CPU and passed in.
+    //
+    // The zero-denominator rule matches the CPU contract: score 0 when either
+    // norm is 0. Accumulation uses fma and may differ from vDSP at ulp level;
+    // bit-stability is only guaranteed by the CPU backend.
+    kernel void swiftpandas_vector_batch_cosine(
+        device const float* query    [[buffer(0)]],
+        device const float* plane    [[buffer(1)]],
+        device float* results        [[buffer(2)]],
+        constant uint& dims          [[buffer(3)]],
+        constant uint& count         [[buffer(4)]],
+        constant float& sqrt_nq      [[buffer(5)]],
+        uint tid [[thread_position_in_grid]])
+    {
+        if (tid >= count) return;
+        device const float* candidate = plane + (ulong)tid * (ulong)dims;
+        float dot = 0.0f;
+        float nc = 0.0f;
+        for (uint k = 0; k < dims; ++k) {
+            float v = candidate[k];
+            dot = fma(query[k], v, dot);
+            nc = fma(v, v, nc);
+        }
+        float denom = sqrt_nq * sqrt(nc);
+        results[tid] = (denom == 0.0f) ? 0.0f : (dot / denom);
     }
     """
 }

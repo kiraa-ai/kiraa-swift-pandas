@@ -162,6 +162,10 @@ internal final class MetalContext: @unchecked Sendable {
     /// Pipeline for the `merge_hash_probe` kernel (Merge Phase 2: probe hash table with left table).
     let mergeHashProbePipeline: MTLComputePipelineState
 
+    /// Pipeline for the `swiftpandas_vector_batch_cosine` kernel (similarity
+    /// search: one thread per candidate row).
+    let vectorCosinePipeline: MTLComputePipelineState
+
     /// Private initializer — only called from the `shared` static closure.
     ///
     /// Creates all seven compute pipeline states eagerly. If any pipeline
@@ -199,6 +203,7 @@ internal final class MetalContext: @unchecked Sendable {
         self.groupByReduceCountPipeline = makePipeline("groupby_reduce_count")
         self.mergeHashBuildPipeline = makePipeline("merge_hash_build")
         self.mergeHashProbePipeline = makePipeline("merge_hash_probe")
+        self.vectorCosinePipeline = makePipeline("swiftpandas_vector_batch_cosine")
     }
 
     // MARK: - Buffer Helpers
