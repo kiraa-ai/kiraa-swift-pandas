@@ -112,64 +112,26 @@ internal enum MetalGroupBy {
         let numDistinctCodes = groupKeys.count
         guard numDistinctCodes > 0 else { return nil }
 
-        // Step 2: GPU hash insert — maps each row to a group ID.
-        // The hash table capacity is the next power of two >= 2x the number
-        // of distinct codes, ensuring a load factor <= 0.5 to minimize
-        // collisions in the open-addressing scheme.
+        // Cardinality gate (fix #1): the GPU reduction only beats the exact CPU
+        // path when there are enough distinct groups to spread atomic contention
+        // and keep each group's Float32 sum accurate. With few groups, millions
+        // of threads contend on a handful of accumulators (slow) and summing
+        // billions of values in Float32 loses precision. Below the group-count
+        // floor, bail so the caller falls back to the fast, exact CPU path.
+        guard numDistinctCodes >= MetalDispatch.groupByMinGroups else { return nil }
+
+        // Step 2: Use the dense factorized codes directly as group IDs (fix #2).
+        //
+        // `factorizeGroupColumns` already assigns each distinct key a dense code
+        // in 0..<numDistinctCodes (nulls get -1). That is exactly a row->group
+        // mapping, so the previous GPU hash-insert pass — and the O(n) Swift
+        // dictionary it built afterwards to invert it — were pure overhead. We
+        // drop both: one fewer GPU dispatch, three fewer large buffers, and no
+        // per-row dictionary churn on 10M+ rows.
         let int32Codes = codes.map { Int32($0) }
-        let htCapacity = nextPowerOfTwo(numDistinctCodes * 2)
-
-        guard let codesBuffer = ctx.makeBuffer(from: int32Codes) else { return nil }
-
-        guard let htKeysBuffer = ctx.makeBuffer(length: htCapacity * MemoryLayout<Int32>.stride),
-              let htGroupIdsBuffer = ctx.makeBuffer(length: htCapacity * MemoryLayout<Int32>.stride),
-              let rowToGroupBuffer = ctx.makeBuffer(length: n * MemoryLayout<Int32>.stride)
-        else { return nil }
-
-        // Initialize hash table slots to -1 (EMPTY_SLOT sentinel).
-        // 0xFF fills each byte, producing -1 for signed two's complement Int32.
-        memset(htKeysBuffer.contents(), 0xFF, htKeysBuffer.length)
-        memset(htGroupIdsBuffer.contents(), 0xFF, htGroupIdsBuffer.length)
-
-        // GroupByParams struct layout: { n: uint32, capacity: uint32, nextGroupId: atomic_uint }
-        var paramsData: (UInt32, UInt32, UInt32) = (UInt32(n), UInt32(htCapacity), 0)
-        guard let paramsBuffer = ctx.device.makeBuffer(
-            bytes: &paramsData,
-            length: MemoryLayout<(UInt32, UInt32, UInt32)>.stride,
-            options: .storageModeShared
-        ) else { return nil }
-
-        // Dispatch Phase 1: one thread per row inserts its code into the hash table
-        // and writes the assigned group ID to row_to_group[tid].
-        ctx.dispatch(
-            pipeline: ctx.groupByHashInsertPipeline,
-            buffers: [
-                (codesBuffer, 0),
-                (htKeysBuffer, 1),
-                (htGroupIdsBuffer, 2),
-                (rowToGroupBuffer, 3),
-                (paramsBuffer, 4),
-            ],
-            threadCount: n
-        )
-
-        // Read the actual number of groups assigned by the GPU.
-        // This is stored at byte offset 8 in the params buffer (after n and capacity).
-        let actualNumGroups = Int(paramsBuffer.contents()
-            .advanced(by: 8) // skip n (4 bytes) + capacity (4 bytes)
-            .assumingMemoryBound(to: UInt32.self).pointee)
-        guard actualNumGroups > 0 else { return nil }
-
-        // Step 3: Build the reverse mapping from factorized code to GPU group ID.
-        // This is needed to map group keys back to the correct output row.
-        let rowToGroupPtr = rowToGroupBuffer.contents().assumingMemoryBound(to: Int32.self)
-        var codeToGroupId = [Int: Int]() // factorized code -> GPU group ID
-        for i in 0..<n {
-            let gid = Int(rowToGroupPtr[i])
-            if gid >= 0 && codeToGroupId[codes[i]] == nil {
-                codeToGroupId[codes[i]] = gid
-            }
-        }
+        guard let rowToGroupBuffer = ctx.makeBuffer(from: int32Codes) else { return nil }
+        let actualNumGroups = numDistinctCodes
+        // group ID == factorized code, so group `gid`'s key is groupKeys[gid].
 
         // Step 4: Per-column GPU reduction for all numeric columns
         let numericCols = dataFrame.columnNames.filter {
@@ -178,20 +140,14 @@ internal enum MetalGroupBy {
 
         var resultColumns = [(String, Column)]()
 
-        // Build the inverse mapping: GPU group ID -> factorized code
-        var groupIdToCode = [Int: Int]()
-        for (code, gid) in codeToGroupId {
-            groupIdToCode[gid] = code
-        }
-
-        // Sort by group ID for stable, deterministic output order
-        let sortedGroupIds = (0..<actualNumGroups).sorted()
+        // Group IDs are the dense factorized codes, already ordered 0..<k.
+        let sortedGroupIds = Array(0..<actualNumGroups)
 
         // Build firstRowForGroup in a single O(n) pass to find a representative
         // row for each group (used to extract group key values for non-string columns).
         var firstRowForGroup = [Int](repeating: -1, count: actualNumGroups)
         for i in 0..<n {
-            let gid = Int(rowToGroupPtr[i])
+            let gid = codes[i]
             if gid >= 0 && gid < actualNumGroups && firstRowForGroup[gid] < 0 {
                 firstRowForGroup[gid] = i
             }
@@ -205,8 +161,8 @@ internal enum MetalGroupBy {
             switch col {
             case .string:
                 let keyStrings: [String] = sortedGroupIds.map { gid in
-                    guard let code = groupIdToCode[gid], code >= 0, code < groupKeys.count else { return "NA" }
-                    return groupKeys[code]
+                    guard gid >= 0, gid < groupKeys.count else { return "NA" }
+                    return groupKeys[gid]
                 }
                 resultColumns.append((groupColumns[0], Column.fromStrings(keyStrings)))
             default:
@@ -243,8 +199,8 @@ internal enum MetalGroupBy {
         if groupColumns.count == 1 {
             if case .string = dataFrame.columns[groupColumns[0]]! {
                 let keyStrings: [String] = sortedGroupIds.map { gid in
-                    guard let code = groupIdToCode[gid], code >= 0, code < groupKeys.count else { return "NA" }
-                    return groupKeys[code]
+                    guard gid >= 0, gid < groupKeys.count else { return "NA" }
+                    return groupKeys[gid]
                 }
                 index = keyStrings
             } else {
