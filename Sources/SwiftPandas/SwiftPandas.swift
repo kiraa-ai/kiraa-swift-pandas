@@ -40,5 +40,14 @@
 /// builds (`BUILD_LIBRARY_FOR_DISTRIBUTION=YES`) used to produce XCFrameworks.
 public enum SwiftPandasInfo {
     /// The current semantic version of the SwiftPandas library.
-    public static let version = "0.8.0-beta"
+    ///
+    /// Declared `@inlinable` (computed) rather than `static let`: the
+    /// v0.8.0-beta XCFramework shipped with the stored constant's symbol
+    /// dead-stripped by the archive build (nothing inside the library
+    /// references it), which broke linking for every client that reads the
+    /// version. An inlinable accessor emits its body into the module
+    /// interface, so clients inline the literal and never need the symbol —
+    /// the failure mode is impossible by construction, in any build mode.
+    @inlinable
+    public static var version: String { "0.8.0-beta" }
 }
