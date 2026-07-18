@@ -66,6 +66,13 @@ struct GUIMainView: View {
 
                 Divider()
 
+                // Resident-daemon instance picker (new). Lets the user
+                // operate on a DataFrame the daemon already holds in
+                // memory instead of (or in addition to) browsing a CSV.
+                InstanceSelectionSection(vm: vm)
+
+                Divider()
+
                 // File selection
                 FileSelectionSection(vm: vm)
 
@@ -84,6 +91,90 @@ struct GUIMainView: View {
             // Right panel: results
             ResultPanel(vm: vm)
                 .frame(minWidth: 400)
+        }
+    }
+}
+
+// MARK: - Resident-daemon Instance Selection
+
+/// Dropdown that lists DataFrames currently resident in the swiftpandas
+/// daemon. Default selection is "(none)" — picking a DataFrame from the
+/// dropdown loads a CSV preview into the result panel via a wire `show`.
+///
+/// The picker is grouped by `kind` (typically "transaction" + "metadata",
+/// but any free-form string the user passed at `load` time is honored).
+struct InstanceSelectionSection: View {
+    @ObservedObject var vm: PipelineViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Daemon instance", systemImage: "server.rack")
+                .font(.headline)
+
+            HStack {
+                // SwiftUI Picker with grouped `Section`s — produces a native
+                // segmented dropdown with "Transaction" / "Metadata" / …
+                // headers on macOS.
+                Picker("", selection: $vm.selectedInstance) {
+                    Text("(none)").tag(String?.none)
+                    ForEach(vm.groupedInstances) { group in
+                        // Show the kind tag as a section header. Capitalised
+                        // so "transaction" → "Transaction" reads as a label.
+                        Section(header: Text(group.kind.capitalized)) {
+                            ForEach(group.entries, id: \.name) { entry in
+                                // Show the byte count next to each name so
+                                // the dropdown is informative on its own.
+                                Text("\(entry.name)  —  \(InstanceSelectionSection.formatBytes(entry.bytes))")
+                                    .tag(String?.some(entry.name))
+                            }
+                        }
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(vm.availableInstances.isEmpty)
+
+                Button {
+                    vm.refreshInstances()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Re-query the daemon for its current list of resident DataFrames.")
+            }
+
+            Text(vm.instanceStatus)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        // Whenever the selection changes, fetch the preview from the daemon.
+        // `.onChange(of:)` fires only on actual transitions, so picking the
+        // same DataFrame twice doesn't re-fire — that's fine because the
+        // refresh button gives the user an explicit way to re-pull.
+        .onChange(of: vm.selectedInstance) { newValue in
+            if let name = newValue {
+                vm.loadFromInstance(name)
+            }
+        }
+        // Run an initial refresh when the view appears so the user sees the
+        // daemon state without having to hit the button first.
+        .onAppear {
+            vm.refreshInstances()
+        }
+    }
+
+    /// Small standalone byte-formatter so this view doesn't depend on the
+    /// top-level `formatBytes` symbol (which lives in `Style.swift` and may
+    /// not be visible in all build configurations).
+    static func formatBytes(_ bytes: Int) -> String {
+        switch bytes {
+        case _ where bytes >= 1_073_741_824:
+            return String(format: "%.1f GB", Double(bytes) / 1_073_741_824)
+        case _ where bytes >= 1_048_576:
+            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
+        case _ where bytes >= 1_024:
+            return String(format: "%.1f KB", Double(bytes) / 1_024)
+        default:
+            return "\(bytes) B"
         }
     }
 }
@@ -370,6 +461,29 @@ class PipelineViewModel: ObservableObject {
     @Published var timingInfo = ""
     @Published var hasError = false
 
+    // MARK: - Daemon instance dropdown
+    //
+    // Lets the user pick a resident DataFrame from a running daemon instead
+    // of (or in addition to) browsing for a local CSV. The dropdown stays
+    // empty when no daemon is reachable; otherwise it lists every bound
+    // DataFrame, grouped by `kind` (transaction / metadata / …).
+
+    /// Snapshot of resident DataFrames in the daemon, ordered the same way
+    /// the daemon returns them (oldest first). Empty when no daemon is
+    /// running or the last refresh failed.
+    @Published var availableInstances: [DataFrameRegistry.Entry] = []
+
+    /// Currently selected resident DataFrame name, or `nil` for the "(none)"
+    /// default. Changing this triggers a daemon-side `show` to populate the
+    /// result panel with a CSV preview of the selected DF.
+    @Published var selectedInstance: String? = nil
+
+    /// One-line status describing the daemon state — refreshed on
+    /// `refreshInstances()`. Displayed under the dropdown so the user knows
+    /// whether the list is empty because no daemon is running or because
+    /// the daemon genuinely has nothing loaded.
+    @Published var instanceStatus: String = "Press Refresh to query the daemon."
+
     var totalSteps: Int {
         if !dslInput.trimmingCharacters(in: .whitespaces).isEmpty {
             return 1 // DSL counts as at least one
@@ -394,6 +508,130 @@ class PipelineViewModel: ObservableObject {
             previewInfo = "\(df.rowCount) rows × \(df.columnCount) cols — columns: \(df.columnNames.joined(separator: ", "))"
         } catch {
             previewInfo = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Daemon queries
+
+    /// Available DataFrames partitioned by `kind`. Used to drive the
+    /// grouped Picker in the GUI. Insertion order is stable (matches
+    /// `availableInstances`); within a group, oldest-first.
+    struct InstanceGroup: Identifiable {
+        let id: String   // == kind
+        let kind: String
+        let entries: [DataFrameRegistry.Entry]
+    }
+
+    var groupedInstances: [InstanceGroup] {
+        var orderedKinds: [String] = []
+        var byKind: [String: [DataFrameRegistry.Entry]] = [:]
+        for entry in availableInstances {
+            if byKind[entry.kind] == nil { orderedKinds.append(entry.kind) }
+            byKind[entry.kind, default: []].append(entry)
+        }
+        return orderedKinds.map { InstanceGroup(id: $0, kind: $0, entries: byKind[$0]!) }
+    }
+
+    /// Ask the daemon for its current list of resident DataFrames. Runs off
+    /// the main queue so the UI doesn't block while the wire round trip
+    /// happens (typically < 5 ms but could spike on a loaded system).
+    func refreshInstances() {
+        instanceStatus = "Querying daemon…"
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let resolved: String
+            do {
+                resolved = try Paths.socketPath()
+            } catch {
+                DispatchQueue.main.async {
+                    self.availableInstances = []
+                    self.instanceStatus = "Cannot resolve socket path: \(error.localizedDescription)"
+                }
+                return
+            }
+
+            do {
+                let resp = try Client.sendRequest(.init(cmd: .list), socketPath: resolved, timeout: 3)
+                guard resp.ok, case .list(let items) = resp.data else {
+                    let msg = resp.error?.message ?? "daemon returned unexpected payload"
+                    DispatchQueue.main.async {
+                        self.availableInstances = []
+                        self.instanceStatus = "Error: \(msg)"
+                    }
+                    return
+                }
+                DispatchQueue.main.async {
+                    self.availableInstances = items
+                    if items.isEmpty {
+                        self.instanceStatus = "Daemon is running, but no DataFrames are loaded."
+                    } else {
+                        let kinds = Set(items.map(\.kind)).sorted().joined(separator: ", ")
+                        self.instanceStatus = "\(items.count) resident — kinds: \(kinds)"
+                    }
+                }
+            } catch Client.ClientError.notRunning {
+                DispatchQueue.main.async {
+                    self.availableInstances = []
+                    self.instanceStatus = "No daemon running. Start one with `swiftpandas server start`."
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.availableInstances = []
+                    self.instanceStatus = "Error talking to daemon: \(error)"
+                }
+            }
+        }
+    }
+
+    /// Pull a CSV preview of the selected DataFrame from the daemon and
+    /// display it in the result panel. The wire `show` reply is capped at
+    /// the daemon's 1 MiB preview budget, which is plenty for a quick scan.
+    func loadFromInstance(_ name: String) {
+        statusMessage = "Loading \(name) from daemon…"
+        hasError = false
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let resolved: String
+            do {
+                resolved = try Paths.socketPath()
+            } catch {
+                DispatchQueue.main.async {
+                    self.statusMessage = "Cannot resolve socket: \(error)"
+                    self.hasError = true
+                }
+                return
+            }
+            do {
+                let resp = try Client.sendRequest(
+                    .init(cmd: .show, name: name, head: 100),
+                    socketPath: resolved,
+                    timeout: 5
+                )
+                guard resp.ok, case .show(_, let rows, let cols, let csv, let truncated) = resp.data else {
+                    let msg = resp.error?.message ?? "unexpected payload"
+                    DispatchQueue.main.async {
+                        self.statusMessage = msg
+                        self.hasError = true
+                    }
+                    return
+                }
+                let header = "DataFrame `\(name)` (preview from daemon) — \(rows) rows × \(cols) cols\(truncated ? "  [truncated]" : "")\n\n"
+                DispatchQueue.main.async {
+                    self.resultCSV = csv
+                    self.resultText = header + csv
+                    self.statusMessage = "Loaded \(name) (\(rows) rows × \(cols) cols)"
+                    self.hasError = false
+                    self.timingInfo = ""
+                }
+            } catch Client.ClientError.notRunning {
+                DispatchQueue.main.async {
+                    self.statusMessage = "Daemon went away while loading \(name)."
+                    self.hasError = true
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.statusMessage = "Error loading \(name): \(error)"
+                    self.hasError = true
+                }
+            }
         }
     }
 

@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.6.2-beta
+# SwiftPandas v0.7.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -13,6 +13,27 @@ SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data m
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
 
 **Want to try it for yourself?** [docs/TUTORIAL.md](docs/TUTORIAL.md) walks you through a complete analytics workflow twice — first in Python with pandas, then in `swiftpandas` running as a Homebrew-installed daemon. Same dataset, same operations, side-by-side timings. ~20 minutes start to finish.
+
+## What's new in v0.7.0-beta
+
+The **hot-cache release**: SwiftPandas now works as an in-process **analytics database** for pipelines that repeatedly write and re-read the same files. All additive — no existing API changed. Full architecture: **[docs/hotstore.md](docs/hotstore.md)**; engine/consumer migration guide: [docs/hotstore-handover.md](docs/hotstore-handover.md).
+
+- **`HotStore`** — a two-tier, budget-bounded hot cache: raw bytes (`TextCache`, byte-identity guaranteed) and parsed frames (`FrameCache`) share one LRU byte budget with pinning, file-stamp freshness validation, eviction hooks, and statistics. Consumers replace `String(contentsOf:)` with `store.text(at:)` and skip disk (and the parse, via `store.frame(at:key:reader:)`) whenever the file hasn't changed; writers `publishText`/`publishFrame` what they already hold so the next reader never pays the round trip.
+
+  ```swift
+  let store = HotStore(budgetBytes: 8 << 30)
+  // writer, after the file is on disk:
+  await store.publishText(body, for: url)
+  // consumer — hot hit unless the file changed on disk:
+  let text = try await store.text(at: url)
+  ```
+
+- **Materialized views** — `store.view(name:over:plan:)` caches a lazy-query result over a resident parent frame and auto-invalidates it whenever the parent is evicted, replaced, or goes stale.
+- **Contract-driven CSV parsing** — `CSVReader.strict(columnTypes:)` and `CSVReader.allStrings` never infer: declared columns parse to declared dtypes, everything else stays `.string`, so all-digit IDs can never silently become doubles. Parse failures become NA and are reported per column via `readWithReport` (`ColumnParseFailure`). Duplicate headers merge last-wins in every mode.
+- **Streaming CSV access** — `CSVReader.rows(url:)` walks a memory-mapped file row-by-row in constant memory; `CSVReader.dimensions(url:)` counts rows/cols in one quote-aware pass without parsing a single cell.
+- **Canonical RFC-4180 codec** — `CSVLine.parse` / `format` / `escapeField` with two named quoting modes (`CSVQuoting.minimal` and `.all` aka QUOTE_ALL); `CSVWriter` and `toCSV` gain a `quoting:` parameter for write-side symmetry.
+- **Join-index utilities** — `df.index(on:)`, composite-key `index(on:separator:)`, and `df.lookupTable(key:value:)` build O(1) join dictionaries with a documented **last-row-wins** guarantee.
+- **`estimatedBytes` accuracy pass** — string-column accounting now models array slots, small-string inlining, and heap-buffer headers; tested within ±20% of the documented model, so `FrameCache` budgets track real memory.
 
 ## What's new in v0.6.2-beta
 
@@ -47,7 +68,7 @@ This library is in **beta** today. The active gap-list between the current state
 - **Real benchmarks page + correctness baseline against pandas** — published numbers + golden-file suite.
 
 Currently green on the fundamentals:
-- 415 tests, all passing; integration tests against the actual `swiftpandas` binary
+- 487 tests, all passing; integration tests against the actual `swiftpandas` binary
 - Expanding test coverage across every subsystem
 - Documenting all public APIs with comprehensive Swift doc comments
 

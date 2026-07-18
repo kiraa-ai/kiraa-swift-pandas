@@ -9,7 +9,11 @@
 # Xcode
 xcuserdata/
 DerivedData/
-build/                                   # XcodeGen / xcodebuild local output
+# XcodeGen / xcodebuild local output
+build/
+
+# Microsoft Office lock files
+~$*
 
 # Python
 __pycache__/

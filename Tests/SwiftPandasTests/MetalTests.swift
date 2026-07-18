@@ -94,6 +94,23 @@ final class MetalDispatchTests: XCTestCase {
 ///   the GPU path when the threshold is lowered.
 final class MetalGroupByTests: XCTestCase {
 
+    /// Saved group-count floor, restored in `tearDown`.
+    private var savedMinGroups = MetalDispatch.groupByMinGroups
+
+    /// These tests exercise the GPU kernel directly on small fixtures, so they
+    /// must bypass the production cardinality gate (which routes low-group-count
+    /// aggregations to the exact CPU path). Drop the floor to 0 for the duration.
+    override func setUp() {
+        super.setUp()
+        savedMinGroups = MetalDispatch.groupByMinGroups
+        MetalDispatch.groupByMinGroups = 0
+    }
+
+    override func tearDown() {
+        MetalDispatch.groupByMinGroups = savedMinGroups
+        super.tearDown()
+    }
+
     /// Builds a CPU-only reference GroupBy result for comparison against the GPU path.
     ///
     /// This helper temporarily sets `MetalDispatch.groupByThreshold` to `Int.max`

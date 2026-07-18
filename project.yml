@@ -26,7 +26,11 @@ targets:
     type: framework
     platform: macOS
     sources:
+      # headerVisibility project: ShaderCommon.h is a Metal-only header
+      # (#include <metal_stdlib>); exporting it publicly breaks
+      # `xcodebuild docbuild`, whose clang ExtractAPI pass cannot parse it.
       - path: Sources/SwiftPandas
+        headerVisibility: project
       - path: Sources/CKHash
         headerVisibility: project
         compilerFlags:
@@ -65,7 +69,11 @@ targets:
     platform: iOS
     productName: SwiftPandas
     sources:
+      # headerVisibility project: ShaderCommon.h is a Metal-only header
+      # (#include <metal_stdlib>); exporting it publicly breaks
+      # `xcodebuild docbuild`, whose clang ExtractAPI pass cannot parse it.
       - path: Sources/SwiftPandas
+        headerVisibility: project
       - path: Sources/CKHash
         headerVisibility: project
         compilerFlags:

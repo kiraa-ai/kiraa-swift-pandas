@@ -26,11 +26,18 @@ import SwiftPandas
 /// one hop, compute, then bind the result in a second hop. This keeps the
 /// registry hot and lets independent pipelines proceed in parallel.
 public actor DataFrameRegistry {
+    /// Default `kind` used when a `load` request doesn't set one. Free-form
+    /// strings are allowed; the GUI groups by this value.
+    public static let defaultKind = "transaction"
+
     /// A single named DataFrame slot in the registry.
     public struct Slot: Sendable {
         public let df: DataFrame
         public let createdAt: Date
         public var lastTouched: Date
+        /// Free-form taxonomy tag — `"transaction"` (default) or `"metadata"`
+        /// are the well-known values the GUI groups by.
+        public let kind: String
     }
 
     /// A snapshot row returned by ``list()`` and reported to clients.
@@ -40,6 +47,16 @@ public actor DataFrameRegistry {
         public let cols: Int
         public let bytes: Int
         public let createdAt: Date
+        public let kind: String
+
+        public init(name: String, rows: Int, cols: Int, bytes: Int, createdAt: Date, kind: String = DataFrameRegistry.defaultKind) {
+            self.name = name
+            self.rows = rows
+            self.cols = cols
+            self.bytes = bytes
+            self.createdAt = createdAt
+            self.kind = kind
+        }
     }
 
     private var slots: [String: Slot] = [:]
@@ -50,13 +67,19 @@ public actor DataFrameRegistry {
     }
 
     /// Bind `df` under `name`, overwriting any existing entry.
+    ///
+    /// When re-binding an existing name with no explicit `kind`, the existing
+    /// slot's `kind` is preserved — that way a `pipe` operation that produces
+    /// a new revision of an existing DataFrame doesn't accidentally reset its
+    /// classification.
     /// - Returns: `true` if an existing entry was replaced.
     @discardableResult
-    public func bind(_ name: String, _ df: DataFrame) -> Bool {
+    public func bind(_ name: String, _ df: DataFrame, kind: String? = nil) -> Bool {
         let now = Date()
-        let existed = slots[name] != nil
-        slots[name] = Slot(df: df, createdAt: now, lastTouched: now)
-        return existed
+        let existing = slots[name]
+        let effectiveKind = kind ?? existing?.kind ?? Self.defaultKind
+        slots[name] = Slot(df: df, createdAt: now, lastTouched: now, kind: effectiveKind)
+        return existing != nil
     }
 
     /// Return the DataFrame bound to `name`, or `nil` if unbound.
@@ -65,6 +88,11 @@ public actor DataFrameRegistry {
         slot.lastTouched = Date()
         slots[name] = slot
         return slot.df
+    }
+
+    /// Return the `kind` of the slot bound to `name`, or `nil` if unbound.
+    public func kind(_ name: String) -> String? {
+        slots[name]?.kind
     }
 
     /// Drop the entry at `name`. Returns its estimated byte size, or `nil` if
@@ -83,7 +111,8 @@ public actor DataFrameRegistry {
                     rows: slot.df.rowCount,
                     cols: slot.df.columnCount,
                     bytes: slot.df.estimatedBytes,
-                    createdAt: slot.createdAt
+                    createdAt: slot.createdAt,
+                    kind: slot.kind
                 )
             }
             .sorted { $0.createdAt < $1.createdAt }

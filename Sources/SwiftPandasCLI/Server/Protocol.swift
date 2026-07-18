@@ -39,6 +39,14 @@ public struct WireRequest: Codable, Equatable, Sendable {
     public var json: String?
     public var sep: String?
     public var head: Int?
+    /// Free-form taxonomy tag used by the GUI to group DataFrames in the
+    /// resident-instance dropdown. Two well-known values:
+    ///   * `"transaction"` — fact/event data (orders, sales rows). Default.
+    ///   * `"metadata"` — dimensional/reference data (region map, sku catalog).
+    /// Any other string is accepted and shown as its own group in the GUI.
+    /// Only meaningful on `load` (and `pipe`, which inherits the source's kind
+    /// when this is nil — set explicitly to override).
+    public var kind: String?
 
     public init(
         v: Int = WireProtocol.version,
@@ -50,7 +58,8 @@ public struct WireRequest: Codable, Equatable, Sendable {
         chain: String? = nil,
         json: String? = nil,
         sep: String? = nil,
-        head: Int? = nil
+        head: Int? = nil,
+        kind: String? = nil
     ) {
         self.v = v
         self.id = id
@@ -62,6 +71,7 @@ public struct WireRequest: Codable, Equatable, Sendable {
         self.json = json
         self.sep = sep
         self.head = head
+        self.kind = kind
     }
 }
 

@@ -89,6 +89,66 @@ public struct CSVReader: Sendable {
     /// values trigger a slower byte-pattern scan (`isNACustom`).
     public let naValues: Set<String>
 
+    /// How column dtypes are decided. See ``ParseMode``.
+    ///
+    /// Defaults to ``ParseMode/infer`` (the historical behavior: a column
+    /// where every non-NA cell parses as a number becomes `.double`). Use
+    /// ``strict(columnTypes:separator:header:naValues:)`` or ``allStrings``
+    /// to construct readers that never infer.
+    public let mode: ParseMode
+
+    /// The dtype-decision policy of a ``CSVReader``.
+    ///
+    /// ## Why strict mode exists
+    /// Type inference is a byte-parity trap: a column of all-digit customer
+    /// or SKU identifiers silently becomes `.double`, and `"0012345"` comes
+    /// back out as `"12345"`. Contract-driven parsing kills that class of
+    /// bug at the source: columns parse to exactly the dtype the caller
+    /// declared, and **everything not declared stays `.string`** — inference
+    /// never runs.
+    public enum ParseMode: Sendable {
+        /// Historical behavior: per-column numeric inference (all non-NA
+        /// cells parse as numbers → `.double`, else `.string`).
+        case infer
+        /// Contract-driven: each listed column parses to its declared dtype;
+        /// unlisted columns stay `.string`. Cells that fail to parse become
+        /// NA and are reported via ``ColumnParseFailure``. Never infers.
+        case strict([String: DTypeEnum])
+        /// Every column stays `.string`, byte-preserving. Never infers.
+        case allStrings
+    }
+
+    /// Creates a reader that never infers: listed columns parse to their
+    /// declared dtypes, **unlisted columns stay `.string`**.
+    ///
+    /// Supported declared dtypes map onto ``Column`` storage as: any float
+    /// dtype → `.double`; any integer dtype → `.int64`; `.bool` → `.bool`;
+    /// everything else (including `.string`, `.datetime`, `.timedelta`) →
+    /// `.string`. Cells that fail their declared parse become NA and are
+    /// reported per column via ``readWithReport(from:)-(String)``.
+    ///
+    /// When the same header name appears more than once, the **last**
+    /// occurrence wins (data and position), matching last-wins dictionary
+    /// merge semantics.
+    public static func strict(
+        columnTypes: [String: DTypeEnum],
+        separator: Character = ",",
+        header: Bool = true,
+        naValues: Set<String> = ["", "NA", "N/A", "NaN", "nan", "null", "NULL", "None", "none", "."]
+    ) -> CSVReader {
+        CSVReader(separator: separator, header: header, naValues: naValues,
+                  mode: .strict(columnTypes))
+    }
+
+    /// A reader that parses every column as `.string`, preserving cell text
+    /// exactly (no numeric inference, no value rewriting). NA sentinels
+    /// still become NA. Comma separator, header row expected.
+    public static var allStrings: CSVReader {
+        CSVReader(separator: ",", header: true,
+                  naValues: ["", "NA", "N/A", "NaN", "nan", "null", "NULL", "None", "none", "."],
+                  mode: .allStrings)
+    }
+
     /// Creates a new CSV reader with the specified configuration.
     ///
     /// - Parameters:
@@ -104,6 +164,20 @@ public struct CSVReader: Sendable {
         self.separator = separator
         self.header = header
         self.naValues = naValues
+        self.mode = .infer
+    }
+
+    /// Internal designated initializer carrying an explicit parse mode.
+    internal init(
+        separator: Character,
+        header: Bool,
+        naValues: Set<String>,
+        mode: ParseMode
+    ) {
+        self.separator = separator
+        self.header = header
+        self.naValues = naValues
+        self.mode = mode
     }
 
     /// A byte range identifying a single field (cell) within the raw UTF-8 buffer.
@@ -114,7 +188,7 @@ public struct CSVReader: Sendable {
     /// when extracting the field as a Swift `String`. For numeric parsing, escaped quotes are
     /// irrelevant since such fields will fail numeric conversion and fall through to string
     /// extraction.
-    private struct FieldRange {
+    internal struct FieldRange {
         /// Byte offset of the first character of the field (inclusive).
         let start: Int
         /// Byte offset one past the last character of the field (exclusive).
@@ -133,7 +207,7 @@ public struct CSVReader: Sendable {
     /// array bounds check (or unchecked `&*` / `&+` as used here for speed).
     ///
     /// This structure is populated by ``parseFieldGrid(_:)`` and consumed by ``readFromBytes(_:)``.
-    private struct FieldGrid {
+    internal struct FieldGrid {
         /// Row-major flat storage of all field ranges. Length is `rowCount * colCount`.
         var fields: ContiguousArray<FieldRange>
         /// Total number of rows (including the header row, if present).
@@ -167,6 +241,10 @@ public struct CSVReader: Sendable {
     /// - Returns: A ``DataFrame`` with columns inferred as `.double` where all non-NA values
     ///   parse as numbers, or `.string` otherwise.
     public func read(from text: String) -> DataFrame {
+        // Contract-driven modes go through the typed path (report discarded).
+        if case .infer = mode {} else {
+            return readWithReport(from: text).frame
+        }
         // Fast path: use byte-level parsing with field ranges (no String allocation)
         if let result = text.utf8.withContiguousStorageIfAvailable({ utf8Buf -> DataFrame in
             return readFromBytes(utf8Buf)
@@ -201,6 +279,9 @@ public struct CSVReader: Sendable {
     /// - Throws: Any error from `Data(contentsOf:options:)` if the file
     ///   cannot be read or memory-mapped.
     public func read(from url: URL) throws -> DataFrame {
+        if case .infer = mode {} else {
+            return try readWithReport(from: url).frame
+        }
         let data = try Data(contentsOf: url, options: .mappedIfSafe)
         if data.isEmpty { return DataFrame() }
         return data.withUnsafeBytes { rawBuf -> DataFrame in
@@ -239,7 +320,7 @@ public struct CSVReader: Sendable {
     ///   - end: The exclusive end byte offset of the field.
     /// - Returns: An adjusted `(start, end)` tuple with surrounding quotes removed.
     @inline(__always)
-    private static func stripQuotes(
+    internal static func stripQuotes(
         _ bytes: UnsafeBufferPointer<UInt8>, start: Int, end: Int
     ) -> (Int, Int) {
         var s = start
@@ -382,7 +463,7 @@ public struct CSVReader: Sendable {
             }
         }
 
-        return DataFrame(columns: resultColumns)
+        return DataFrame(columns: Self.dedupeLastWins(resultColumns))
     }
 
     /// Hot-path double parser optimized for the common `[-]digits[.digits]` numeric pattern.
@@ -409,7 +490,7 @@ public struct CSVReader: Sendable {
     ///   - strtodBuf: A pre-allocated 64-byte `CChar` buffer for the `strtod` fallback path.
     /// - Returns: A tuple `(success, value)`. If `success` is `false`, the field is not numeric.
     @inline(__always)
-    private static func fastParseDouble(
+    internal static func fastParseDouble(
         _ bytes: UnsafeBufferPointer<UInt8>, start s: Int, end e: Int,
         strtodBuf: UnsafeMutablePointer<CChar>
     ) -> (Bool, Double) {
@@ -503,7 +584,7 @@ public struct CSVReader: Sendable {
     ///   - strtodBuf: A pre-allocated, reusable 64-byte `CChar` buffer for null-terminated copies.
     /// - Returns: A tuple `(success, value)`. If `success` is `false`, the field is not numeric.
     @inline(__always)
-    private static func strtodFallback(
+    internal static func strtodFallback(
         _ bytes: UnsafeBufferPointer<UInt8>, start s: Int, end e: Int,
         strtodBuf: UnsafeMutablePointer<CChar>
     ) -> (Bool, Double) {
@@ -544,7 +625,7 @@ public struct CSVReader: Sendable {
     ///   - length: Byte length of the field.
     /// - Returns: `true` if the field matches one of the default NA sentinels.
     @inline(__always)
-    private static func isNADefault(
+    internal static func isNADefault(
         _ bytes: UnsafeBufferPointer<UInt8>, start s: Int, length: Int
     ) -> Bool {
         switch length {
@@ -594,7 +675,7 @@ public struct CSVReader: Sendable {
     ///   - length: Byte length of the field.
     ///   - patterns: Pre-computed `[UInt8]` representations of each custom NA value.
     /// - Returns: `true` if the field matches any of the custom NA patterns.
-    private static func isNACustom(
+    internal static func isNACustom(
         _ bytes: UnsafeBufferPointer<UInt8>, start s: Int, length: Int,
         patterns: [[UInt8]]
     ) -> Bool {
@@ -623,7 +704,7 @@ public struct CSVReader: Sendable {
     ///   - bytes: The raw UTF-8 byte buffer.
     ///   - field: The ``FieldRange`` identifying the cell's byte boundaries.
     /// - Returns: The cell value as a Swift `String`, with quotes stripped and escapes resolved.
-    private func extractString(_ bytes: UnsafeBufferPointer<UInt8>, field: FieldRange) -> String {
+    internal func extractString(_ bytes: UnsafeBufferPointer<UInt8>, field: FieldRange) -> String {
         var s = field.start
         var e = field.end
         if e > s && bytes[s] == 0x22 {
@@ -682,7 +763,7 @@ public struct CSVReader: Sendable {
     ///
     /// - Parameter bytes: The contiguous UTF-8 byte buffer to scan.
     /// - Returns: A populated ``FieldGrid`` with all cell byte ranges.
-    private func parseFieldGrid(_ bytes: UnsafeBufferPointer<UInt8>) -> FieldGrid {
+    internal func parseFieldGrid(_ bytes: UnsafeBufferPointer<UInt8>) -> FieldGrid {
         let sepByte = separator.asciiValue!
         let count = bytes.count
 
@@ -866,7 +947,7 @@ public struct CSVReader: Sendable {
             }
         }
 
-        return DataFrame(columns: resultColumns)
+        return DataFrame(columns: Self.dedupeLastWins(resultColumns))
     }
 
     /// Character-by-character CSV row parser — the fallback when contiguous UTF-8 is unavailable.
@@ -965,6 +1046,19 @@ public struct CSVWriter: Sendable {
     public let includeIndex: Bool
     /// The string to write for NA/missing values. Defaults to `""` (empty field).
     public let naRepresentation: String
+    /// The field-quoting policy. See ``CSVQuoting``.
+    ///
+    /// - ``CSVQuoting/minimal`` (default, RFC 4180): only fields containing
+    ///   the separator, `"`, `\n`, or `\r` are quoted. Numeric/bool fields
+    ///   are never quoted.
+    /// - ``CSVQuoting/all`` (`QUOTE_ALL`): every field — header names,
+    ///   index labels, and all values including numerics — is quoted.
+    ///
+    /// **Byte compatibility:** for fields with no quotable characters,
+    /// minimal mode emits the field bytes unchanged; QUOTE_ALL wraps the
+    /// same bytes in `"…"`. Internal quotes are doubled in both modes, so
+    /// output from either mode parses back identically.
+    public let quoting: CSVQuoting
 
     /// Creates a new CSV writer with the specified formatting options.
     ///
@@ -973,16 +1067,36 @@ public struct CSVWriter: Sendable {
     ///   - includeHeader: Whether to write a header row. Defaults to `true`.
     ///   - includeIndex: Whether to write index labels as the first column. Defaults to `false`.
     ///   - naRepresentation: The literal string to emit for missing values. Defaults to `""`.
+    ///   - quoting: Field-quoting policy. Defaults to ``CSVQuoting/minimal``.
     public init(
         separator: String = ",",
         includeHeader: Bool = true,
         includeIndex: Bool = false,
-        naRepresentation: String = ""
+        naRepresentation: String = "",
+        quoting: CSVQuoting = .minimal
     ) {
         self.separator = separator
         self.includeHeader = includeHeader
         self.includeIndex = includeIndex
         self.naRepresentation = naRepresentation
+        self.quoting = quoting
+    }
+
+    /// Applies this writer's quoting policy to one output field.
+    ///
+    /// Minimal mode quotes when the field contains this writer's separator
+    /// (which may differ from `,`), a double quote, LF, or CR; QUOTE_ALL
+    /// always quotes. Internal quotes are doubled in both modes.
+    private func escape(_ val: String) -> String {
+        switch quoting {
+        case .all:
+            return "\"" + val.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        case .minimal:
+            if val.contains(separator) || val.contains("\"") || val.contains("\n") || val.contains("\r") {
+                return "\"" + val.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+            }
+            return val
+        }
     }
 
     /// Serializes the given ``DataFrame`` to a CSV-formatted `String`.
@@ -999,7 +1113,7 @@ public struct CSVWriter: Sendable {
         let rowCount = df.rowCount
         guard rowCount > 0 else {
             if includeHeader {
-                return df.columnNames.joined(separator: separator) + "\n"
+                return df.columnNames.map { escape($0) }.joined(separator: separator) + "\n"
             }
             return ""
         }
@@ -1100,21 +1214,28 @@ public struct CSVWriter: Sendable {
             }
             for (colIdx, name) in df.columnNames.enumerated() {
                 if colIdx > 0 { result.append(separator) }
-                result.append(name)
+                result.append(escape(name))
             }
             result.append("\n")
         }
 
         // Step 4: Write data rows from pre-formatted columns
+        let quoteAll = (quoting == .all)
         for i in 0..<rowCount {
             if includeIndex {
-                result.append(df.indexLabels[i])
+                result.append(escape(df.indexLabels[i]))
                 result.append(separator)
             }
             for colIdx in 0..<colCount {
                 if colIdx > 0 { result.append(separator) }
                 let val = formattedCols[colIdx][i]
-                if needsQuoting[colIdx] && (val.contains(separator) || val.contains("\"") || val.contains("\n")) {
+                if quoteAll {
+                    result.append("\"")
+                    result.append(val.contains("\"") ? val.replacingOccurrences(of: "\"", with: "\"\"") : val)
+                    result.append("\"")
+                } else if needsQuoting[colIdx]
+                            && (val.contains(separator) || val.contains("\"")
+                                || val.contains("\n") || val.contains("\r")) {
                     result.append("\"")
                     result.append(val.replacingOccurrences(of: "\"", with: "\"\""))
                     result.append("\"")
@@ -1227,9 +1348,11 @@ extension DataFrame {
     public func toCSV(
         separator: String = ",",
         header: Bool = true,
-        index: Bool = false
+        index: Bool = false,
+        quoting: CSVQuoting = .minimal
     ) -> String {
-        let writer = CSVWriter(separator: separator, includeHeader: header, includeIndex: index)
+        let writer = CSVWriter(separator: separator, includeHeader: header,
+                               includeIndex: index, quoting: quoting)
         return writer.write(self)
     }
 
@@ -1245,9 +1368,11 @@ extension DataFrame {
         path: String,
         separator: String = ",",
         header: Bool = true,
-        index: Bool = false
+        index: Bool = false,
+        quoting: CSVQuoting = .minimal
     ) throws {
-        let writer = CSVWriter(separator: separator, includeHeader: header, includeIndex: index)
+        let writer = CSVWriter(separator: separator, includeHeader: header,
+                               includeIndex: index, quoting: quoting)
         try writer.write(self, toPath: path)
     }
 
