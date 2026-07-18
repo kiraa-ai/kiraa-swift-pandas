@@ -41,6 +41,7 @@
 // transparently use the CPU path.
 // ---------------------------------------------------------------------------
 
+import Foundation
 import Metal
 
 /// Threshold-based dispatch for GPU vs CPU execution paths.
@@ -60,24 +61,59 @@ import Metal
 /// ```
 public enum MetalDispatch {
 
+    // MARK: - Environment overrides
+    //
+    // These let operators tune routing without a rebuild — handy for
+    // benchmarking, and to force the exact-and-fast CPU path when precision
+    // matters more than raw throughput:
+    //
+    //   SWIFTPANDAS_DISABLE_METAL=1          — never use the GPU (CPU only)
+    //   SWIFTPANDAS_GROUPBY_THRESHOLD=<n>    — min rows before GPU groupby
+    //   SWIFTPANDAS_GROUPBY_MIN_GROUPS=<n>   — min distinct groups before GPU groupby
+    //   SWIFTPANDAS_MERGE_THRESHOLD=<n>      — min rows before GPU merge
+
+    private static func envInt(_ name: String) -> Int? {
+        guard let raw = ProcessInfo.processInfo.environment[name],
+              let value = Int(raw.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return value
+    }
+
+    private static func envFlag(_ name: String) -> Bool {
+        guard let raw = ProcessInfo.processInfo.environment[name]?.lowercased() else { return false }
+        return raw == "1" || raw == "true" || raw == "yes"
+    }
+
+    /// When `true`, all `shouldUseGPU` checks return `false` and every operation
+    /// runs on the exact Float64 CPU path. Set `SWIFTPANDAS_DISABLE_METAL=1`.
+    public static var metalDisabled = envFlag("SWIFTPANDAS_DISABLE_METAL")
+
     /// Minimum row count to use GPU for GroupBy operations.
     ///
-    /// Set high (10M) because the CPU raw-pointer accumulation path is faster
-    /// than GPU atomic reductions for typical group counts (< 100K groups).
-    /// GPU GroupBy suffers from atomic contention when many threads write
-    /// to few accumulators, plus synchronous kernel dispatch overhead.
+    /// The GPU only wins for very large, **high-cardinality** group-bys. For the
+    /// common low-cardinality case (a handful of groups) the CPU raw-pointer
+    /// path is both faster and exact (Float64), so routing also consults
+    /// ``groupByMinGroups`` — see ``shouldUseGPUForGroupBy(rowCount:groupCount:)``.
     ///
-    /// This is a `var` to allow runtime tuning for specific hardware/workloads.
-    public static var groupByThreshold = 10_000_000
+    /// A `var` (env-overridable via `SWIFTPANDAS_GROUPBY_THRESHOLD`) so it can be
+    /// tuned for specific hardware/workloads.
+    public static var groupByThreshold = envInt("SWIFTPANDAS_GROUPBY_THRESHOLD") ?? 10_000_000
+
+    /// Minimum number of **distinct groups** before GPU groupby is worthwhile.
+    ///
+    /// GPU reduction accumulates into per-group atomics; with few groups, many
+    /// threads contend on the same accumulators (slow) and a Float32 sum of
+    /// millions of values loses precision. Above this many groups each group
+    /// sums comparatively few rows, so contention is spread and precision is
+    /// fine. Env-overridable via `SWIFTPANDAS_GROUPBY_MIN_GROUPS`.
+    public static var groupByMinGroups = envInt("SWIFTPANDAS_GROUPBY_MIN_GROUPS") ?? 100_000
 
     /// Minimum row count to use GPU for Merge (hash join) operations.
     ///
     /// Lower than `groupByThreshold` because hash join is more naturally
     /// parallel: the build phase has minimal contention and the probe phase
-    /// is embarrassingly parallel across left-table rows.
-    ///
-    /// This is a `var` to allow runtime tuning for specific hardware/workloads.
-    public static var mergeThreshold = 500_000
+    /// is embarrassingly parallel across left-table rows. Env-overridable via
+    /// `SWIFTPANDAS_MERGE_THRESHOLD`.
+    public static var mergeThreshold = envInt("SWIFTPANDAS_MERGE_THRESHOLD") ?? 500_000
 
     /// Whether Metal GPU compute is available on this device.
     ///
@@ -85,7 +121,7 @@ public enum MetalDispatch {
     /// or on hardware that lacks a Metal-capable GPU. Delegates to
     /// `MetalContext.shared`, which attempts lazy initialization on first access.
     public static var isAvailable: Bool {
-        MetalContext.shared != nil
+        !metalDisabled && MetalContext.shared != nil
     }
 
     /// Determine whether GPU should be used for an operation given the dataset size.
@@ -101,5 +137,19 @@ public enum MetalDispatch {
     /// - Returns: `true` if GPU execution is recommended for this workload size.
     public static func shouldUseGPU(rowCount: Int, threshold: Int) -> Bool {
         isAvailable && rowCount >= threshold
+    }
+
+    /// GroupBy-specific routing that considers both row count **and** group
+    /// cardinality. GPU is used only when Metal is available, the data is large
+    /// enough (`groupByThreshold`), and there are enough distinct groups
+    /// (`groupByMinGroups`) for the GPU to beat the exact CPU path.
+    ///
+    /// - Parameters:
+    ///   - rowCount: Total rows to aggregate.
+    ///   - groupCount: Number of distinct groups (known after factorization).
+    public static func shouldUseGPUForGroupBy(rowCount: Int, groupCount: Int) -> Bool {
+        isAvailable
+            && rowCount >= groupByThreshold
+            && groupCount >= groupByMinGroups
     }
 }
