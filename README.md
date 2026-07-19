@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.7.0-beta
+# SwiftPandas v0.8.0-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -13,6 +13,31 @@ SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data m
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
 
 **Want to try it for yourself?** [docs/TUTORIAL.md](docs/TUTORIAL.md) walks you through a complete analytics workflow twice — first in Python with pandas, then in `swiftpandas` running as a Homebrew-installed daemon. Same dataset, same operations, side-by-side timings. ~20 minutes start to finish.
+
+## What's new in v0.8.0-beta
+
+The **vector release**: first-class vector-database functionality in the DataFrame idiom — a Float32 vector column type, deterministic top-K similarity search (CPU + Metal), and a byte-deterministic binary format. A DataFrame is now a complete vector collection: id column + metadata columns + vector column, with CRUD via the existing immutable idiom (`concat` to insert, `filter(mask:)` to delete, rebuild/`merge` to update). Usage guide: **[docs/vectors.md](docs/vectors.md)**; design spec: [docs/vector-spec.md](docs/vector-spec.md).
+
+- **`Column.floatVector` / `VectorArray`** — fixed-dims Float32 vectors stored as one flat, contiguous, row-major plane plus a validity bitmap (never array-of-arrays). `dims` is part of the dtype identity: `df.dtypes` reports `floatVector(1024)`. Zero-copy plane access for compute kernels via `series.withUnsafeVectorPlane`.
+
+  ```swift
+  let df = DataFrame(columns: [
+      ("id", .fromInts([1, 2, 3])),
+      ("title", .fromStrings(["intro", "setup", "faq"])),
+      ("embedding", try .fromVectors(embeddings, dims: 1024)),
+  ])
+  var options = SearchOptions()
+  options.topK = 10
+  let hits = try df.similaritySearch(on: "embedding", query: queryVector, options: options)
+  hits.frame        // matching rows + "__score", ranked best-first
+  hits.backendUsed  // "cpu-vdsp" | "metal" — never silent
+  ```
+
+- **Similarity search** — `similaritySearch` / `similaritySearchBatch` with cosine / dot / euclidean metrics, per-metric thresholds, candidate mask pre-filtering, and fully deterministic ranking (score, then source-row tie-break). The CPU backend pins an exact Float32 vDSP order so consumers can rely on **bit-identical scores** run-to-run; ~13 ms for topK=10 over 100K × 1024-dim vectors on Apple Silicon.
+- **Metal batch-cosine backend** — `swiftpandas_vector_batch_cosine` kernel; `.metal` throws when unusable (never a silent fallback), `.auto(gpuThreshold:)` decisions are observable via `backendUsed`; CPU↔GPU agreement ≤ 1e-5 with identical ranking.
+- **SPB binary format** — `writeSPB(to:)` / `readSPB(from:)`: little-endian, magic `SPB1`, byte-deterministic (equal frames → byte-identical files), lossless for all five dtypes including null patterns, bounds-checked reader with **no partial loads**. CSV/JSON deliberately reject vector frames; SPB is the durable format (~0.5 s write / ~0.1 s read for a 400 MB frame).
+- **Vector ops** — `l2Norms()`, `normalizedL2()` (the only normalizer — storage always holds raw vectors), `describe()` on vector series reports count/nulls/dims.
+- **Typed `VectorError`** — every misuse throws a described, `Sendable` error (`dimensionMismatch`, `maskLengthMismatch`, `unsupportedOperation`, `metalUnavailable`, `corrupt`, ...); nothing returns an empty result on invalid input.
 
 ## What's new in v0.7.0-beta
 
@@ -68,7 +93,7 @@ This library is in **beta** today. The active gap-list between the current state
 - **Real benchmarks page + correctness baseline against pandas** — published numbers + golden-file suite.
 
 Currently green on the fundamentals:
-- 487 tests, all passing; integration tests against the actual `swiftpandas` binary
+- 563 tests, all passing; integration tests against the actual `swiftpandas` binary
 - Expanding test coverage across every subsystem
 - Documenting all public APIs with comprehensive Swift doc comments
 
@@ -104,8 +129,9 @@ The following vendored C libraries from the pandas project are compiled directly
 - `NullableArray<T>` with `BitVector` validity bitmaps for NA support
 - `NativeArray<T>` with copy-on-write semantics
 - `StringArray` for string data with NA handling
-- `Column` enum for type-erased heterogeneous DataFrame columns (`.double`, `.string`, `.bool`, `.int64`)
-- Full DType hierarchy: `Int8`–`Int64`, `UInt8`–`UInt64`, `Float32`, `Float64`, `Bool`, `String`
+- `Column` enum for type-erased heterogeneous DataFrame columns (`.double`, `.string`, `.bool`, `.int64`, `.floatVector`)
+- `VectorArray` for fixed-dims Float32 vector columns: flat row-major plane + validity bitmap, similarity search (`similaritySearch`, cosine/dot/euclidean, CPU vDSP + Metal), and the byte-deterministic SPB binary format — see [docs/vectors.md](docs/vectors.md)
+- Full DType hierarchy: `Int8`–`Int64`, `UInt8`–`UInt64`, `Float32`, `Float64`, `Bool`, `String`, plus `floatVector(dims:)`
 
 ### Series Operations
 - **Aggregations**: `sum()`, `mean()`, `std()`, `min()`, `max()`, `median()`, `quantile()`, `describe()`, `valueCounts()`
@@ -188,7 +214,7 @@ SwiftPandas supports two SwiftPM consumption modes from a single `Package.swift`
 
 ### Option A — Source build (default)
 
-Add SwiftPandas to your `Package.swift` and pin to the v0.5.0-beta tag (or track `main` for development):
+Add SwiftPandas to your `Package.swift` and pin to the v0.8.0-beta tag (or track `main` for development):
 
 ```swift
 // swift-tools-version: 5.9
@@ -199,7 +225,7 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v16)],
     dependencies: [
         // Recommended: pin to a tagged release
-        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.5.0-beta"),
+        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.8.0-beta"),
 
         // Or track the latest development:
         // .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
@@ -231,7 +257,7 @@ SWIFTPANDAS_USE_BINARY=1 swift build
 
 In Xcode, set the environment variable on the scheme (Edit Scheme → Run → Arguments → Environment Variables → `SWIFTPANDAS_USE_BINARY=1`) and re-resolve packages (File → Packages → Reset Package Caches).
 
-The XCFramework bundles three slices (`macos-arm64_x86_64`, `ios-arm64`, `ios-arm64_x86_64-simulator`), is built with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES` for module stability, and ships at ~2 MB zipped. SwiftPM downloads, verifies the SHA-256 checksum, and caches it like any other binary target — no `xcodegen`, no C compilation, no Metal preflight.
+The XCFramework bundles three slices (`macos-arm64_x86_64`, `ios-arm64`, `ios-arm64_x86_64-simulator`), is built with `BUILD_LIBRARY_FOR_DISTRIBUTION=YES` for module stability, and ships at ~3 MB zipped. SwiftPM downloads, verifies the SHA-256 checksum, and caches it like any other binary target — no `xcodegen`, no C compilation, no Metal preflight.
 
 > The binary mode trades source debuggability for build speed. If you need to step into SwiftPandas internals (e.g., to investigate behaviour or contribute upstream), unset the env var to fall back to source mode.
 
