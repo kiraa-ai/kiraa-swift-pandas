@@ -12,12 +12,14 @@ Format for each item:
 
 ---
 
-## Where we are today (v0.6.1-beta)
+## Where we are today (v0.8.0-beta)
 
 | Capability | Status |
 |---|---|
 | Pure-Swift DataFrame / Series / Index types | ✅ shipped |
 | Vectorised numeric ops via Apple Accelerate (vDSP) | ✅ shipped |
+| Vector columns (`floatVector`), top-K similarity search (CPU vDSP bit-parity + Metal cosine), see [vectors.md](vectors.md) | ✅ shipped (v0.8.0-beta) |
+| SPB byte-deterministic binary format (`writeSPB`/`readSPB`) | ✅ shipped (v0.8.0-beta) |
 | Metal GPU shaders for groupby + merge | ✅ shipped |
 | Lazy evaluation engine with filter fusion + predicate pushdown + projection pushdown | ✅ shipped |
 | CSV I/O (read + write, custom byte-level parser, default NA handling) | ✅ shipped |
