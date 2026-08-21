@@ -115,7 +115,7 @@ Make the stale state unrepresentable. `allValid` becomes a pure function of `wor
 
 ### Tests — `Tests/SwiftPandasTests/BitVectorInvariantTests.swift` (committed on this branch, RED)
 
-Written first, per TDD, against unmodified v0.8.0-beta. The file is in this PR; the full source is reproduced here for review. Revised 2026-08-21 for documentation per `swift-coding-practices.md` (§11 Given/When/Then, §13 named constants, §17 `///` docs); assertions unchanged, RED profile unchanged.
+Written first, per TDD, against unmodified v0.8.0-beta. The file is in this PR; the full source is reproduced here for review. Comments are written to stand on their own: they describe what each test proves about the invariant and why that matters, with no reference to any particular change or point in time. Assertions unchanged; RED profile unchanged.
 
 ```swift
 // ===----------------------------------------------------------------------===//
@@ -123,16 +123,15 @@ Written first, per TDD, against unmodified v0.8.0-beta. The file is in this PR; 
 // BitVectorInvariantTests.swift
 // SwiftPandasTests
 //
-// Acceptance tests for GitHub issue #18:
-// https://github.com/kiraa-ai/kiraa-swift-pandas/issues/18
+// Background: https://github.com/kiraa-ai/kiraa-swift-pandas/issues/18
 //
 // ## The invariant under test
 //
 // `BitVector` is the validity bitmap beneath every nullable column: bit *i*
 // set means row *i* holds a value, cleared means row *i* is NA. The property
-// `BitVector.allValid` answers "are all bits set?". It MUST agree with the
-// bits on every call — there is no situation in which `allValid == true` and
-// some bit is cleared is acceptable.
+// `BitVector.allValid` answers "are all bits set?". It must agree with the
+// bits on every call. `allValid == true` while any bit is cleared is never
+// acceptable, no matter how the bitmap was produced.
 //
 // ## Why this matters
 //
@@ -141,41 +140,36 @@ Written first, per TDD, against unmodified v0.8.0-beta. The file is in this PR; 
 // `NullableArray.take(indices:)`, `take(mask:trueCount:)`, and
 // `BitVector.concat` — go further and *manufacture a fresh all-ones bitmap*
 // for their result. So a wrong `true` is not a slow path; it permanently
-// erases every NA in the column. The placeholder value stored under the NA
-// bit (whatever the arithmetic happened to compute) is promoted to a real
-// value in sorts, filters, group-bys, CSV output, and statistics.
+// erases every NA in the column. Whatever value happens to sit under the NA
+// bit is promoted to a real value in sorts, filters, group-bys, CSV output,
+// and statistics, with no error or warning.
 //
-// ## The defect these tests were written against (v0.8.0-beta)
-//
-// `allValid` consulted a cached flag, `_knownAllValid`, that had to be reset
-// by hand in every mutator. The `&` and prefix `~` operators forgot to reset
-// it. Because `NullableArray`'s `+ - * /` build their result mask with
-// `lhs.mask & rhs.mask`, any arithmetic against an all-valid operand produced
-// a mask whose bits were right but whose `allValid` lied.
+// The operators `&`, `|`, `~` and `concat` are the places where a bitmap is
+// derived from other bitmaps, which makes them the natural places for
+// `allValid` and the bits to drift apart. `NullableArray`'s `+ - * /` build
+// their result mask as `lhs.mask & rhs.mask`, so `&` in particular sits under
+// every piece of column arithmetic in the library.
 //
 // ## How to read this file
 //
 // - "Unit" tests exercise `BitVector` directly and assert that `allValid`,
 //   `popcount`, and the individual bits tell the same story.
-// - "End to end" tests build one tiny frame with an operator-derived NA and
-//   push it through each bulk operation that trusts `allValid`, asserting the
-//   NA is still there on the other side.
-// - Two tests are labelled "control". They pass both before and after the
-//   fix; they exist to pin behaviour that the fix must not disturb.
-//
-// These tests were written first and run RED before any production change
-// (TDD). If one of them fails in the future, the cached-flag bug — or a new
-// bug of the same shape — has come back.
+// - "End to end" tests build one tiny frame whose NA was produced by column
+//   arithmetic and push it through each bulk operation that trusts
+//   `allValid`, asserting the NA is still there on the other side.
+// - Two tests are labelled "control". They pin behaviour that is correct by
+//   construction and must stay that way: the element-wise read path, and the
+//   `|` operator (which can only set bits).
 //
 // ===----------------------------------------------------------------------===//
 
 import XCTest
 @testable import SwiftPandas
 
-/// Verifies that `BitVector.allValid` can never disagree with the bitmap, and
-/// that an NA produced by column arithmetic survives every bulk operation.
+/// Verifies that `BitVector.allValid` always agrees with the bitmap, and that
+/// an NA produced by column arithmetic survives every bulk operation.
 ///
-/// See the file header for the full background on issue #18.
+/// See the file header for the invariant and why it matters.
 final class BitVectorInvariantTests: XCTestCase {
 
     // MARK: - Fixture constants
@@ -192,16 +186,18 @@ final class BitVectorInvariantTests: XCTestCase {
     /// (see `makeFrameWithDerivedNA()`). Zero-based.
     private static let naRow = 1
 
-    // MARK: - Unit: `&` must not report all-valid after clearing a bit
+    // MARK: - Unit: `&`
 
     /// `all-valid & mask-with-one-NA` must report `allValid == false`.
     ///
     /// This is the exact mask that `NullableArray.+` produces when one operand
-    /// has no NAs and the other has one — the most common way the defect in
-    /// issue #18 was reached.
+    /// has no NAs and the other has one, so it is the most common shape a
+    /// derived bitmap takes in practice. The test checks the bit, the
+    /// popcount, and `allValid` together: all three must agree that exactly
+    /// one row is NA.
     ///
-    /// - Fails when: `allValid` returns a cached answer inherited from the
-    ///   left-hand operand instead of re-deriving it from the ANDed bits.
+    /// Guards against `&` deriving its `allValid` answer from either operand
+    /// instead of from the bits it actually produced.
     func test_and_withAllValidLhs_reportsNotAllValid() {
         // Given: an all-valid mask, and a mask with exactly one NA at `naRow`
         let allValid = BitVector(repeating: true, count: Self.smallBitCount)
@@ -220,10 +216,9 @@ final class BitVectorInvariantTests: XCTestCase {
     /// Same as the single-word case, but across two full words and an
     /// unaligned tail, with a cleared bit in each region.
     ///
-    /// Guards against a fix that only inspects the first (or last) word.
-    ///
-    /// - Fails when: `allValid` is cached, or is derived from a subset of the
-    ///   words rather than all of them.
+    /// Guards against `allValid` being derived from a subset of the words
+    /// (first word only, last word only, full words only) rather than all of
+    /// them.
     func test_and_multiWordUnalignedTail_reportsNotAllValid() {
         // Given: three NAs — one in word 0, one in word 1, one in the 2-bit tail
         let clearedBits = [0, 70, Self.multiWordBitCount - 1]
@@ -241,15 +236,17 @@ final class BitVectorInvariantTests: XCTestCase {
         XCTAssertFalse(anded.allValid)
     }
 
-    // MARK: - Unit: `~` must not report all-valid after inverting all-ones
+    // MARK: - Unit: `~`
 
-    /// `~all-valid` is all-NA and must say so.
+    /// `~all-valid` is all-NA and must say so through every accessor.
     ///
-    /// This is the most extreme form of the defect: before the fix the result
-    /// had `popcount == 0` *and* `allValid == true` at the same time.
+    /// Inversion is the one operator that can take a bitmap from "every bit
+    /// set" to "no bit set" in a single step, so it is the strongest check
+    /// that `allValid` is computed from the result rather than carried over
+    /// from the operand. `popcount`, `allValid`, and `allNA` must agree.
     ///
-    /// - Fails when: prefix `~` copies a cached "all valid" answer from its
-    ///   operand instead of deriving the answer from the inverted bits.
+    /// Guards against prefix `~` reporting its operand's `allValid` answer
+    /// for a result that has no set bits at all.
     func test_not_ofAllValid_reportsNotAllValid() {
         // Given: an all-valid mask
         let allValid = BitVector(repeating: true, count: Self.smallBitCount)
@@ -265,14 +262,14 @@ final class BitVectorInvariantTests: XCTestCase {
 
     // MARK: - Unit: `|` control
 
-    /// CONTROL — `all-valid | anything` genuinely is all-valid, and must keep
-    /// reporting so after the fix.
+    /// CONTROL — `all-valid | anything` genuinely is all-valid and must
+    /// report so.
     ///
-    /// OR can only set bits, never clear them, so this operator was correct
-    /// even with the cached flag. The test exists so a fix cannot accidentally
-    /// make `|` *pessimistic* (e.g. by returning `false` unconditionally).
-    ///
-    /// - Fails when: `allValid` returns `false` for a mask whose bits are all set.
+    /// OR can only set bits, never clear them, so an all-valid left operand
+    /// always yields an all-valid result. This test pins that `allValid` is
+    /// not pessimistic: a bitmap whose bits are all set must answer `true`,
+    /// not a conservative `false`. Without it, the other tests in this file
+    /// could be satisfied by an `allValid` that simply always returns `false`.
     func test_or_withAllValidLhs_staysAllValid() {
         // Given: an all-valid mask and a mask with one NA
         let allValid = BitVector(repeating: true, count: Self.smallBitCount)
@@ -287,29 +284,30 @@ final class BitVectorInvariantTests: XCTestCase {
         XCTAssertTrue(ored.allValid)
     }
 
-    // MARK: - Unit: `concat` must not fabricate an all-ones result
+    // MARK: - Unit: `concat`
 
     /// `BitVector.concat` has a fast path: if every input reports `allValid`,
-    /// it returns a brand-new all-ones bitmap without copying any bits. Feed
-    /// it an input whose `allValid` is wrong and the NA is gone for good.
+    /// it returns a brand-new all-ones bitmap without copying any bits. That
+    /// fast path is only safe if every input's `allValid` is truthful.
     ///
-    /// The NA input is deliberately built through `&` so that it carries the
-    /// stale answer the defect produced; building it with the subscript setter
-    /// would not reproduce the bug.
+    /// The NA input is deliberately produced by `&` rather than by the
+    /// subscript setter, so that `concat` receives a bitmap that came out of
+    /// an operator — the kind of input it sees when concatenating columns
+    /// that were themselves computed.
     ///
-    /// - Fails when: an input mask reports `allValid == true` despite a cleared
-    ///   bit, causing `concat` to take its fabricate-all-ones fast path.
+    /// Guards against `concat` taking its fabricate-all-ones fast path on an
+    /// input that contains a cleared bit.
     func test_concat_ofAllValidAndMaskWithNA_reportsNotAllValid() {
         // Given: a 5-bit all-valid mask, and a 3-bit mask with an NA at bit 0
-        //        that was produced by `&` (so it is "stale" under the old code)
+        //        that was produced by `&`
         let leadingBits = 5
         let trailingBits = 3
         var hasNA = BitVector(repeating: true, count: trailingBits)
         hasNA[0] = false
-        let staleMask = BitVector(repeating: true, count: trailingBits) & hasNA
+        let derivedMask = BitVector(repeating: true, count: trailingBits) & hasNA
 
         // When: they are concatenated — the NA should land at index 5
-        let joined = BitVector.concat([BitVector(repeating: true, count: leadingBits), staleMask])
+        let joined = BitVector.concat([BitVector(repeating: true, count: leadingBits), derivedMask])
         let expectedNAIndex = leadingBits
 
         // Then: the NA is present in the joined bitmap and `allValid` knows it
@@ -321,17 +319,18 @@ final class BitVectorInvariantTests: XCTestCase {
 
     // MARK: - Unit: Equatable
 
-    /// Two masks with identical bits must compare equal regardless of how they
-    /// were constructed.
+    /// Two bitmaps with identical bits must compare equal regardless of how
+    /// they were constructed.
     ///
-    /// `BitVector`'s `==` is synthesized over its stored properties. With a
-    /// cached flag as a stored property, `BitVector(repeating: true, count: 4)`
-    /// (flag `true`) and `BitVector([true, true, true, true])` (flag `false`)
-    /// compared *unequal* despite having the same bits — a second symptom of
-    /// the same cache. No production code observed this, but it is the kind
-    /// of surprise that costs hours when it finally does.
+    /// `BitVector` is a value type whose identity is its bits and its length.
+    /// `BitVector(repeating: true, count: n)` and a `BitVector` built from an
+    /// array of `n` `true`s describe the same bitmap and must be `==`. Any
+    /// additional stored state that participates in equality would make
+    /// equal bitmaps compare unequal, which is a surprise that is very hard
+    /// to diagnose from a failing assertion elsewhere.
     ///
-    /// - Fails when: `==` considers any state other than the bits and the count.
+    /// Guards against `==` considering anything other than the bits and the
+    /// bit count.
     func test_equatable_ignoresHowTheMaskWasBuilt() {
         // Given: the same four set bits, built two different ways
         let builtByRepeating = BitVector(repeating: true, count: Self.smallBitCount)
@@ -343,20 +342,20 @@ final class BitVectorInvariantTests: XCTestCase {
 
     // MARK: - End-to-end fixture
 
-    /// Builds the smallest frame that reproduces issue #18.
+    /// Builds the smallest frame that carries an NA produced by arithmetic.
     ///
     /// Columns:
     /// - `a` — four plain doubles, no NAs. Its mask is all-valid.
     /// - `b` — four doubles with an NA at row `naRow` (index 1). Built from an
-    ///   optional array, so its mask is correct by construction.
-    /// - `t` — `a + b`. Row `naRow` is NA because `b` is NA there. Under the
-    ///   defect, `t`'s mask has the right bits but reports `allValid == true`,
-    ///   because it was computed as `a.mask & b.mask`.
+    ///   optional array, so its mask is set bit-by-bit at construction.
+    /// - `t` — `a + b`. Row `naRow` is NA because `b` is NA there. Its mask
+    ///   is computed as `a.mask & b.mask`, which makes `t` the column whose
+    ///   validity depends on the `&` operator telling the truth.
     ///
-    /// Reading `t` element by element returns `[13.5, nil, 20.2, 21.3]` both
-    /// before and after the fix; the bug only shows up when a bulk operation
-    /// trusts `allValid`. The values are chosen so every result is distinct
-    /// and the erased placeholder (`14.0`, i.e. `14 + 0`) is easy to spot.
+    /// Reading `t` element by element yields `[13.5, nil, 20.2, 21.3]`. The
+    /// values are chosen so every result is distinct and a leaked placeholder
+    /// (`14.0`, i.e. `14 + 0`) is immediately recognisable in a failure
+    /// message.
     ///
     /// - Returns: A `DataFrame` with columns `a`, `b`, `t` and four rows.
     private func makeFrameWithDerivedNA() -> DataFrame {
@@ -382,11 +381,10 @@ final class BitVectorInvariantTests: XCTestCase {
 
     /// CONTROL — reading the derived column one element at a time shows the NA.
     ///
-    /// This passes before and after the fix. It documents that the defect was
-    /// invisible to element-wise reads, which is why it went unnoticed, and
-    /// pins the baseline the remaining tests compare against.
-    ///
-    /// - Fails when: the per-element read path stops consulting the bitmap.
+    /// The per-element read path consults the bitmap bit by bit and never
+    /// asks `allValid`, so it is the ground truth the bulk-operation tests
+    /// below are compared against. If this test fails, the fixture itself is
+    /// wrong and the other end-to-end results cannot be interpreted.
     func test_derivedNA_isVisibleElementwise() {
         // Given / When
         let df = makeFrameWithDerivedNA()
@@ -396,13 +394,15 @@ final class BitVectorInvariantTests: XCTestCase {
     }
 
     /// Sorting routes every column through `NullableArray.take(indices:)`,
-    /// whose `allValid` fast path returns a fresh all-ones mask.
+    /// whose `allValid` fast path returns a fresh all-ones mask instead of
+    /// gathering the source bits.
     ///
-    /// Sorting by `a` (already ascending) leaves row order unchanged, so any
-    /// difference from the element-wise read is the gather erasing the NA.
+    /// Sorting by `a` (already ascending) leaves row order unchanged, so the
+    /// only thing that can differ from the element-wise read is the gather
+    /// dropping the NA.
     ///
-    /// - Fails when: the gather trusts a wrong `allValid` and drops the NA
-    ///   (observed under the defect: `14.0` where `nil` belongs).
+    /// Guards against the sort gather discarding the NA of an
+    /// arithmetic-derived column.
     func test_derivedNA_survivesSort() {
         // Given
         let df = makeFrameWithDerivedNA()
@@ -417,10 +417,11 @@ final class BitVectorInvariantTests: XCTestCase {
     /// Boolean filtering routes columns through `take(mask:trueCount:)`, whose
     /// `allValid` fast path also returns a fresh all-ones mask.
     ///
-    /// The predicate `a > 13.0` keeps rows 1–3, so the NA row is the first
-    /// surviving row.
+    /// The predicate `a > 13.0` keeps rows 1–3, so the NA row becomes the
+    /// first surviving row.
     ///
-    /// - Fails when: the filter gather trusts a wrong `allValid` and drops the NA.
+    /// Guards against the filter gather discarding the NA of an
+    /// arithmetic-derived column.
     func test_derivedNA_survivesBooleanFilter() {
         // Given
         let df = makeFrameWithDerivedNA()
@@ -439,8 +440,8 @@ final class BitVectorInvariantTests: XCTestCase {
     /// contains exactly one row, whose `t` is NA — so the mean of `t` for that
     /// group has no valid inputs and must itself be NA.
     ///
-    /// - Fails when: the aggregate treats the NA row's placeholder as a real
-    ///   value (observed under the defect: mean `14.0`).
+    /// Guards against the aggregate counting an NA row's stored placeholder
+    /// as a real value.
     func test_derivedNA_isExcludedFromGroupByMean() {
         // Given
         let df = makeFrameWithDerivedNA()
@@ -458,15 +459,14 @@ final class BitVectorInvariantTests: XCTestCase {
     }
 
     /// The CSV writer uses `allValid` to choose a formatter that never checks
-    /// the bitmap. A wrong `true` prints the placeholder into the cell that
-    /// should be empty — with *no gather involved*, so this is the simplest
-    /// user-visible form of the bug.
+    /// the bitmap. Unlike the gather-based tests above, no row movement is
+    /// involved here: the writer simply formats each cell in order, so this
+    /// is the most direct observation of whether `allValid` is truthful.
     ///
     /// Row 2 of the output (after the header) is the NA row: `a=14`, `b` empty,
     /// and `t` must also be empty.
     ///
-    /// - Fails when: the writer prints a value for an NA cell
-    ///   (observed under the defect: `14,,14` instead of `14,,`).
+    /// Guards against the writer printing a value into a cell whose row is NA.
     func test_derivedNA_rendersAsEmptyCellInCSV() {
         // Given
         let df = makeFrameWithDerivedNA()
@@ -483,14 +483,13 @@ final class BitVectorInvariantTests: XCTestCase {
 
     /// SPB (SwiftPandas Binary) is the durable on-disk format. Its writer uses
     /// `allValid` to stream the raw data buffer instead of a null-zeroed copy,
-    /// and its reader rejects any file where an NA cell has a non-zero payload.
+    /// and its reader rejects any file in which an NA cell has a non-zero
+    /// payload. A column whose `allValid` disagrees with its bits therefore
+    /// produces a file the reader refuses to load.
     ///
-    /// Under the defect the writer emitted NA-bit + non-zero payload and the
-    /// reader threw `corrupt SPB data … null cell has non-zero payload`. After
-    /// the fix the round trip must succeed and preserve the NA.
+    /// Guards against an arithmetic-derived NA being written with a non-zero
+    /// payload, or not surviving the round trip.
     ///
-    /// - Fails when: `writeSPB` trusts a wrong `allValid` (read throws), or the
-    ///   NA does not survive the round trip.
     /// - Throws: Re-throws any SPB write/read error so it is reported as a failure.
     func test_derivedNA_roundTripsThroughSPB() throws {
         // Given: a unique temp file, removed on every exit path
@@ -508,17 +507,18 @@ final class BitVectorInvariantTests: XCTestCase {
     }
 
     /// `-`, `*`, and `/` build their result mask the same way `+` does
-    /// (`lhs.mask & rhs.mask`), so all three carried the defect. This test
-    /// pins each one with a single assertion per operator.
+    /// (`lhs.mask & rhs.mask`). This test pins each one with a single
+    /// assertion per operator so a regression is attributed to the operator
+    /// that caused it.
     ///
     /// The frame is sorted *descending* by `a` so the gather is a genuine
     /// permutation (not the identity), which moves the NA row from index 1 to
-    /// index 2. The placeholder each operator leaves under the NA bit differs
-    /// (`14 - 0 = 14`, `14 * 0 = 0`, `14 / 0 = inf`) and is named in the
-    /// failure message to make a regression easy to attribute.
+    /// index 2. Each operator leaves a different placeholder under the NA bit
+    /// (`14 - 0 = 14`, `14 * 0 = 0`, `14 / 0 = inf`), so a failure message
+    /// also reveals which value leaked.
     ///
-    /// - Fails when: any of the three operators produces a mask whose
-    ///   `allValid` is wrong, so the sort gather erases its NA.
+    /// Guards against any of the three operators producing a bitmap whose
+    /// `allValid` disagrees with its bits.
     func test_derivedNA_survivesSort_forAllArithmeticOperators() {
         // Given: one derived column per remaining operator
         var df = makeFrameWithDerivedNA()
@@ -542,19 +542,19 @@ final class BitVectorInvariantTests: XCTestCase {
 
 | Test | Result | Failure (verbatim) |
 |---|---|---|
-| `test_and_withAllValidLhs_reportsNotAllValid` | FAIL | `:97 XCTAssertFalse failed` — `allValid` is `true` |
-| `test_and_multiWordUnalignedTail_reportsNotAllValid` | FAIL | `:121 XCTAssertFalse failed` |
-| `test_not_ofAllValid_reportsNotAllValid` | FAIL | `:142 XCTAssertFalse failed` — popcount 0, `allValid` true |
+| `test_and_withAllValidLhs_reportsNotAllValid` | FAIL | `:91 XCTAssertFalse failed` — `allValid` is `true` |
+| `test_and_multiWordUnalignedTail_reportsNotAllValid` | FAIL | `:116 XCTAssertFalse failed` |
+| `test_not_ofAllValid_reportsNotAllValid` | FAIL | `:139 XCTAssertFalse failed` — popcount 0, `allValid` true |
 | `test_or_withAllValidLhs_staysAllValid` | **pass** (control) | pins current `\|` semantics |
-| `test_concat_ofAllValidAndMaskWithNA_reportsNotAllValid` | FAIL | `:197 ("8") is not equal to ("7")` — concat fabricated all-ones; `:198`, `:199` |
-| `test_equatable_ignoresHowTheMaskWasBuilt` | FAIL | `:221 ("BitVector(4/4 valid)") is not equal to ("BitVector(4/4 valid)")` — flag leaks into `==` |
+| `test_concat_ofAllValidAndMaskWithNA_reportsNotAllValid` | FAIL | `:191 ("8") is not equal to ("7")` — concat fabricated all-ones; `:192`, `:193` |
+| `test_equatable_ignoresHowTheMaskWasBuilt` | FAIL | `:216 ("BitVector(4/4 valid)") is not equal to ("BitVector(4/4 valid)")` — flag leaks into `==` |
 | `test_derivedNA_isVisibleElementwise` | **pass** (control) | element path is correct today |
-| `test_derivedNA_survivesSort` | FAIL | `:294 [13.5, 14.0, 20.2, 21.3]` vs expected `[13.5, nil, …]` |
-| `test_derivedNA_survivesBooleanFilter` | FAIL | `:312 [14.0, 20.2, 21.3]` vs `[nil, 20.2, 21.3]` |
-| `test_derivedNA_isExcludedFromGroupByMean` | FAIL | `:337 XCTAssertNil failed: "14.0"` |
-| `test_derivedNA_rendersAsEmptyCellInCSV` | FAIL | `:361 ("14,,14") is not equal to ("14,,")` |
+| `test_derivedNA_survivesSort` | FAIL | `:295 [13.5, 14.0, 20.2, 21.3]` vs expected `[13.5, nil, …]` |
+| `test_derivedNA_survivesBooleanFilter` | FAIL | `:313 [14.0, 20.2, 21.3]` vs `[nil, 20.2, 21.3]` |
+| `test_derivedNA_isExcludedFromGroupByMean` | FAIL | `:333 XCTAssertNil failed: "14.0"` |
+| `test_derivedNA_rendersAsEmptyCellInCSV` | FAIL | `:358 ("14,,14") is not equal to ("14,,")` |
 | `test_derivedNA_roundTripsThroughSPB` | FAIL | `caught error: "corrupt SPB data: column 't' row 1: null cell has non-zero payload"` |
-| `test_derivedNA_survivesSort_forAllArithmeticOperators` | FAIL | `:414 "14.0"`, `:415 "0.0"`, `:416 "inf"` |
+| `test_derivedNA_survivesSort_forAllArithmeticOperators` | FAIL | `:407 "14.0"`, `:408 "0.0"`, `:409 "inf"` |
 
 `Executed 13 tests, with 15 failures` — 11 red for the defect, 2 green controls. Every red test fails on the assertion that names the stale flag, not on setup.
 
