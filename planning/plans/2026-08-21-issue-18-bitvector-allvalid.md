@@ -18,7 +18,7 @@
 - Do not edit `Tests/SwiftPandasTests/BitVectorInvariantTests.swift`. If a test in it cannot pass, stop and report — do not "fix" the test.
 - Comments follow `swift-coding-practices.md` §17 and must stand on their own: describe what exists and why. Never write "the fix", "the defect", "before/after", "issue #18", or any change narrative into a code comment.
 - Each task ends with `swift build` clean (zero warnings introduced) and a commit on the branch given by the orchestrator.
-- Commit messages end with the `Co-Authored-By` / `Claude-Session` trailers shown in each task.
+- Commit messages carry no trailers of any kind — no `Co-Authored-By`, no session links. The repository owner is the sole author.
 
 ## Orchestration notes (for the orchestrator, not the task subagents)
 
@@ -150,10 +150,7 @@ the synthesized Equatable compare bits and count only.
 
 BitVectorInvariantTests: 13/13 green.
 
-Closes #18
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_0153n5DTiEAENoDNoGjdvru2"
+Closes #18"
 ```
 
 ---
@@ -256,10 +253,7 @@ git commit -m "docs(BitVector): describe derived queries; remove cache narrative
 
 File header, init(_ bools:) note, and subscript setter doc now describe
 what the type does: every summary query is computed from the words on
-each call and no mutation path touches any other state.
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_0153n5DTiEAENoDNoGjdvru2"
+each call and no mutation path touches any other state."
 ```
 
 ---
@@ -318,10 +312,7 @@ Expected: `build clean`
 
 ```bash
 git add Sources/SwiftPandas/Core/Array/PandasArray.swift
-git commit -m "docs(PandasArray): validCount on bitmap-backed arrays is O(n/64), not O(1)
-
-Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_0153n5DTiEAENoDNoGjdvru2"
+git commit -m "docs(PandasArray): validCount on bitmap-backed arrays is O(n/64), not O(1)"
 ```
 
 ---
