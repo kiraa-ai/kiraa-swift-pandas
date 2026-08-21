@@ -34,6 +34,7 @@ The **hot-cache release**: SwiftPandas now works as an in-process **analytics da
 - **Canonical RFC-4180 codec** — `CSVLine.parse` / `format` / `escapeField` with two named quoting modes (`CSVQuoting.minimal` and `.all` aka QUOTE_ALL); `CSVWriter` and `toCSV` gain a `quoting:` parameter for write-side symmetry.
 - **Join-index utilities** — `df.index(on:)`, composite-key `index(on:separator:)`, and `df.lookupTable(key:value:)` build O(1) join dictionaries with a documented **last-row-wins** guarantee.
 - **`estimatedBytes` accuracy pass** — string-column accounting now models array slots, small-string inlining, and heap-buffer headers; tested within ±20% of the documented model, so `FrameCache` budgets track real memory.
+- **LLM grammar & prompt kit** — new [docs/llm-grammar.md](docs/llm-grammar.md): a comprehensive ontology-and-grammar reference for the CLI pipe DSL, written for large language models that translate natural-language requests into pipelines. Includes lexical rules and EBNF for all 12 operations, a per-operation reference with pandas equivalents and pitfalls, an NL→DSL cookbook, ready-to-use system/few-shot/repair prompts, and a parser/runtime error appendix. Every example pipeline is validated against the built CLI.
 
 ## What's new in v0.6.2-beta
 
@@ -427,24 +428,29 @@ JSON format:
 | `drop` | `drop(col1, col2)` | Remove specified columns |
 | `head` | `head(n)` | Keep first n rows |
 | `tail` | `tail(n)` | Keep last n rows |
-| `cast` | `cast(col, Type)` | Type coercion: `Int`, `Double`, `String` |
+| `cast` | `cast(col, Type)` | Type coercion: `Int`, `Double`, `Float`, `String` |
+
+The full grammar — lexical rules, EBNF, per-operation semantics and pitfalls, and an NL→DSL cookbook — is documented in **[docs/llm-grammar.md](docs/llm-grammar.md)**, which also ships ready-to-use prompt templates for driving the DSL from a large language model. Two behaviors worth knowing: `agg` targets (including `count`) must be numeric non-key columns, and one condition is allowed per `filter` (chain filters for AND; OR is not expressible).
 
 ### Example Scripts
 
-10 example bash scripts are provided in `examples/cli/`:
+13 example bash scripts are provided in `examples/cli/`:
 
 | Script | Description |
 |---|---|
+| `00_demo_resident_memory.sh` | Resident-memory daemon workflow demo |
 | `01_basic_filter.sh` | Simple filter on a numeric column |
 | `02_filter_sort_head.sh` | Filter + sort + head pipeline |
 | `03_groupby_agg.sh` | GroupBy with multiple aggregations |
 | `04_derive_computed_column.sh` | Derive a profit column, filter, sort |
 | `05_select_rename_round.sh` | Select, rename, and round columns |
 | `06_json_pipeline.sh` | Run transforms from a JSON file |
-| `07_dry_run.sh` | Validate pipeline without writing output |
-| `08_verbose_pipeline.sh` | Verbose mode showing per-stage row counts |
+| `07_inspect_resident_data.sh` | Inspect DataFrames held by the daemon |
+| `08_chained_pipelines.sh` | Multiple pipelines against shared resident data |
 | `09_write_output.sh` | Full pipeline writing to CSV file |
 | `10_error_handling.sh` | Demonstrate error messages and `--help-ops` |
+| `11_large_groupby_sum.sh` | GroupBy sum on a large generated dataset |
+| `12_dataframe_info.sh` | Schema / info output for a loaded DataFrame |
 
 ### GUI Mode (macOS)
 
