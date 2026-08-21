@@ -1,6 +1,6 @@
 # Design: `BitVector.allValid` staleness (issue #18)
 
-Status: **DRAFT — designs under review, nothing locked.**
+Status: **DESIGN 1 LOCKED** (review on PR #19, 2026-08-21). Tests written RED — see below. Implementation plan pending explicit go-ahead.
 Issue: https://github.com/kiraa-ai/kiraa-swift-pandas/issues/18
 
 ## What the issue is
@@ -113,17 +113,183 @@ Make the stale state unrepresentable. `allValid` becomes a pure function of `wor
     /// this default with an O(*n* / 64) word-wise popcount.
 ```
 
-### Tests — `Tests/SwiftPandasTests/` (new file `BitVectorInvariantTests.swift`)
+### Tests — `Tests/SwiftPandasTests/BitVectorInvariantTests.swift` (committed on this branch, RED)
 
-1. `(BitVector(repeating: true, count: n) & maskWithOneNA)` → `allValid == false`, `popcount == n-1`, bit read correct. Use `n = 4` and `n = 130` (multi-word, unaligned tail).
-2. `~BitVector(repeating: true, count: n)` → `allValid == false`, `popcount == 0`.
-3. `BitVector(repeating: true, count: n) | anything` → `allValid == true` (pins `|`).
-4. `BitVector.concat([allTrue, maskWithNA]).allValid == false`.
-5. End-to-end: `t = a + b` with one NA in `b` → `sortValues`, boolean filter, `groupBy.mean()` each keep `nil` at that row; `toCSV()` renders an empty cell; `writeSPB`/`readSPB` round-trips the NA without throwing.
-6. Same as 5 for `-`, `*`, `/` (the `/` case currently surfaces `inf`).
-7. `BitVector(repeating: true, count: 4) == BitVector([true,true,true,true])` — pins the `Equatable` fix that falls out for free.
+Written first, per TDD, against unmodified v0.8.0-beta. The file is in this PR; the full source is reproduced here for review.
 
-Benchmark gate: run `BenchmarkTests` `testCB_DataFrameFiltering`, `testCC_DataFrameSorting`, `testDA_CSVIO`, `testBB_SeriesArithmetic` before/after; accept if within noise.
+```swift
+import XCTest
+@testable import SwiftPandas
+
+/// Acceptance tests for issue #18: `BitVector.allValid` must never disagree
+/// with the bits. Written RED against v0.8.0-beta (the `&` / `~` operators
+/// leave the `_knownAllValid` latch stale) before any production change.
+///
+/// Every test here names the production change that makes it fail: a cached
+/// all-valid answer that is not re-derived from `words`.
+final class BitVectorInvariantTests: XCTestCase {
+
+    // MARK: - Unit: the latch
+
+    func test_and_withAllValidLhs_reportsNotAllValid() {
+        var hasNA = BitVector(repeating: true, count: 4)
+        hasNA[1] = false
+
+        let anded = BitVector(repeating: true, count: 4) & hasNA
+
+        XCTAssertFalse(anded[1])
+        XCTAssertEqual(anded.popcount, 3)
+        XCTAssertFalse(anded.allValid)
+    }
+
+    func test_and_multiWordUnalignedTail_reportsNotAllValid() {
+        // 130 bits = 2 full words + a 2-bit tail; clear a bit in each region.
+        var hasNA = BitVector(repeating: true, count: 130)
+        hasNA[0] = false
+        hasNA[70] = false
+        hasNA[129] = false
+
+        let anded = BitVector(repeating: true, count: 130) & hasNA
+
+        XCTAssertEqual(anded.popcount, 127)
+        XCTAssertFalse(anded.allValid)
+    }
+
+    func test_not_ofAllValid_reportsNotAllValid() {
+        let inverted = ~BitVector(repeating: true, count: 4)
+
+        XCTAssertEqual(inverted.popcount, 0)
+        XCTAssertFalse(inverted.allValid)
+        XCTAssertTrue(inverted.allNA)
+    }
+
+    func test_or_withAllValidLhs_staysAllValid() {
+        // Pins the currently-correct `|` semantics so the fix cannot regress it.
+        var hasNA = BitVector(repeating: true, count: 4)
+        hasNA[1] = false
+
+        let ored = BitVector(repeating: true, count: 4) | hasNA
+
+        XCTAssertEqual(ored.popcount, 4)
+        XCTAssertTrue(ored.allValid)
+    }
+
+    func test_concat_ofAllValidAndMaskWithNA_reportsNotAllValid() {
+        var hasNA = BitVector(repeating: true, count: 3)
+        hasNA[0] = false
+        // Route the NA through `&` so the input carries the stale latch.
+        let stale = BitVector(repeating: true, count: 3) & hasNA
+
+        let joined = BitVector.concat([BitVector(repeating: true, count: 5), stale])
+
+        XCTAssertEqual(joined.bitCount, 8)
+        XCTAssertEqual(joined.popcount, 7)
+        XCTAssertFalse(joined[5])
+        XCTAssertFalse(joined.allValid)
+    }
+
+    func test_equatable_ignoresHowTheMaskWasBuilt() {
+        // Same bits, different construction path → must be equal.
+        XCTAssertEqual(BitVector(repeating: true, count: 4),
+                       BitVector([true, true, true, true]))
+    }
+
+    // MARK: - End to end: operator-derived NA survives bulk operations
+
+    private func frameWithDerivedNA() -> DataFrame {
+        var df = DataFrame()
+        df["a"] = Series([13.0, 14.0, 20.0, 21.0], name: "a")
+        df["b"] = Series([0.5, nil, 0.2, 0.3], name: "b")
+        df["t"] = df["a"] + df["b"]
+        return df
+    }
+
+    private func doubles(_ s: Series) -> [Double?] {
+        (0..<s.count).map { s[$0] as? Double }
+    }
+
+    func test_derivedNA_isVisibleElementwise() {
+        // Control: the element path is correct today and must stay so.
+        let df = frameWithDerivedNA()
+        XCTAssertEqual(doubles(df["t"]), [13.5, nil, 20.2, 21.3])
+    }
+
+    func test_derivedNA_survivesSort() {
+        let sorted = frameWithDerivedNA().sortValues(by: ["a"])
+        XCTAssertEqual(doubles(sorted["t"]), [13.5, nil, 20.2, 21.3])
+    }
+
+    func test_derivedNA_survivesBooleanFilter() {
+        let df = frameWithDerivedNA()
+        let filtered = df[df["a"] > 13.0]
+        XCTAssertEqual(doubles(filtered["t"]), [nil, 20.2, 21.3])
+    }
+
+    func test_derivedNA_isExcludedFromGroupByMean() {
+        let g = frameWithDerivedNA().groupBy("a").mean()
+        // Key 14.0 has a single row whose "t" is NA → the group mean is NA.
+        // Group keys become the result's index labels.
+        let keys = g.indexLabels
+        guard let row = keys.firstIndex(where: { Double($0) == 14.0 }) else {
+            return XCTFail("groupBy result has no key 14.0: \(keys)")
+        }
+        XCTAssertNil(doubles(g["t"])[row])
+    }
+
+    func test_derivedNA_rendersAsEmptyCellInCSV() {
+        let csv = frameWithDerivedNA().toCSV()
+        let rows = csv.split(separator: "\n").map(String.init)
+        XCTAssertEqual(rows[0], "a,b,t")
+        XCTAssertEqual(rows[2], "14,,")
+    }
+
+    func test_derivedNA_roundTripsThroughSPB() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bitvector-invariant-\(UUID().uuidString).spb")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try frameWithDerivedNA().writeSPB(to: url)
+        let back = try DataFrame.readSPB(from: url)
+
+        XCTAssertEqual(doubles(back["t"]), [13.5, nil, 20.2, 21.3])
+    }
+
+    func test_derivedNA_survivesSort_forAllArithmeticOperators() {
+        var df = frameWithDerivedNA()
+        df["m"] = df["a"] - df["b"]
+        df["x"] = df["a"] * df["b"]
+        df["d"] = df["a"] / df["b"]
+
+        let sorted = df.sortValues(by: ["a"], ascending: [false])
+
+        XCTAssertNil(doubles(sorted["m"])[2], "subtraction-derived NA erased")
+        XCTAssertNil(doubles(sorted["x"])[2], "multiplication-derived NA erased")
+        XCTAssertNil(doubles(sorted["d"])[2], "division-derived NA erased")
+    }
+}
+```
+
+**Observed RED run** (`swift test --filter BitVectorInvariantTests`, before any production change):
+
+| Test | Result | Failure (verbatim) |
+|---|---|---|
+| `test_and_withAllValidLhs_reportsNotAllValid` | FAIL | `:22 XCTAssertFalse failed` — `allValid` is `true` |
+| `test_and_multiWordUnalignedTail_reportsNotAllValid` | FAIL | `:35 XCTAssertFalse failed` |
+| `test_not_ofAllValid_reportsNotAllValid` | FAIL | `:42 XCTAssertFalse failed` — popcount 0, `allValid` true |
+| `test_or_withAllValidLhs_staysAllValid` | **pass** (control) | pins current `\|` semantics |
+| `test_concat_ofAllValidAndMaskWithNA_reportsNotAllValid` | FAIL | `:66 ("8") is not equal to ("7")` — concat fabricated all-ones; `:67`, `:68` |
+| `test_equatable_ignoresHowTheMaskWasBuilt` | FAIL | `:73 ("BitVector(4/4 valid)") is not equal to ("BitVector(4/4 valid)")` — flag leaks into `==` |
+| `test_derivedNA_isVisibleElementwise` | **pass** (control) | element path is correct today |
+| `test_derivedNA_survivesSort` | FAIL | `:99 [13.5, 14.0, 20.2, 21.3]` vs expected `[13.5, nil, …]` |
+| `test_derivedNA_survivesBooleanFilter` | FAIL | `:105 [14.0, 20.2, 21.3]` vs `[nil, 20.2, 21.3]` |
+| `test_derivedNA_isExcludedFromGroupByMean` | FAIL | `:116 XCTAssertNil failed: "14.0"` |
+| `test_derivedNA_rendersAsEmptyCellInCSV` | FAIL | `:123 ("14,,14") is not equal to ("14,,")` |
+| `test_derivedNA_roundTripsThroughSPB` | FAIL | `caught error: "corrupt SPB data: column 't' row 1: null cell has non-zero payload"` |
+| `test_derivedNA_survivesSort_forAllArithmeticOperators` | FAIL | `:145 "14.0"`, `:146 "0.0"`, `:147 "inf"` |
+
+`Executed 13 tests, with 15 failures` — 11 red for the defect, 2 green controls. Every red test fails on the assertion that names the stale flag, not on setup.
+
+Benchmark gate for the GREEN step: run `BenchmarkTests` `testCB_DataFrameFiltering`, `testCC_DataFrameSorting`, `testDA_CSVIO`, `testBB_SeriesArithmetic` before/after; accept if within noise.
 
 ### How it solves the problem
 
@@ -131,7 +297,7 @@ The bug class is "cache disagrees with source of truth". Removing the cache remo
 
 ---
 
-## Proposed Design 2 — Keep the cache; make the latch compiler-enforced
+## Proposed Design 2 — Keep the cache; make the latch compiler-enforced (NOT SELECTED)
 
 Keep O(1) `allValid`, but close the door that let `&`/`~` bypass the latch: `words` becomes `private(set)`, and the only way to mutate it from inside the type is through one helper that resets the flag first.
 
@@ -233,7 +399,7 @@ Keep O(1) `allValid`, but close the door that let `&`/`~` bypass the latch: `wor
 
 ### Tests
 
-Same seven tests as Design 1, plus: the `assert` tripwire fires in debug if any future mutator bypasses the helper (verified by code review, not a test — there is no way to bypass without a compile error).
+The same `BitVectorInvariantTests` file applies unchanged; the `assert` tripwire is verified by code review, not a test (there is no way to bypass the helper without a compile error).
 
 ### How it solves the problem
 
@@ -241,7 +407,7 @@ The invariant moves from a comment to the type system. `words` can't be written 
 
 ---
 
-## Recommendation — Design 1
+## Recommendation — Design 1 (locked)
 
 Design 1 is better than Design 2 on every axis that matters here:
 
@@ -256,6 +422,8 @@ Design 2 is the right choice only if a measurement shows `allValid` on a hot pat
 
 ## Next steps
 
-1. Review comments on this document lock the design.
-2. On explicit go-ahead, write the implementation plan (writing-plans) — not before.
-3. Close #18 from the implementation PR.
+1. ~~Review comments lock the design.~~ **Done — Design 1 locked (PR #19 review, 2026-08-21).**
+2. ~~Tests written first and shown RED.~~ **Done — `BitVectorInvariantTests.swift` on this branch, 11 red / 2 control green.**
+3. On explicit go-ahead in this PR: write the implementation plan (`/writing-plans`) and add it to this PR — not before.
+4. After the plan is approved in this PR and implementation is explicitly authorised: branch off, implement GREEN against these tests, run the full suite + benchmark gate, then test and merge.
+5. This PR stays open as the design/plan thread; #18 closes from the implementation.
