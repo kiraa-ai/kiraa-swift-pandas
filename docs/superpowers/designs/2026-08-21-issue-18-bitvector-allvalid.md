@@ -1,6 +1,6 @@
 # Design: `BitVector.allValid` staleness (issue #18)
 
-Status: **DESIGN 1 LOCKED** (review on PR #19, 2026-08-21). Tests written RED — see below. Implementation plan pending explicit go-ahead.
+Status: **DESIGN 1 LOCKED** (review on PR #19, 2026-08-21). Tests written RED — see below. Implementation plan written (`planning/plans/`), awaiting review.
 Issue: https://github.com/kiraa-ai/kiraa-swift-pandas/issues/18
 
 ## What the issue is
@@ -693,6 +693,6 @@ Design 2 is the right choice only if a measurement shows `allValid` on a hot pat
 
 1. ~~Review comments lock the design.~~ **Done — Design 1 locked (PR #19 review, 2026-08-21).**
 2. ~~Tests written first and shown RED.~~ **Done — `BitVectorInvariantTests.swift` on this branch, 11 red / 2 control green.**
-3. On explicit go-ahead in this PR: write the implementation plan (`/writing-plans`) and add it to this PR — not before.
+3. ~~Write the implementation plan.~~ **Done — `planning/plans/2026-08-21-issue-18-bitvector-allvalid.md` (go-ahead given 2026-08-21).**
 4. After the plan is approved in this PR and implementation is explicitly authorised: branch off, implement GREEN against these tests, run the full suite + benchmark gate, then test and merge.
 5. This PR stays open as the design/plan thread; #18 closes from the implementation.
