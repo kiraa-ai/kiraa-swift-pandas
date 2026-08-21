@@ -91,17 +91,6 @@ public struct BitVector: Sendable, Equatable {
     /// in the last word.
     public private(set) var bitCount: Int
 
-    /// A cached optimization flag indicating whether all bits are known to be
-    /// set (all valid).
-    ///
-    /// When `true`, callers can skip scanning the `words` array entirely.
-    /// This flag is set to `true` only during construction with
-    /// `repeating: true`; it is conservatively reset to `false` by any
-    /// operation that might introduce a zero bit (e.g., subscript set,
-    /// `append(contentsOf:)`). The flag is **not** automatically re-derived
-    /// after mutations — it is a one-way latch toward `false`.
-    internal var _knownAllValid: Bool
-
     // MARK: - Initializers
 
     /// Creates a `BitVector` with all bits set to the given value.
@@ -118,7 +107,6 @@ public struct BitVector: Sendable, Equatable {
     ///   is allocated and filled in bulk.
     public init(repeating value: Bool, count: Int) {
         self.bitCount = count
-        self._knownAllValid = value
         let wordCount = (count + 63) / 64
         self.words = [UInt64](repeating: value ? ~0 : 0, count: wordCount)
         // Clear trailing bits in the last word if not perfectly aligned
@@ -145,7 +133,6 @@ public struct BitVector: Sendable, Equatable {
     ///   all elements are valid.
     public init(_ bools: [Bool]) {
         self.bitCount = bools.count
-        self._knownAllValid = false
         let wordCount = (bools.count + 63) / 64
         self.words = [UInt64](repeating: 0, count: wordCount)
         for (i, b) in bools.enumerated() where b {
@@ -180,7 +167,6 @@ public struct BitVector: Sendable, Equatable {
         }
         set {
             precondition(index >= 0 && index < bitCount, "Index \(index) out of range")
-            if !newValue { _knownAllValid = false }
             let wordIndex = index / 64
             let bitIndex = index % 64
             if newValue {
@@ -215,13 +201,15 @@ public struct BitVector: Sendable, Equatable {
 
     /// Whether every element is valid (no NAs present).
     ///
-    /// Returns `true` immediately if the `_knownAllValid` cache flag is set;
-    /// otherwise falls back to comparing `popcount == bitCount`.
+    /// Computed from the words on every call, the same way ``allNA`` and
+    /// ``naCount`` are. There is no cached answer to keep in sync, so this
+    /// property can never disagree with the bits — which matters because
+    /// many fast paths skip reading the bitmap entirely when it is `true`.
     ///
-    /// - Complexity: O(1) when cached, O(*n* / 64) otherwise.
+    /// - Complexity: O(*n* / 64) where *n* is `bitCount` (one hardware
+    ///   popcount per word).
     public var allValid: Bool {
-        if _knownAllValid { return true }
-        return popcount == bitCount
+        popcount == bitCount
     }
 
     /// Whether every element is NA (all bits cleared).
@@ -323,7 +311,6 @@ public struct BitVector: Sendable, Equatable {
     /// - Parameter other: The `BitVector` whose bits will be appended.
     /// - Complexity: O(*m* / 64) where *m* is `other.bitCount`.
     public mutating func append(contentsOf other: BitVector) {
-        _knownAllValid = false
         let oldCount = bitCount
         let newCount = oldCount + other.bitCount
         let newWordCount = (newCount + 63) / 64
