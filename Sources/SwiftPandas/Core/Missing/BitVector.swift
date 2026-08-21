@@ -44,11 +44,10 @@
 //   hardware `POPCNT` instruction on x86-64 and `CNT` on ARM64.
 // - **Bitwise AND / OR / NOT** operate on entire 64-bit words, processing
 //   64 elements per CPU instruction.
-// - **`_knownAllValid`** is a cached flag that short-circuits `allValid`
-//   checks without scanning the words array. It is conservatively set to
-//   `false` whenever a mutation *might* introduce a zero bit; it is only
-//   set to `true` when the vector is known to be all-ones at construction
-//   time.
+// - **Derived queries** — `popcount`, `naCount`, `allValid`, and `allNA` are
+//   all computed from the words on each call (one hardware popcount per
+//   word). Nothing about the bitmap's contents is cached, so no mutation
+//   path can leave a summary out of sync with the bits.
 //
 // ============================================================================
 
@@ -127,10 +126,9 @@ public struct BitVector: Sendable, Equatable {
     /// - Complexity: O(*n*) where *n* is `bools.count`, since each boolean
     ///   must be individually mapped to its bit position.
     ///
-    /// - Note: The `_knownAllValid` flag is set to `false` regardless of
-    ///   input, because scanning for all-true would cost the same as the
-    ///   construction itself. Use `init(repeating:count:)` when you know
-    ///   all elements are valid.
+    /// - Note: Prefer `init(repeating:count:)` when every element is known to
+    ///   be valid; it fills whole words at once instead of setting bits one
+    ///   at a time.
     public init(_ bools: [Bool]) {
         self.bitCount = bools.count
         let wordCount = (bools.count + 63) / 64
@@ -152,10 +150,9 @@ public struct BitVector: Sendable, Equatable {
     ///
     /// - Returns (get): `true` if the element is valid, `false` if NA.
     ///
-    /// - Behavior (set): Setting to `false` clears the bit and
-    ///   conservatively resets `_knownAllValid` to `false`. Setting to
-    ///   `true` sets the bit but does **not** re-derive `_knownAllValid`
-    ///   (doing so would require an O(*n*) scan).
+    /// - Behavior (set): Setting to `false` clears the bit (marks the element
+    ///   NA); setting to `true` sets it (marks the element valid). No other
+    ///   state is touched.
     ///
     /// - Complexity: O(1) for both get and set.
     public subscript(index: Int) -> Bool {
