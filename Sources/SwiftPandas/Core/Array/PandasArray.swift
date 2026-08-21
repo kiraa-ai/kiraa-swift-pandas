@@ -178,9 +178,9 @@ public protocol PandasArray: CustomStringConvertible {
 public extension PandasArray {
     /// Default implementation: counts the number of `false` entries in ``isNA()``.
     ///
-    /// Concrete types that maintain a precomputed validity count (such as
-    /// ``NullableArray``, which delegates to ``BitVector.popcount``) shadow
-    /// this default with an O(1) property.
+    /// Concrete types backed by a validity bitmap (such as ``NullableArray``,
+    /// which delegates to ``BitVector.popcount``) shadow this default with a
+    /// word-wise popcount: O(*n* / 64) rather than O(*n*).
     var validCount: Int {
         isNA().filter { !$0 }.count
     }
