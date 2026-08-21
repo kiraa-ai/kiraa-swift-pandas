@@ -110,8 +110,8 @@ public protocol PandasArray: CustomStringConvertible {
     /// The number of non-NA (valid) values in this array.
     ///
     /// Default implementation iterates ``isNA()`` and counts `false` entries.
-    /// Concrete types that maintain a precomputed popcount (e.g.,
-    /// ``NullableArray`` via its ``BitVector``) override this for O(1) access.
+    /// Concrete types backed by a validity bitmap (e.g., ``NullableArray``
+    /// via its ``BitVector``) override this with a word-wise popcount.
     var validCount: Int { get }
 
     /// Return a deep (independent) copy of this array.

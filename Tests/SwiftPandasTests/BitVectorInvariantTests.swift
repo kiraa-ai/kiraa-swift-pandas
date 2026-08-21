@@ -318,9 +318,11 @@ final class BitVectorInvariantTests: XCTestCase {
     ///
     /// Grouping by `a` gives one row per group. The group keyed `14.0`
     /// contains exactly one row, whose `t` is NA. The mean of a group with no
-    /// valid inputs is `NaN` (0 / 0, matching pandas). What must not happen is
-    /// the stored placeholder under the NA bit being counted as an input,
-    /// which would yield the placeholder itself (`14.0`) as the mean.
+    /// valid inputs is `NaN`, and in SwiftPandas that `NaN` is a valid value
+    /// rather than an NA — so the assertion requires a non-nil `NaN`, not
+    /// `nil`. What must not happen is the stored placeholder under the NA bit
+    /// being counted as an input, which would yield the placeholder itself
+    /// (`14.0`) as the mean.
     ///
     /// Guards against the aggregate counting an NA row's stored placeholder
     /// as a real value.
