@@ -49,5 +49,5 @@ public enum SwiftPandasInfo {
     /// interface, so clients inline the literal and never need the symbol —
     /// the failure mode is impossible by construction, in any build mode.
     @inlinable
-    public static var version: String { "0.8.0-beta" }
+    public static var version: String { "0.8.1-beta" }
 }

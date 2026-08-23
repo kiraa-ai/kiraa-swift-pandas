@@ -114,7 +114,7 @@ For projects without a Package manifest — a pure-Xcode app, a workspace, or so
 
 ```bash
 # Latest stable XCFramework as of writing:
-gh release download v0.8.0-beta \
+gh release download v0.8.1-beta \
   --repo kiraa-ai/kiraa-swift-pandas \
   --pattern 'SwiftPandas.xcframework.zip'
 unzip SwiftPandas.xcframework.zip
@@ -123,7 +123,7 @@ unzip SwiftPandas.xcframework.zip
 
 Or download from <https://github.com/kiraa-ai/kiraa-swift-pandas/releases> in the browser.
 
-> **Note**: v0.8.0-beta ships a full library XCFramework (macOS arm64+x86_64, iOS device, iOS simulator) including the vector column type, similarity search, and SPB binary IO — see [vectors.md](vectors.md).
+> **Note**: v0.8.1-beta ships a full library XCFramework (macOS arm64+x86_64, iOS device, iOS simulator) including the vector column type, similarity search, and SPB binary IO — see [vectors.md](vectors.md).
 
 Move the unzipped `SwiftPandas.xcframework` into your project — somewhere committed-or-not depending on your preference. A common layout:
 
@@ -205,15 +205,15 @@ Each library-binary release requires running `scripts/build-xcframework.sh`. The
 
 ```bash
 # 1. Make sure you're on the tag you want to publish.
-git checkout v0.8.0-beta
+git checkout v0.8.1-beta
 
 # 2. Build, upload to the matching GitHub release, and auto-update
 #    Package.swift's url+checksum constants in one shot.
-scripts/build-xcframework.sh --release-tag v0.8.0-beta --update-package-swift
+scripts/build-xcframework.sh --release-tag v0.8.1-beta --update-package-swift
 
 # 3. Commit and push the Package.swift bump.
 git add Package.swift
-git commit -m "v0.8.0-beta: refresh XCFramework binary"
+git commit -m "v0.8.1-beta: refresh XCFramework binary"
 git push origin main
 
 # 4. Verify binary mode resolves cleanly:
