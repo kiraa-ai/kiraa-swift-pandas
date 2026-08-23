@@ -317,8 +317,12 @@ final class BitVectorInvariantTests: XCTestCase {
     /// loop that never looks at the bitmap.
     ///
     /// Grouping by `a` gives one row per group. The group keyed `14.0`
-    /// contains exactly one row, whose `t` is NA — so the mean of `t` for that
-    /// group has no valid inputs and must itself be NA.
+    /// contains exactly one row, whose `t` is NA. The mean of a group with no
+    /// valid inputs is `NaN`, and in SwiftPandas that `NaN` is a valid value
+    /// rather than an NA — so the assertion requires a non-nil `NaN`, not
+    /// `nil`. What must not happen is the stored placeholder under the NA bit
+    /// being counted as an input, which would yield the placeholder itself
+    /// (`14.0`) as the mean.
     ///
     /// Guards against the aggregate counting an NA row's stored placeholder
     /// as a real value.
@@ -330,12 +334,17 @@ final class BitVectorInvariantTests: XCTestCase {
         // When: grouped by `a` and averaged. Group keys become index labels.
         let means = df.groupBy("a").mean()
 
-        // Then: the single-row NA group has an NA mean
+        // Then: the single-row NA group has no valid inputs, so its mean is NaN
         let labels = means.indexLabels
         guard let row = labels.firstIndex(where: { Double($0) == naGroupKey }) else {
             return XCTFail("groupBy result has no group keyed \(naGroupKey); labels were \(labels)")
         }
-        XCTAssertNil(doubles(means["t"])[row], "a group whose only row is NA must have an NA mean")
+        let mean = doubles(means["t"])[row]
+        XCTAssertNotEqual(mean, 14.0, "the placeholder under the NA bit must not be counted")
+        guard let meanValue = mean else {
+            return XCTFail("a group with no valid inputs has a NaN mean; got NA instead")
+        }
+        XCTAssertTrue(meanValue.isNaN, "a group with no valid inputs has a NaN mean; got \(meanValue)")
     }
 
     /// The CSV writer uses `allValid` to choose a formatter that never checks
