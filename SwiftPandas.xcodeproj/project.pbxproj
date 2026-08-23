@@ -8,9 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		0102E1B6637EEA07261D85EB /* HotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5DB7B7363989C628E7DEB7D /* HotStore.swift */; };
+		012BA7EE8B8853F571E0528B /* VectorSearchShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 60B4097CAF5406D46CADAA9F /* VectorSearchShaders.metal */; };
 		015BD21E1127BEF42E215844 /* NumericDTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34855C4F0B79C939DD409DD8 /* NumericDTypes.swift */; };
 		0181C17DFB7EADFE06FF93C0 /* PandasArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */; };
 		01FEDECC1810186D0F38DFC9 /* ShaderCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = DCD547CE28268E228BA21D66 /* ShaderCommon.h */; };
+		020AE531981BEBC0DDBA000D /* SPBWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850D9E672AE1D3BFA1E7E1F3 /* SPBWriter.swift */; };
 		07D2DFE099E8B2B0D07279A8 /* Predicate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F951783B44D4F86D221F5EB5 /* Predicate.swift */; };
 		07DE97784FDD40798E6E53A4 /* DataFrameError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1401F868449BF067FB1BE1 /* DataFrameError.swift */; };
 		0CA5DD906683010A97E12CE1 /* PandasArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */; };
@@ -18,28 +20,37 @@
 		0D7A0049DBF49C7FFC96CBA8 /* khash.c in Sources */ = {isa = PBXBuildFile; fileRef = 3AFA34B68A7B97BF6F7EC370 /* khash.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		0E9A5CA21F70D399F8002F52 /* SwiftPandas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */; };
 		0FD353BC50F11AFA45DB69D2 /* VectorOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */; };
+		11A1664593AF23DFB1081FF6 /* VectorError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44B9B2D3345EC176399F8F9 /* VectorError.swift */; };
 		130E265F076756503C4CE0A5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D54DADED754D5BC12DF98593 /* Assets.xcassets */; };
 		13B87867978645B6BB8E7D4E /* employees.csv in Resources */ = {isa = PBXBuildFile; fileRef = 9A99DFCEF5DDD4349827FEF3 /* employees.csv */; };
+		152A2C36E4E5230619CABBDD /* VectorSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F37FC6A89F3FF467732709E /* VectorSearchTests.swift */; };
 		176BE03DA4B4CB9677F56423 /* MetalGroupBy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */; };
 		18753325E7B2AE901D00F867 /* Registry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32F16E6823D7026563D61A01 /* Registry.swift */; };
 		1A6EE598DFDE0A5A4D39E86B /* DataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725C3853F05C0920274BF161 /* DataFrame.swift */; };
 		1DE34837FAB9CAF41D7BB2C1 /* LazyDataFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE13536785EE5BFC02BD2E0D /* LazyDataFrameTests.swift */; };
 		1E368632F138FB901490B22C /* QueryExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69B4A80FBDBCF0C0B9E3FDDA /* QueryExecutor.swift */; };
+		26A4106B9570C4D57F5AE704 /* VectorError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44B9B2D3345EC176399F8F9 /* VectorError.swift */; };
 		26D497DCD9F61E9EB8125945 /* FrameCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAF54ED5FF37B295D2EC94FE /* FrameCache.swift */; };
 		284A00A652E5D96788830BAF /* CSVLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8367516C42A9B6BF39B6670F /* CSVLine.swift */; };
+		28B012B478C8CC2E465F0B7D /* VectorColumnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2DE67160B920ABE30D3E9AD /* VectorColumnTests.swift */; };
 		29B876F3ACF2B56CF5707B69 /* portable.h in Headers */ = {isa = PBXBuildFile; fileRef = 9F877B1C6BBEB8C3A073AD2E /* portable.h */; };
+		2AB2299A8DFE96A0E703C273 /* MetalVectorSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C238BF3F664ECAC011A4F2 /* MetalVectorSearch.swift */; };
+		2AE6CDBCF06A41ED64D3292B /* SPBWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850D9E672AE1D3BFA1E7E1F3 /* SPBWriter.swift */; };
 		2CC1F5A12DD2FB33AFF1D307 /* DType.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24D37B50C94748102DA0EC9 /* DType.swift */; };
 		2D11886EE9F2D76BB83CA478 /* Column.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A8679BEFC622508CAF1EE07 /* Column.swift */; };
 		2F1BAFFF047C36C2B73F40F6 /* CSVReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC07EC065B5C63900D3BF24A /* CSVReader.swift */; };
 		2F83E1ABFEFA6F47DCF7836F /* khash.c in Sources */ = {isa = PBXBuildFile; fileRef = 3AFA34B68A7B97BF6F7EC370 /* khash.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		31EA71E19E92E19E973868FE /* DataFrameDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80ED81B7E4A9A7671F3A5ED /* DataFrameDemoView.swift */; };
 		31F375C6C110E468E0929A08 /* TextCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD462251C90FFD82BE04714D /* TextCache.swift */; };
+		328DB4501CCFF0C4401553C2 /* VectorOpsMatrixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2FBF2E5C3601D28C2E1080 /* VectorOpsMatrixTests.swift */; };
 		32F7E1188305E2DBE1B68309 /* Token.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26C63CA072F41616045F85D2 /* Token.swift */; };
 		34129D1A378E55C954EE9A01 /* skiplist.h in Headers */ = {isa = PBXBuildFile; fileRef = 755EA62922A9F0EB0A476736 /* skiplist.h */; };
 		34F6A6EEE4F70A80DCDE9701 /* QueryOptimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0B19D5EA718C085C27AB2A /* QueryOptimizer.swift */; };
+		3585A5214089DFD0319B0C96 /* VectorArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3B60D77C618C75E34E2B0D /* VectorArray.swift */; };
 		382E4C7DB3EAEAD28466C7AD /* DataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725C3853F05C0920274BF161 /* DataFrame.swift */; };
 		38934C4ACB339F9B15DF5B66 /* skiplist.c in Sources */ = {isa = PBXBuildFile; fileRef = A9B9154E503F8C0AF170E60A /* skiplist.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		3B731C9EE18D7CF9B53C3931 /* SwiftPandasApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D1B757A00691EEC78E36F9F /* SwiftPandasApp.swift */; };
+		3BE2BB39CD5D2B9C8DB20C03 /* VectorArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E3B60D77C618C75E34E2B0D /* VectorArray.swift */; };
 		46FCE5E338E44542C629FB93 /* Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9957741BCE97B414826DCE85 /* Parser.swift */; };
 		49607F913D7D582D19952FD8 /* ClientCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3AE7F83FF3067EDC7E12DB /* ClientCommands.swift */; };
 		4965441BA87D882E5AF58F35 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 408C06FD62F2C489D8DB191B /* MetalContext.swift */; };
@@ -67,6 +78,7 @@
 		7708CE8FA8C9593365A8CC1C /* QueryPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1194ED9E8BDF89558FD6968 /* QueryPlan.swift */; };
 		7814EC209B984E84282B4F52 /* NullableArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */; };
 		789C0EBEF45CDFC8C3CA059B /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464B03A7DE52D165D759490 /* Buffer.swift */; };
+		795BAD065F6D88035B9B6A5A /* BitVectorInvariantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9260936CC73E2357A37194C2 /* BitVectorInvariantTests.swift */; };
 		79D5976E2B2E3D00DC865719 /* Daemon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F32C7C94134212AA97B6684 /* Daemon.swift */; };
 		7B12FB5FA55C994067F68B82 /* NewFeaturesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */; };
 		7BD6D351001680F45CBB3A62 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2181EEE84B163800594FA046 /* Protocol.swift */; };
@@ -77,6 +89,7 @@
 		7EF37AC6641843463C3830DB /* DataFrame+JoinIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E362A4F7A7B77E8B4041DE0 /* DataFrame+JoinIndex.swift */; };
 		7FEF626BAC520560054A9A6F /* ultrajsonenc.c in Sources */ = {isa = PBXBuildFile; fileRef = E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		813204040C870C78C04BD299 /* DataFrameError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1401F868449BF067FB1BE1 /* DataFrameError.swift */; };
+		82A3E79B5FDE8AEDD4728A00 /* VectorSeriesOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C85A6772EEDDA425BF75C4 /* VectorSeriesOps.swift */; };
 		837D57E390A3B5D9CA75CB7B /* BenchmarkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */; };
 		8414785F8100B4AC5EE720B4 /* ServerCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4345391C8274CA47124D5F /* ServerCommands.swift */; };
 		84F60AFAB78AC00365E40986 /* VectorOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5F30A3C7DB23297D373DBA0 /* VectorOps.swift */; };
@@ -102,14 +115,18 @@
 		9F160490346220C53E1D54EC /* Style.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081080B40C197B1CD08C875C /* Style.swift */; };
 		9F64D3A8DFB9657BF5503015 /* Operation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8125BF0E9BBF9363E7E6098 /* Operation.swift */; };
 		9FB53F9EC567895D7126CABC /* QueryPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1194ED9E8BDF89558FD6968 /* QueryPlan.swift */; };
+		A066E7527EDCF15ED6946EC5 /* SPBTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8217FE89128CBAA23D3EE86 /* SPBTests.swift */; };
 		A40B773439A18810B9480637 /* CLIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B723F0FB414EF1DB0930CEF4 /* CLIError.swift */; };
 		A4778E53906B16B9D3254DD6 /* HotStoreTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B54D6E77C32787D67DA7B197 /* HotStoreTypes.swift */; };
 		A51F7D1708A84EF637FEDDD4 /* skiplist.h in Headers */ = {isa = PBXBuildFile; fileRef = 755EA62922A9F0EB0A476736 /* skiplist.h */; };
+		A8E079E7465CE901D2880990 /* VectorSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598A8FF2F271D8A38F008042 /* VectorSearch.swift */; };
+		AA3BE1D3BBFF86CDE1DF379B /* VectorSeriesOps.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C85A6772EEDDA425BF75C4 /* VectorSeriesOps.swift */; };
 		AA604D56C8049D00A21D6E28 /* MetalContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 408C06FD62F2C489D8DB191B /* MetalContext.swift */; };
 		AA9506361F2B946998AB0ED0 /* BitVector.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD9E552B3EE0341E8D16FBD /* BitVector.swift */; };
 		AD5E262AF749D75CC92FB2F0 /* portable.h in Headers */ = {isa = PBXBuildFile; fileRef = 9F877B1C6BBEB8C3A073AD2E /* portable.h */; };
 		AF2355AF88A16ECB6FE07AD9 /* HotBudget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7480C261911A192425CBE82D /* HotBudget.swift */; };
 		AF9FF06D8095079569F31D24 /* JoinIndexAndMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956B46CC7F17CE58186D668F /* JoinIndexAndMemoryTests.swift */; };
+		AFF6F64F0DB36E7B3B798F23 /* MetalVectorSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C238BF3F664ECAC011A4F2 /* MetalVectorSearch.swift */; };
 		B09AABE6C2E0B1E4B3E8CABC /* Series.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BC5D47091871B54416C613 /* Series.swift */; };
 		B12C69A6B3B63776C3281563 /* TextCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD462251C90FFD82BE04714D /* TextCache.swift */; };
 		B433902F318B689A03D2288E /* ultrajsonenc.c in Sources */ = {isa = PBXBuildFile; fileRef = E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
@@ -119,6 +136,7 @@
 		BEE266871A10CC5DBC38ED4D /* Index.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423F4EFB71BB9E23C8A4AA59 /* Index.swift */; };
 		BF5C02E03467964E891D2873 /* DataFrameMemoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CFE849A42B05EAE9DA9B79F /* DataFrameMemoryTests.swift */; };
 		C2A09DDDD978A89BB524429D /* DataFrame+JoinIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E362A4F7A7B77E8B4041DE0 /* DataFrame+JoinIndex.swift */; };
+		C325F1563015EA291F3BA991 /* VectorSearchShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 60B4097CAF5406D46CADAA9F /* VectorSearchShaders.metal */; };
 		C57E56FD92C1606643EA4C64 /* MetalDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */; };
 		CA3F4B533476FB376807C6EF /* khash.h in Headers */ = {isa = PBXBuildFile; fileRef = 0E209DB760F4CBFC327B5BBC /* khash.h */; };
 		CA7F12162580B04C132312BB /* ultrajsondec.c in Sources */ = {isa = PBXBuildFile; fileRef = 33D3A3C57157A8B084612879 /* ultrajsondec.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
@@ -127,10 +145,13 @@
 		CD90D4C6AFE9B359A901E7F8 /* SwiftPandas.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		CFF0E3C0BFC711C9C3B18F9A /* MergeShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 4525D3C37734796C534282A9 /* MergeShaders.metal */; };
 		D17F565CF4D57438DB1CAD04 /* JSONReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F41279254571BC8F176FA86 /* JSONReader.swift */; };
+		D4A1FA993A40397F2DC96636 /* VectorSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 598A8FF2F271D8A38F008042 /* VectorSearch.swift */; };
 		D7C70F105F0EC95A58A85B03 /* SwiftPandas.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */; };
 		DB2BED9171563AC0EA69338A /* ultrajson.h in Headers */ = {isa = PBXBuildFile; fileRef = 6CD5074D92B6D34F1D59DD03 /* ultrajson.h */; };
+		DC4146A2EA4F24BF91DBD6BE /* SPBFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D75BE7B06562B0BDBF8B081 /* SPBFormat.swift */; };
 		DC96C125C8B9CDD5D43AC0C3 /* LazyDataFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 389B64E9FF0CA17AF9767C2C /* LazyDataFrame.swift */; };
 		DCF218B62711F3F855137597 /* ultrajson.h in Headers */ = {isa = PBXBuildFile; fileRef = 6CD5074D92B6D34F1D59DD03 /* ultrajson.h */; };
+		DF19896838BD20DC6DB21277 /* SPBFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D75BE7B06562B0BDBF8B081 /* SPBFormat.swift */; };
 		E2A1020ACF50A59DC654EB55 /* MetalMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F8BF25398E15233CBBFD30 /* MetalMerge.swift */; };
 		E2C938DC56B32B5E496CF200 /* CSVReaderStrict.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5B4894C65527BF4E2EB32B /* CSVReaderStrict.swift */; };
 		E88188C536FCA32684BB4D12 /* JSONTransformParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77873A3969C7EF9C55513707 /* JSONTransformParser.swift */; };
@@ -138,6 +159,8 @@
 		EACE7D3C5AB72581F28193E1 /* MetalShaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = B46E84DEBD0790B057CABF32 /* MetalShaders.swift */; };
 		EC1C0D5DDFD7904F1B81B5B4 /* Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D2C94339382772F892E30D8 /* Client.swift */; };
 		EC6777C9B6466BA0BBC683BD /* GroupByDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */; };
+		EC70892202BDF7887066B6D7 /* MetalVectorSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F7CED00B10DFCA6872D66AE /* MetalVectorSearchTests.swift */; };
+		ED50511EB495DAD0E2506DEF /* SPBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C9139AC274906AC1406314 /* SPBReader.swift */; };
 		EEAA9A7327E58065497F9F5C /* GroupByShaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = 19D846DA71CE9577F41EE749 /* GroupByShaders.metal */; };
 		EFBCCF2E232570BE67D78F39 /* HotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5DB7B7363989C628E7DEB7D /* HotStore.swift */; };
 		F0A342F3697757C62A77D911 /* MetalDispatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */; };
@@ -145,6 +168,7 @@
 		F4E22D3B590A4C43C20533D3 /* MetalMerge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F8BF25398E15233CBBFD30 /* MetalMerge.swift */; };
 		F811B63410C0786B85E41750 /* SwiftPandas.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C289550B9C9C6036608C34E7 /* SwiftPandas.framework */; };
 		F811F956FB159B326F88977B /* CSVMappedReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */; };
+		F84829F48908547502A4A95B /* SPBReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C9139AC274906AC1406314 /* SPBReader.swift */; };
 		F9402D2323F3FEE4877690A5 /* Buffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7464B03A7DE52D165D759490 /* Buffer.swift */; };
 		F94EC083FD297FBABA51AB08 /* CSVReaderStrict.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA5B4894C65527BF4E2EB32B /* CSVReaderStrict.swift */; };
 		FCB90F4E4E784844D1578B80 /* SwiftPandasCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38AE9EBED26B06D39CBA9A43 /* SwiftPandasCLI.swift */; };
@@ -213,6 +237,8 @@
 		19D846DA71CE9577F41EE749 /* GroupByShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = GroupByShaders.metal; sourceTree = "<group>"; };
 		1B8817FEF468D972F755B00C /* SwiftPandasTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftPandasTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C71DD80FE58C1F98A5AED83 /* SwiftPandasCLI */ = {isa = PBXFileReference; includeInIndex = 0; path = SwiftPandasCLI; sourceTree = BUILT_PRODUCTS_DIR; };
+		1D75BE7B06562B0BDBF8B081 /* SPBFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SPBFormat.swift; sourceTree = "<group>"; };
+		1F7CED00B10DFCA6872D66AE /* MetalVectorSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalVectorSearchTests.swift; sourceTree = "<group>"; };
 		2181EEE84B163800594FA046 /* Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocol.swift; sourceTree = "<group>"; };
 		22AD38D7ECCD6EE5B8BF2F73 /* PandasArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandasArray.swift; sourceTree = "<group>"; };
 		26C63CA072F41616045F85D2 /* Token.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Token.swift; sourceTree = "<group>"; };
@@ -236,7 +262,9 @@
 		4525D3C37734796C534282A9 /* MergeShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = MergeShaders.metal; sourceTree = "<group>"; };
 		46BC5D47091871B54416C613 /* Series.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Series.swift; sourceTree = "<group>"; };
 		51CE8C7146A7AE19A13AE2B4 /* NullableArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NullableArray.swift; sourceTree = "<group>"; };
+		598A8FF2F271D8A38F008042 /* VectorSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSearch.swift; sourceTree = "<group>"; };
 		5F41279254571BC8F176FA86 /* JSONReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONReader.swift; sourceTree = "<group>"; };
+		60B4097CAF5406D46CADAA9F /* VectorSearchShaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = VectorSearchShaders.metal; sourceTree = "<group>"; };
 		67F8BF25398E15233CBBFD30 /* MetalMerge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalMerge.swift; sourceTree = "<group>"; };
 		69B4A80FBDBCF0C0B9E3FDDA /* QueryExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryExecutor.swift; sourceTree = "<group>"; };
 		6CD5074D92B6D34F1D59DD03 /* ultrajson.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ultrajson.h; sourceTree = "<group>"; };
@@ -249,17 +277,23 @@
 		755EA62922A9F0EB0A476736 /* skiplist.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = skiplist.h; sourceTree = "<group>"; };
 		77843E7925F9C6244F7E6C39 /* GroupByDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupByDemoView.swift; sourceTree = "<group>"; };
 		77873A3969C7EF9C55513707 /* JSONTransformParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONTransformParser.swift; sourceTree = "<group>"; };
+		7E3B60D77C618C75E34E2B0D /* VectorArray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorArray.swift; sourceTree = "<group>"; };
 		7F32C7C94134212AA97B6684 /* Daemon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Daemon.swift; sourceTree = "<group>"; };
+		7F37FC6A89F3FF467732709E /* VectorSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSearchTests.swift; sourceTree = "<group>"; };
 		8367516C42A9B6BF39B6670F /* CSVLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVLine.swift; sourceTree = "<group>"; };
+		850D9E672AE1D3BFA1E7E1F3 /* SPBWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SPBWriter.swift; sourceTree = "<group>"; };
 		8E3AE7F83FF3067EDC7E12DB /* ClientCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCommands.swift; sourceTree = "<group>"; };
 		9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalGroupBy.swift; sourceTree = "<group>"; };
+		9260936CC73E2357A37194C2 /* BitVectorInvariantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitVectorInvariantTests.swift; sourceTree = "<group>"; };
 		956B46CC7F17CE58186D668F /* JoinIndexAndMemoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinIndexAndMemoryTests.swift; sourceTree = "<group>"; };
 		97BCB58448CB33E6D7B54224 /* MetalDispatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalDispatch.swift; sourceTree = "<group>"; };
 		9957741BCE97B414826DCE85 /* Parser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Parser.swift; sourceTree = "<group>"; };
 		9A99DFCEF5DDD4349827FEF3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
 		9D2C94339382772F892E30D8 /* Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Client.swift; sourceTree = "<group>"; };
+		9D2FBF2E5C3601D28C2E1080 /* VectorOpsMatrixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorOpsMatrixTests.swift; sourceTree = "<group>"; };
 		9F877B1C6BBEB8C3A073AD2E /* portable.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = portable.h; sourceTree = "<group>"; };
 		A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandas.swift; sourceTree = "<group>"; };
+		A44B9B2D3345EC176399F8F9 /* VectorError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorError.swift; sourceTree = "<group>"; };
 		A57050F20F42C904FEFFA187 /* MetalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTests.swift; sourceTree = "<group>"; };
 		A83B1B5C5B972FA793F9FCAF /* OtherDTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtherDTypes.swift; sourceTree = "<group>"; };
 		A9B9154E503F8C0AF170E60A /* skiplist.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = skiplist.c; sourceTree = "<group>"; };
@@ -267,7 +301,10 @@
 		B46E84DEBD0790B057CABF32 /* MetalShaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalShaders.swift; sourceTree = "<group>"; };
 		B54D6E77C32787D67DA7B197 /* HotStoreTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotStoreTypes.swift; sourceTree = "<group>"; };
 		B5DB7B7363989C628E7DEB7D /* HotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotStore.swift; sourceTree = "<group>"; };
+		B6C85A6772EEDDA425BF75C4 /* VectorSeriesOps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSeriesOps.swift; sourceTree = "<group>"; };
+		B6C9139AC274906AC1406314 /* SPBReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SPBReader.swift; sourceTree = "<group>"; };
 		B723F0FB414EF1DB0930CEF4 /* CLIError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIError.swift; sourceTree = "<group>"; };
+		B9C238BF3F664ECAC011A4F2 /* MetalVectorSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalVectorSearch.swift; sourceTree = "<group>"; };
 		BAF54ED5FF37B295D2EC94FE /* FrameCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameCache.swift; sourceTree = "<group>"; };
 		C24D37B50C94748102DA0EC9 /* DType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DType.swift; sourceTree = "<group>"; };
 		C24DACC00151A746CCD8F02C /* HotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotStoreTests.swift; sourceTree = "<group>"; };
@@ -290,6 +327,8 @@
 		ED8D61E4DE52C89E91401CEE /* DataFrame+Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DataFrame+Memory.swift"; sourceTree = "<group>"; };
 		EDD9E552B3EE0341E8D16FBD /* BitVector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitVector.swift; sourceTree = "<group>"; };
 		F144E9A25383F5A6574D65C3 /* employees.csv */ = {isa = PBXFileReference; path = employees.csv; sourceTree = "<group>"; };
+		F2DE67160B920ABE30D3E9AD /* VectorColumnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorColumnTests.swift; sourceTree = "<group>"; };
+		F8217FE89128CBAA23D3EE86 /* SPBTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SPBTests.swift; sourceTree = "<group>"; };
 		F845FA91A1F9266A74A73600 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F951783B44D4F86D221F5EB5 /* Predicate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Predicate.swift; sourceTree = "<group>"; };
 		FCD61785C1C8586D7F55DFDC /* Transport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transport.swift; sourceTree = "<group>"; };
@@ -343,6 +382,7 @@
 				9152C67A4012AE1ED95C17D0 /* MetalGroupBy.swift */,
 				67F8BF25398E15233CBBFD30 /* MetalMerge.swift */,
 				B46E84DEBD0790B057CABF32 /* MetalShaders.swift */,
+				B9C238BF3F664ECAC011A4F2 /* MetalVectorSearch.swift */,
 			);
 			path = Metal;
 			sourceTree = "<group>";
@@ -379,6 +419,7 @@
 				19D846DA71CE9577F41EE749 /* GroupByShaders.metal */,
 				4525D3C37734796C534282A9 /* MergeShaders.metal */,
 				DCD547CE28268E228BA21D66 /* ShaderCommon.h */,
+				60B4097CAF5406D46CADAA9F /* VectorSearchShaders.metal */,
 			);
 			path = Shaders;
 			sourceTree = "<group>";
@@ -478,6 +519,7 @@
 				08367D3CD71EED91B9E7B6D1 /* Metal */,
 				2080D138C43B69B93607BF4A /* Numeric */,
 				D4137E24CCB495BFCFC9899F /* Series */,
+				D99941AA9DE65D49FDB49677 /* Vector */,
 				A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */,
 			);
 			path = SwiftPandas;
@@ -499,6 +541,16 @@
 				2A79B4DE524F0E41BC29999A /* GUIApp.swift */,
 			);
 			path = GUI;
+			sourceTree = "<group>";
+		};
+		7830668E878FCD7429FA5F06 /* SPB */ = {
+			isa = PBXGroup;
+			children = (
+				1D75BE7B06562B0BDBF8B081 /* SPBFormat.swift */,
+				B6C9139AC274906AC1406314 /* SPBReader.swift */,
+				850D9E672AE1D3BFA1E7E1F3 /* SPBWriter.swift */,
+			);
+			path = SPB;
 			sourceTree = "<group>";
 		};
 		7D6D4EC3AE88C12B75AE257A /* DataFrame */ = {
@@ -578,6 +630,7 @@
 			children = (
 				8E3A36BDB8F68DC137BA46F1 /* SampleData */,
 				4460308C3F8C76BC0CF03DD7 /* BenchmarkTests.swift */,
+				9260936CC73E2357A37194C2 /* BitVectorInvariantTests.swift */,
 				0FCCB61BB16AEA54B22EC0D5 /* CSVContractTests.swift */,
 				C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */,
 				E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */,
@@ -586,8 +639,13 @@
 				956B46CC7F17CE58186D668F /* JoinIndexAndMemoryTests.swift */,
 				FE13536785EE5BFC02BD2E0D /* LazyDataFrameTests.swift */,
 				A57050F20F42C904FEFFA187 /* MetalTests.swift */,
+				1F7CED00B10DFCA6872D66AE /* MetalVectorSearchTests.swift */,
 				00B0C44E96FFC94F7C320429 /* NewFeaturesTests.swift */,
+				F8217FE89128CBAA23D3EE86 /* SPBTests.swift */,
 				D54E7E44184A38DD3BF2467A /* SwiftPandasTests.swift */,
+				F2DE67160B920ABE30D3E9AD /* VectorColumnTests.swift */,
+				9D2FBF2E5C3601D28C2E1080 /* VectorOpsMatrixTests.swift */,
+				7F37FC6A89F3FF467732709E /* VectorSearchTests.swift */,
 			);
 			path = SwiftPandasTests;
 			sourceTree = "<group>";
@@ -650,6 +708,17 @@
 			path = Series;
 			sourceTree = "<group>";
 		};
+		D99941AA9DE65D49FDB49677 /* Vector */ = {
+			isa = PBXGroup;
+			children = (
+				7E3B60D77C618C75E34E2B0D /* VectorArray.swift */,
+				A44B9B2D3345EC176399F8F9 /* VectorError.swift */,
+				598A8FF2F271D8A38F008042 /* VectorSearch.swift */,
+				B6C85A6772EEDDA425BF75C4 /* VectorSeriesOps.swift */,
+			);
+			path = Vector;
+			sourceTree = "<group>";
+		};
 		E2D4986F2EA16558E2244C91 /* include */ = {
 			isa = PBXGroup;
 			children = (
@@ -664,6 +733,7 @@
 			children = (
 				665A03AB81E3749244B4B9C9 /* CSV */,
 				27ADAABEB5280E8E9DFEC737 /* JSON */,
+				7830668E878FCD7429FA5F06 /* SPB */,
 			);
 			path = IO;
 			sourceTree = "<group>";
@@ -872,8 +942,8 @@
 				06FEE45C2F882A118ECED543 /* SwiftPandas */,
 				F52960BE5B08F2D4C89EAE80 /* SwiftPandas-iOS */,
 				DB7040382E19EEC0B53C647B /* SwiftPandasApp */,
-				BCB05BEBCBFC94FFC0B2EB5F /* SwiftPandasCLI */,
 				27684C8A15AFB445B6093339 /* SwiftPandasTests */,
+				BCB05BEBCBFC94FFC0B2EB5F /* SwiftPandasCLI */,
 			);
 		};
 /* End PBXProject section */
@@ -956,6 +1026,7 @@
 				176BE03DA4B4CB9677F56423 /* MetalGroupBy.swift in Sources */,
 				F4E22D3B590A4C43C20533D3 /* MetalMerge.swift in Sources */,
 				EACE7D3C5AB72581F28193E1 /* MetalShaders.swift in Sources */,
+				AFF6F64F0DB36E7B3B798F23 /* MetalVectorSearch.swift in Sources */,
 				7D1F90B44CC577AE38B28D02 /* NativeArray.swift in Sources */,
 				8CDDF12645D4E56252944F10 /* NullableArray.swift in Sources */,
 				015BD21E1127BEF42E215844 /* NumericDTypes.swift in Sources */,
@@ -965,11 +1036,19 @@
 				9859BF8EA017E88FEFBC3BAA /* QueryExecutor.swift in Sources */,
 				34F6A6EEE4F70A80DCDE9701 /* QueryOptimizer.swift in Sources */,
 				7708CE8FA8C9593365A8CC1C /* QueryPlan.swift in Sources */,
+				DF19896838BD20DC6DB21277 /* SPBFormat.swift in Sources */,
+				F84829F48908547502A4A95B /* SPBReader.swift in Sources */,
+				2AE6CDBCF06A41ED64D3292B /* SPBWriter.swift in Sources */,
 				6778382791474156F296E43A /* Series.swift in Sources */,
 				B90C8117C830AA8BF72D297E /* StringArray.swift in Sources */,
 				0E9A5CA21F70D399F8002F52 /* SwiftPandas.swift in Sources */,
 				31F375C6C110E468E0929A08 /* TextCache.swift in Sources */,
+				3585A5214089DFD0319B0C96 /* VectorArray.swift in Sources */,
+				26A4106B9570C4D57F5AE704 /* VectorError.swift in Sources */,
 				84F60AFAB78AC00365E40986 /* VectorOps.swift in Sources */,
+				D4A1FA993A40397F2DC96636 /* VectorSearch.swift in Sources */,
+				012BA7EE8B8853F571E0528B /* VectorSearchShaders.metal in Sources */,
+				AA3BE1D3BBFF86CDE1DF379B /* VectorSeriesOps.swift in Sources */,
 				2F83E1ABFEFA6F47DCF7836F /* khash.c in Sources */,
 				CC569576C2E3E4FB942AC1AB /* skiplist.c in Sources */,
 				CA7F12162580B04C132312BB /* ultrajsondec.c in Sources */,
@@ -982,6 +1061,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				837D57E390A3B5D9CA75CB7B /* BenchmarkTests.swift in Sources */,
+				795BAD065F6D88035B9B6A5A /* BitVectorInvariantTests.swift in Sources */,
 				9B20A6E12DF6D85A5FEEB244 /* CSVContractTests.swift in Sources */,
 				5DC583AF471388A23624240B /* CSVDataFrameTests.swift in Sources */,
 				F811F956FB159B326F88977B /* CSVMappedReadTests.swift in Sources */,
@@ -990,8 +1070,13 @@
 				AF9FF06D8095079569F31D24 /* JoinIndexAndMemoryTests.swift in Sources */,
 				1DE34837FAB9CAF41D7BB2C1 /* LazyDataFrameTests.swift in Sources */,
 				5B790ED8BAB7DEA8B371046F /* MetalTests.swift in Sources */,
+				EC70892202BDF7887066B6D7 /* MetalVectorSearchTests.swift in Sources */,
 				7B12FB5FA55C994067F68B82 /* NewFeaturesTests.swift in Sources */,
+				A066E7527EDCF15ED6946EC5 /* SPBTests.swift in Sources */,
 				499F95EA6EC3DD1BC773C09F /* SwiftPandasTests.swift in Sources */,
+				28B012B478C8CC2E465F0B7D /* VectorColumnTests.swift in Sources */,
+				328DB4501CCFF0C4401553C2 /* VectorOpsMatrixTests.swift in Sources */,
+				152A2C36E4E5230619CABBDD /* VectorSearchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1037,6 +1122,7 @@
 				8C6EDF782DC146BB2C0386E9 /* MetalGroupBy.swift in Sources */,
 				E2A1020ACF50A59DC654EB55 /* MetalMerge.swift in Sources */,
 				91DC5A926733A507A044224A /* MetalShaders.swift in Sources */,
+				2AB2299A8DFE96A0E703C273 /* MetalVectorSearch.swift in Sources */,
 				85DCE13E5A6EFD34D67D6D2E /* NativeArray.swift in Sources */,
 				7814EC209B984E84282B4F52 /* NullableArray.swift in Sources */,
 				9BB5855F4DE49AE9DC90664F /* NumericDTypes.swift in Sources */,
@@ -1046,11 +1132,19 @@
 				1E368632F138FB901490B22C /* QueryExecutor.swift in Sources */,
 				7C27A5E497B2C844A912DE6C /* QueryOptimizer.swift in Sources */,
 				9FB53F9EC567895D7126CABC /* QueryPlan.swift in Sources */,
+				DC4146A2EA4F24BF91DBD6BE /* SPBFormat.swift in Sources */,
+				ED50511EB495DAD0E2506DEF /* SPBReader.swift in Sources */,
+				020AE531981BEBC0DDBA000D /* SPBWriter.swift in Sources */,
 				B09AABE6C2E0B1E4B3E8CABC /* Series.swift in Sources */,
 				642648E72CFAE2C45842489D /* StringArray.swift in Sources */,
 				D7C70F105F0EC95A58A85B03 /* SwiftPandas.swift in Sources */,
 				B12C69A6B3B63776C3281563 /* TextCache.swift in Sources */,
+				3BE2BB39CD5D2B9C8DB20C03 /* VectorArray.swift in Sources */,
+				11A1664593AF23DFB1081FF6 /* VectorError.swift in Sources */,
 				0FD353BC50F11AFA45DB69D2 /* VectorOps.swift in Sources */,
+				A8E079E7465CE901D2880990 /* VectorSearch.swift in Sources */,
+				C325F1563015EA291F3BA991 /* VectorSearchShaders.metal in Sources */,
+				82A3E79B5FDE8AEDD4728A00 /* VectorSeriesOps.swift in Sources */,
 				0D7A0049DBF49C7FFC96CBA8 /* khash.c in Sources */,
 				38934C4ACB339F9B15DF5B66 /* skiplist.c in Sources */,
 				6893BD2302FDBAC647DA9DB2 /* ultrajsondec.c in Sources */,
