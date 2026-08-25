@@ -69,4 +69,19 @@ final class CSVReaderValidatedTests: XCTestCase {
             }
         }
     }
+
+    /// With no contract there is nothing to violate, so a cell that would
+    /// fail a float contract must still come back as a frame, never an error.
+    func test_readValidated_withoutContract_returnsFrameForUnparsableCell() throws {
+        // Given: an inferring reader and a cell no numeric dtype could parse
+        let reader = CSVReader()
+        let csvWithUnparsableCell = "id,value\nA001,1.5x\n"
+
+        // When: the text is read with no contract
+        let frame = try reader.readValidated(from: csvWithUnparsableCell)
+
+        // Then: the row is present; nothing was reported as a failure
+        XCTAssertEqual(frame.rowCount, 1,
+                       "readValidated — case 'no contract': want 1 row, got \(frame.rowCount)")
+    }
 }
