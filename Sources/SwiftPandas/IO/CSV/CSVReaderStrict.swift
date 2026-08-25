@@ -363,7 +363,7 @@ extension CSVReader {
     /// failure. Columns declared with any other dtype are stored as strings and
     /// cannot fail, so they are never reported. Under ``ParseMode/infer`` and
     /// ``ParseMode/allStrings`` there is no contract to violate, so this call
-    /// never throws and returns the same frame as ``read(from:)``.
+    /// never throws and returns the same frame as ``read(from:)-(String)``.
     /// - Parameter text: The CSV text to parse.
     /// - Returns: The parsed frame, with every float, integer, and bool
     ///   contract column fully parsed.
