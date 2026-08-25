@@ -348,18 +348,25 @@ public struct CSVContractError: Error, LocalizedError {
 
     public var errorDescription: String? {
         failures.map {
-            "\($0.column): \($0.failedCount) cells failed \($0.declaredType) "
+            "\($0.column): \($0.failedCount) \($0.failedCount == 1 ? "cell" : "cells") failed \($0.declaredType) "
             + "(first '\($0.firstFailedValue)' at row \($0.firstFailedRow))"
         }.joined(separator: "; ")
     }
 }
 
 extension CSVReader {
-    /// Parses CSV text under this reader's mode and throws if any cell failed
-    /// its declared dtype — the returned frame always honors the contract, so
-    /// a corrupt cell can never silently become NA.
+    /// Parses CSV text under this reader's ``ParseMode`` and throws instead of
+    /// returning a frame in which a corrupt cell has silently become NA.
+    ///
+    /// Under ``ParseMode/strict(_:)`` a cell in a column declared as a float,
+    /// integer, or bool dtype that does not parse as that dtype is a contract
+    /// failure. Columns declared with any other dtype are stored as strings and
+    /// cannot fail, so they are never reported. Under ``ParseMode/infer`` and
+    /// ``ParseMode/allStrings`` there is no contract to violate, so this call
+    /// never throws and returns the same frame as ``read(from:)``.
     /// - Parameter text: The CSV text to parse.
-    /// - Returns: The parsed frame, every declared column honouring its dtype.
+    /// - Returns: The parsed frame, with every float, integer, and bool
+    ///   contract column fully parsed.
     /// - Throws: `CSVContractError` carrying one `ColumnParseFailure` per
     ///   column that had at least one cell fail its declared dtype.
     public func readValidated(from text: String) throws -> DataFrame {
