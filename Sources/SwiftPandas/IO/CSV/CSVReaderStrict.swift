@@ -113,20 +113,13 @@ extension CSVReader {
         }
     }
 
-    /// Parses CSV text under this reader's ``ParseMode`` and throws instead of
-    /// returning a frame in which a corrupt cell has silently become NA.
-    ///
-    /// Under ``ParseMode/strict(_:)`` a cell in a column declared as a float,
-    /// integer, or bool dtype that does not parse as that dtype is a contract
-    /// failure. Columns declared with any other dtype are stored as strings and
-    /// cannot fail, so they are never reported. Under ``ParseMode/infer`` and
-    /// ``ParseMode/allStrings`` there is no contract to violate, so this call
-    /// never throws and returns the same frame as ``read(from:)-(String)``.
+    /// ``readWithReport(from:)-(String)`` with the report enforced: a frame is
+    /// returned only when it is empty, so a corrupt cell can never pass as NA.
     /// - Parameter text: The CSV text to parse.
-    /// - Returns: The parsed frame, with every float, integer, and bool
-    ///   contract column fully parsed.
-    /// - Throws: `CSVContractError` carrying one `ColumnParseFailure` per
-    ///   column that had at least one cell fail its declared dtype.
+    /// - Returns: The parsed frame.
+    /// - Throws: `CSVContractError` when any float, integer, or bool contract
+    ///   column had a cell that failed to parse. Never throws under
+    ///   ``ParseMode/infer`` or ``ParseMode/allStrings``.
     public func readValidated(from text: String) throws -> DataFrame {
         let (frame, failures) = readWithReport(from: text)
         guard failures.isEmpty else { throw CSVContractError(failures: failures) }
