@@ -345,6 +345,13 @@ public struct CSVContractError: Error, LocalizedError {
     public init(failures: [ColumnParseFailure]) {
         self.failures = failures
     }
+
+    public var errorDescription: String? {
+        failures.map {
+            "\($0.column): \($0.failedCount) cells failed \($0.declaredType) "
+            + "(first '\($0.firstFailedValue)' at row \($0.firstFailedRow))"
+        }.joined(separator: "; ")
+    }
 }
 
 extension CSVReader {
@@ -356,6 +363,8 @@ extension CSVReader {
     /// - Throws: `CSVContractError` carrying one `ColumnParseFailure` per
     ///   column that had at least one cell fail its declared dtype.
     public func readValidated(from text: String) throws -> DataFrame {
-        throw CSVContractError(failures: [])
+        let (frame, failures) = readWithReport(from: text)
+        guard failures.isEmpty else { throw CSVContractError(failures: failures) }
+        return frame
     }
 }
