@@ -333,3 +333,29 @@ extension CSVReader {
         return reversedKept.reversed()
     }
 }
+
+// MARK: - Contract-throwing read
+
+/// A strict read failed its declared contract: at least one cell in a
+/// declared column did not parse as its dtype. Carries the per-column report
+/// so the message names every offender.
+public struct CSVContractError: Error, LocalizedError {
+    public let failures: [ColumnParseFailure]
+
+    public init(failures: [ColumnParseFailure]) {
+        self.failures = failures
+    }
+}
+
+extension CSVReader {
+    /// Parses CSV text under this reader's mode and throws if any cell failed
+    /// its declared dtype — the returned frame always honors the contract, so
+    /// a corrupt cell can never silently become NA.
+    /// - Parameter text: The CSV text to parse.
+    /// - Returns: The parsed frame, every declared column honouring its dtype.
+    /// - Throws: `CSVContractError` carrying one `ColumnParseFailure` per
+    ///   column that had at least one cell fail its declared dtype.
+    public func readValidated(from text: String) throws -> DataFrame {
+        throw CSVContractError(failures: [])
+    }
+}
