@@ -339,19 +339,28 @@ extension CSVReader {
 /// A strict read failed its declared contract: at least one cell in a
 /// declared column did not parse as its dtype. Carries the per-column report
 /// so the message names every offender.
-public struct CSVContractError: Error, LocalizedError {
+public struct CSVContractError: Error, LocalizedError, CustomStringConvertible, Sendable {
+    /// One entry per column that had at least one cell fail its declared
+    /// dtype, in header order.
     public let failures: [ColumnParseFailure]
 
+    /// Creates an error from the per-column report of a strict read.
     public init(failures: [ColumnParseFailure]) {
         self.failures = failures
     }
 
-    public var errorDescription: String? {
+    /// Every failing column on one line: its name, how many cells failed,
+    /// the declared dtype, and the first offending cell with its row.
+    public var description: String {
         failures.map {
             "\($0.column): \($0.failedCount) \($0.failedCount == 1 ? "cell" : "cells") failed \($0.declaredType) "
             + "(first '\($0.firstFailedValue)' at row \($0.firstFailedRow))"
         }.joined(separator: "; ")
     }
+
+    /// The same text as ``description``, so `localizedDescription` names
+    /// every offender rather than a generic operation-failed message.
+    public var errorDescription: String? { description }
 }
 
 extension CSVReader {
