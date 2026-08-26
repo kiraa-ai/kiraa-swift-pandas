@@ -55,8 +55,8 @@ let useBinary = ProcessInfo.processInfo.environment["SWIFTPANDAS_USE_BINARY"] ==
 // every tagged release: scripts/build-xcframework.sh prints the new
 // checksum after building, and the asset must be uploaded to the matching
 // GitHub release before consumers can resolve the binary target.
-let xcframeworkURL = "https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/v0.8.1-beta/SwiftPandas.xcframework.zip"
-let xcframeworkChecksum = "f80f450a8f2561f06c7a0bd16b93d3e42544c565f71824fbb0cdd8aeda81ae5f"
+let xcframeworkURL = "https://github.com/kiraa-ai/kiraa-swift-pandas/releases/download/v0.8.2-beta/SwiftPandas.xcframework.zip"
+let xcframeworkChecksum = "c2630fefad4f4fd224605c98542743e78bf11cf83404152f508fb12beb761129"
 
 // ── Source-mode targets ──
 let sourceTargets: [Target] = [

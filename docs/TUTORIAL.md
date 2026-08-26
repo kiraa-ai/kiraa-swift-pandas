@@ -491,7 +491,7 @@ The repo ships **twelve** demo scripts under `examples/cli/`, each comparing one
 
 ```bash
 # If you didn't clone the repo, grab them:
-gh release download v0.8.1-beta --repo kiraa-ai/kiraa-swift-pandas --pattern '*.zip'
+gh release download v0.8.2-beta --repo kiraa-ai/kiraa-swift-pandas --pattern '*.zip'
 # Or just `git clone https://github.com/kiraa-ai/kiraa-swift-pandas.git`
 
 # Then:

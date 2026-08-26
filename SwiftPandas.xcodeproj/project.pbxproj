@@ -129,6 +129,7 @@
 		AFF6F64F0DB36E7B3B798F23 /* MetalVectorSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C238BF3F664ECAC011A4F2 /* MetalVectorSearch.swift */; };
 		B09AABE6C2E0B1E4B3E8CABC /* Series.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BC5D47091871B54416C613 /* Series.swift */; };
 		B12C69A6B3B63776C3281563 /* TextCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD462251C90FFD82BE04714D /* TextCache.swift */; };
+		B2B26A07158C87601F917F48 /* CSVReaderValidatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A55CB6EC41DA8E7F97B01E90 /* CSVReaderValidatedTests.swift */; };
 		B433902F318B689A03D2288E /* ultrajsonenc.c in Sources */ = {isa = PBXBuildFile; fileRef = E744C27B54AFC8DCB62CA803 /* ultrajsonenc.c */; settings = {COMPILER_FLAGS = "-O3"; }; };
 		B8AFC714F378CE0A8C73CC78 /* Predicate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F951783B44D4F86D221F5EB5 /* Predicate.swift */; };
 		B90C8117C830AA8BF72D297E /* StringArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = D43E4688A860B3EA57425A30 /* StringArray.swift */; };
@@ -294,6 +295,7 @@
 		9F877B1C6BBEB8C3A073AD2E /* portable.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = portable.h; sourceTree = "<group>"; };
 		A28F3D18AE1E2EE81DE5CB83 /* SwiftPandas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftPandas.swift; sourceTree = "<group>"; };
 		A44B9B2D3345EC176399F8F9 /* VectorError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorError.swift; sourceTree = "<group>"; };
+		A55CB6EC41DA8E7F97B01E90 /* CSVReaderValidatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVReaderValidatedTests.swift; sourceTree = "<group>"; };
 		A57050F20F42C904FEFFA187 /* MetalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetalTests.swift; sourceTree = "<group>"; };
 		A83B1B5C5B972FA793F9FCAF /* OtherDTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OtherDTypes.swift; sourceTree = "<group>"; };
 		A9B9154E503F8C0AF170E60A /* skiplist.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = skiplist.c; sourceTree = "<group>"; };
@@ -634,6 +636,7 @@
 				0FCCB61BB16AEA54B22EC0D5 /* CSVContractTests.swift */,
 				C3EFE7CEE668B282BD8F794A /* CSVDataFrameTests.swift */,
 				E98B5FE0308E5AFCDF0EE98C /* CSVMappedReadTests.swift */,
+				A55CB6EC41DA8E7F97B01E90 /* CSVReaderValidatedTests.swift */,
 				6CFE849A42B05EAE9DA9B79F /* DataFrameMemoryTests.swift */,
 				C24DACC00151A746CCD8F02C /* HotStoreTests.swift */,
 				956B46CC7F17CE58186D668F /* JoinIndexAndMemoryTests.swift */,
@@ -1065,6 +1068,7 @@
 				9B20A6E12DF6D85A5FEEB244 /* CSVContractTests.swift in Sources */,
 				5DC583AF471388A23624240B /* CSVDataFrameTests.swift in Sources */,
 				F811F956FB159B326F88977B /* CSVMappedReadTests.swift in Sources */,
+				B2B26A07158C87601F917F48 /* CSVReaderValidatedTests.swift in Sources */,
 				BF5C02E03467964E891D2873 /* DataFrameMemoryTests.swift in Sources */,
 				967BE7B36BB99F2441DE4234 /* HotStoreTests.swift in Sources */,
 				AF9FF06D8095079569F31D24 /* JoinIndexAndMemoryTests.swift in Sources */,
