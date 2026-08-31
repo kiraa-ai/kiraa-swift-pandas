@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.8.2-beta
+# SwiftPandas v0.8.3-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -13,6 +13,10 @@ SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data m
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
 
 **Want to try it for yourself?** [docs/TUTORIAL.md](docs/TUTORIAL.md) walks you through a complete analytics workflow twice — first in Python with pandas, then in `swiftpandas` running as a Homebrew-installed daemon. Same dataset, same operations, side-by-side timings. ~20 minutes start to finish.
+
+## What's new in v0.8.3-beta
+
+- **Fix: GPU inner joins no longer drop duplicate-key matches** — `merge_hash_build` had a lost-update race: the thread that claimed a hash slot published the key first and stored the chain head one step later, unconditionally, overwriting any same-key rows that chained in during the window; affected joins silently returned a different short row count on every run. Every insert now goes through a single exchange-and-link push, so the chain head is only ever handed off, never overwritten. Adds a high-contention regression test (50,000 build rows over 4 keys). Fixes #27.
 
 ## What's new in v0.8.2-beta
 
@@ -226,7 +230,7 @@ SwiftPandas supports two SwiftPM consumption modes from a single `Package.swift`
 
 ### Option A — Source build (default)
 
-Add SwiftPandas to your `Package.swift` and pin to the v0.8.2-beta tag (or track `main` for development):
+Add SwiftPandas to your `Package.swift` and pin to the v0.8.3-beta tag (or track `main` for development):
 
 ```swift
 // swift-tools-version: 5.9
@@ -237,7 +241,7 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v16)],
     dependencies: [
         // Recommended: pin to a tagged release
-        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.8.2-beta"),
+        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.8.3-beta"),
 
         // Or track the latest development:
         // .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
