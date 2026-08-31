@@ -142,14 +142,64 @@ Why it works: same push invariant as Design 1, but there is only one insert path
 
 Changes: replace the loop body in both files (~20 lines each); the narrative comments above each copy (`MergeShaders.metal:3-5`, `MetalShaders.swift:440-457`) get updated to describe the single push path.
 
+## Proposed Design 3 — link-before-publish with a CAS-retry push
+
+Proposed by SpyderMYK in the #25 thread (the same defect, reported earlier). Like Design 2 it unifies insertion into one path and retries the slot on a spurious CAS failure, but the chain push is inverted: write `chain_next[tid]` *first*, then publish `tid` as head with a CAS that retries on a stale head.
+
+BEFORE: the full loop shown in *Code in question*.
+
+AFTER:
+
+```metal
+    while (true) {
+        // Claim the slot for this key, or find the slot already holding it.
+        int expected = EMPTY_SLOT;
+        if (!atomic_compare_exchange_weak_explicit(
+                &hash_table[slot].key, &expected, code,
+                memory_order_relaxed, memory_order_relaxed)) {
+            if (expected == EMPTY_SLOT) continue;   // spurious failure — retry this slot
+            if (expected != code) {
+                slot = (slot + 1) & mask;           // different key — linear probe
+                continue;
+            }
+        }
+        // This slot owns our key. Link the current head behind us before
+        // publishing ourselves as head, so the chain is intact at every
+        // instant, not only at kernel completion.
+        int old_head = atomic_load_explicit(
+            &hash_table[slot].row_index, memory_order_relaxed);
+        do {
+            atomic_store_explicit(&chain_next[tid], old_head, memory_order_relaxed);
+        } while (!atomic_compare_exchange_weak_explicit(
+                    &hash_table[slot].row_index, &old_head, (int)tid,
+                    memory_order_relaxed, memory_order_relaxed));
+        return;
+    }
+```
+
+Why it works: `chain_next[tid]` always points at the observed head before the CAS makes `tid` the new head, and the CAS fails and retries whenever the head moved underneath — no push can clobber another, and the list is never transiently broken.
+
+Difference from Design 2: Design 2's single `atomic_exchange` leaves a window where the new head's `chain_next` is still `-1`; that is harmless today only because the probe runs after a full command-buffer barrier. Design 3's invariant holds without that assumption. The cost is a load plus a CAS loop (unbounded retries under contention) where Design 2 pays one wait-free exchange.
+
+Changes: replace the loop body in both files (~22 lines each) plus the same narrative-comment updates as Design 2.
+
 ## Recommendation
 
 **Design 2.**
 
-The bug exists because insertion had two code paths with two different invariants, and the winner's invariant — "the slot is still untouched" — is false from the instant its CAS lands. Design 1 patches that path; Design 2 removes the distinction, leaving one invariant ("publish the key if needed, then push yourself onto the chain") that holds for every thread. One path is also the only version that closes the spurious-CAS-failure hazard, which Design 1 leaves in place.
+All three fix the bug; the choice is about which invariants remain. The bug exists because insertion had two code paths with two different invariants, and the winner's invariant — "the slot is still untouched" — is false from the instant its CAS lands. Design 1 patches that path but keeps the split and the spurious-CAS hazard. Designs 2 and 3 both collapse to one path and close the hazard.
 
-Cost is negligible: the contended path executes identical atomics to Design 1; the uncontended path gains one `chain_next` store that writes `-1` over the `-1` already memset there. The diff is larger than Design 1's, but the resulting kernel is shorter than today's (the re-load disappears) and every line of it is exercised by the unique-key tests as well as the duplicate-key tests.
+Between 2 and 3: Design 3's stronger every-instant chain consistency buys nothing in this system, because the dependency it would remove is load-bearing elsewhere anyway — `merge_hash_probe` reads `chain_next` through a plain non-atomic pointer and assumes a completed build, so build and probe can never share a command buffer without reworking the probe regardless of which push we use. Given that the barrier is a fixed architectural fact (`MetalContext.dispatch` commits and waits per dispatch), Design 2 achieves the same correctness with one wait-free exchange instead of a retry loop, and slightly less code. If the build/probe dispatch structure is ever revisited, that revisit owns the migration to Design 3's push — a comment on the kernel should say so.
+
+Cost versus Design 1 is negligible: the contended path executes identical atomics; the uncontended path gains one `chain_next` store that writes `-1` over the `-1` already memset there. The resulting kernel is shorter than today's (the re-load disappears) and every line of it is exercised by the unique-key tests as well as the duplicate-key tests.
 
 ## Next steps
 
-Per the working agreement: lock a design in this PR's review, then show the RED tests in this doc (both existing `MetalMergeTests` failures are already RED on `main`; the test phase should also weigh a production-shape stress case — ~18,500 build rows over ~615 keys — since the 3-row test races only narrowly), then add the `/writing-plans` implementation plan to this PR, then implement on explicit go-ahead. Any implementation must change both shader copies in lockstep.
+Per the working agreement: lock a design in this PR's review, then show the RED tests in this doc, then add the `/writing-plans` implementation plan to this PR, then implement on explicit go-ahead.
+
+Standing notes for the later phases:
+
+- Both existing `MetalMergeTests` failures are already RED on `main` on this hardware, but their sensitivity is hardware-dependent (they reportedly pass on a narrower GPU). The test phase should add a low-cardinality stress case — many build rows over few distinct keys (e.g. ~100k rows / 8 keys) — as the durable regression guard.
+- Any implementation must change both shader copies in lockstep (`MergeShaders.metal` + the `MetalShaders.swift` string).
+- The reporter in the #25 thread has a ready patch (their Design 3 variant, both copies, plus a stress test) and offered a PR. Accepting it versus implementing in-house is a maintainer choice; either way, the locked design in this PR is the review yardstick.
+- The fix reaches binary consumers (`SWIFTPANDAS_USE_BINARY=1`, e.g. the kiraa engine) only through a tagged release with a rebuilt XCFramework — Package.swift URL/checksum, README version, and `SwiftPandasInfo.version` move together per the release convention.

@@ -4,7 +4,7 @@
 
 Both tests that catch the #27 race (`testInnerJoinDuplicateKeys`, `testInnerJoinCorrectness`) predate the report and fail today — yet nothing ever ran them automatically.
 
-One correction to the issue's framing: it attributes this to "the default binary mode (`SWIFTPANDAS_USE_BINARY≠0`)" dropping the test targets. That premise is wrong — `Package.swift:52` reads `useBinary = env == "1"`, so binary mode is strictly opt-in and a plain `swift test` builds from source and includes `MetalMergeTests` (that is how the failures above were reproduced). The actual gap: the repo's only workflow is `.github/workflows/release.yml`, which just updates the Homebrew tap. There is **no CI that builds or tests anything**.
+Context on the issue's framing: the bug was hit downstream, in a repo that imports SwiftPandas as a package. SPM never builds or runs a dependency's test targets, and a binary consumer (`SWIFTPANDAS_USE_BINARY=1`) doesn't even have them in its package graph — so from that vantage "the tests never run" is accurate. Within *this* repo, though, binary mode is strictly opt-in (`Package.swift:52`, `== "1"`) and a plain `swift test` builds from source and runs `MetalMergeTests` — which fail today. The gap is that nothing does so automatically: the repo's only workflow is `.github/workflows/release.yml`, which just updates the Homebrew tap. This repo is the only place these tests can ever execute, and there is **no CI that builds or tests anything**.
 
 We are designing the test lane that closes that gap. Constraint: Metal tests assert `MetalDispatch.isAvailable` and expect a Metal-capable Mac, so the runner choice is the design decision.
 
