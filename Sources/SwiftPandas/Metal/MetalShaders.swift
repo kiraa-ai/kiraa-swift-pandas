@@ -453,10 +453,12 @@ internal enum MetalShaders {
     // row onto the slot's chain: atomic_exchange swaps the new row_index in
     // while returning the previous head (-1 for an empty chain), which is
     // saved in chain_next. This builds a LIFO singly-linked list of all
-    // right-table rows sharing the same key, enabling many-to-many join
-    // semantics in Phase 2. Chains are complete only when this kernel's
-    // dispatch finishes; the probe runs in a separate command buffer after
-    // that (MetalContext.dispatch waits per dispatch), which is what makes
+    // right-table rows sharing the same key. The probe kernel
+    // (merge_hash_probe, defined below) later walks each list to emit one
+    // join match per row — this is how one key matching many rows is
+    // supported. Chains are complete only when this kernel's dispatch
+    // finishes; the probe runs in a separate command buffer after that
+    // (MetalContext.dispatch waits per dispatch), which is what makes
     // relaxed atomic ordering sufficient throughout.
     // -----------------------------------------------------------------------
 
@@ -485,22 +487,26 @@ internal enum MetalShaders {
         uint mask = params.capacity - 1;
         uint slot = hash_int32(code) & mask;
 
+        // Insert this row into the slot owned by its key. Each pass through
+        // the loop ends one of three ways:
+        //   - the slot holds this row's key (just claimed, or already there):
+        //     push the row onto the slot's chain and return
+        //   - the slot holds a different key: linear-probe to the next slot
+        //   - the CAS failed spuriously: retry the same slot
         while (true) {
-            // Claim the slot's key if empty. On failure `expected` holds the key
-            // currently in the slot; a weak CAS may also fail spuriously, leaving
-            // `expected` == EMPTY_SLOT — retry the same slot in that case so one
-            // key can never occupy two slots.
             int expected = EMPTY_SLOT;
             bool claimed = atomic_compare_exchange_weak_explicit(
                     &hash_table[slot].key, &expected, code,
                     memory_order_relaxed, memory_order_relaxed);
+            // On CAS failure, `expected` holds the key currently in the slot.
             if (claimed || expected == code) {
-                // The slot owns this key. Every inserting thread pushes its row
-                // the same way: swap it in as the chain head and link the previous
-                // head (or the -1 empty-chain sentinel) behind it. Chains are
-                // complete only once the kernel finishes; relaxed ordering
-                // suffices because the probe runs in a later command buffer,
-                // after this dispatch completes.
+                // Push: swap this row in as the new chain head, then link the
+                // previous head behind it. An empty chain needs no special
+                // handling — its head is -1, which is also the end-of-chain
+                // marker every row links to eventually.
+                // Relaxed ordering is sufficient: chains are only read by the
+                // probe kernel, which runs in a later command buffer, after
+                // this dispatch has fully completed.
                 int old_head = atomic_exchange_explicit(
                     &hash_table[slot].row_index, (int)tid,
                     memory_order_relaxed);
@@ -510,9 +516,12 @@ internal enum MetalShaders {
                 return;
             }
             if (expected != EMPTY_SLOT) {
-                // Occupied by a different key — linear-probe onward.
+                // A different key owns this slot — probe onward.
                 slot = (slot + 1) & mask;
             }
+            // Otherwise the weak CAS failed spuriously even though the slot is
+            // empty (permitted by MSL) — loop again on this same slot, so one
+            // key can never end up split across two slots.
         }
     }
 
