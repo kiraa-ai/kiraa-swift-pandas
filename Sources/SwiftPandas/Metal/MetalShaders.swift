@@ -117,14 +117,14 @@
 //   **duplicate keys** in the right table (many-to-many joins). This is
 //   accomplished using a separate `chain_next` linked list array:
 //
-//   1. Hash the code and probe for the correct slot via linear probing.
-//   2. If the slot is empty (CAS succeeds), store the row index directly.
-//   3. If the slot already contains the same key (duplicate), use
-//      `atomic_exchange` to atomically swap in the new row index while
-//      retrieving the previous head of the chain. The previous head is then
-//      stored in `chain_next[tid]`, forming a singly-linked list of all
-//      right-table rows with the same key. The chain is effectively built
-//      in LIFO (stack) order.
+//   1. Hash the code and probe for the owning slot via linear probing,
+//      claiming the slot's key with a CAS when the slot is empty.
+//   2. Once the slot owns the key, every inserting thread — including the
+//      one that just claimed it — pushes its row onto the slot's chain the
+//      same way: `atomic_exchange` swaps the new row index into the slot
+//      while retrieving the previous head (-1 for an empty chain), which is
+//      then stored in `chain_next[tid]`. This forms a LIFO singly-linked
+//      list of all right-table rows sharing the same key.
 //
 // Merge Phase 2 — Hash Probe:
 //
@@ -449,11 +449,17 @@ internal enum MetalShaders {
     //         chain_next[N]  — linked list: chain_next[i] = previous row with
     //                          same key, or -1 if this is the oldest entry
     //
-    // The hash table stores one slot per unique key. When a duplicate key is
-    // inserted, the new row atomically replaces the slot's row_index (via
-    // atomic_exchange), and the previous row_index is saved in chain_next.
-    // This builds a LIFO singly-linked list of all right-table rows sharing
-    // the same key, enabling many-to-many join semantics in Phase 2.
+    // The hash table stores one slot per unique key. Every insert pushes its
+    // row onto the slot's chain: atomic_exchange swaps the new row_index in
+    // while returning the previous head (-1 for an empty chain), which is
+    // saved in chain_next. This builds a LIFO singly-linked list of all
+    // right-table rows sharing the same key. The probe kernel
+    // (merge_hash_probe, defined below) later walks each list to emit one
+    // join match per row — this is how one key matching many rows is
+    // supported. Chains are complete only when this kernel's dispatch
+    // finishes; the probe runs in a separate command buffer after that
+    // (MetalContext.dispatch waits per dispatch), which is what makes
+    // relaxed atomic ordering sufficient throughout.
     // -----------------------------------------------------------------------
 
     struct MergeHashEntry {
@@ -481,24 +487,26 @@ internal enum MetalShaders {
         uint mask = params.capacity - 1;
         uint slot = hash_int32(code) & mask;
 
+        // Insert this row into the slot owned by its key. Each pass through
+        // the loop ends one of three ways:
+        //   - the slot holds this row's key (just claimed, or already there):
+        //     push the row onto the slot's chain and return
+        //   - the slot holds a different key: linear-probe to the next slot
+        //   - the CAS failed spuriously: retry the same slot
         while (true) {
-            // Try to claim an empty slot via CAS
             int expected = EMPTY_SLOT;
-            if (atomic_compare_exchange_weak_explicit(
+            bool claimed = atomic_compare_exchange_weak_explicit(
                     &hash_table[slot].key, &expected, code,
-                    memory_order_relaxed, memory_order_relaxed)) {
-                // First row with this key in this slot — store directly
-                atomic_store_explicit(
-                    &hash_table[slot].row_index, (int)tid,
-                    memory_order_relaxed);
-                return;
-            }
-            int current = atomic_load_explicit(
-                &hash_table[slot].key, memory_order_relaxed);
-            if (current == code) {
-                // Duplicate key — prepend to the chain. atomic_exchange
-                // atomically swaps in our row index and returns the previous
-                // head, which we link via chain_next to form a LIFO list.
+                    memory_order_relaxed, memory_order_relaxed);
+            // On CAS failure, `expected` holds the key currently in the slot.
+            if (claimed || expected == code) {
+                // Push: swap this row in as the new chain head, then link the
+                // previous head behind it. An empty chain needs no special
+                // handling — its head is -1, which is also the end-of-chain
+                // marker every row links to eventually.
+                // Relaxed ordering is sufficient: chains are only read by the
+                // probe kernel, which runs in a later command buffer, after
+                // this dispatch has fully completed.
                 int old_head = atomic_exchange_explicit(
                     &hash_table[slot].row_index, (int)tid,
                     memory_order_relaxed);
@@ -507,8 +515,13 @@ internal enum MetalShaders {
                     memory_order_relaxed);
                 return;
             }
-            // Hash collision (different key) — linear probe
-            slot = (slot + 1) & mask;
+            if (expected != EMPTY_SLOT) {
+                // A different key owns this slot — probe onward.
+                slot = (slot + 1) & mask;
+            }
+            // Otherwise the weak CAS failed spuriously even though the slot is
+            // empty (permitted by MSL) — loop again on this same slot, so one
+            // key can never end up split across two slots.
         }
     }
 
