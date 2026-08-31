@@ -12,7 +12,7 @@ Format for each item:
 
 ---
 
-## Where we are today (v0.8.2-beta)
+## Where we are today (v0.8.3-beta)
 
 | Capability | Status |
 |---|---|
