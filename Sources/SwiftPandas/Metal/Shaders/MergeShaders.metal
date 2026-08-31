@@ -30,18 +30,21 @@ kernel void merge_hash_build(
     uint slot = hash_int32(code) & mask;
 
     while (true) {
+        // Claim the slot's key if empty. On failure `expected` holds the key
+        // currently in the slot; a weak CAS may also fail spuriously, leaving
+        // `expected` == EMPTY_SLOT — retry the same slot in that case so one
+        // key can never occupy two slots.
         int expected = EMPTY_SLOT;
-        if (atomic_compare_exchange_weak_explicit(
+        bool claimed = atomic_compare_exchange_weak_explicit(
                 &hash_table[slot].key, &expected, code,
-                memory_order_relaxed, memory_order_relaxed)) {
-            atomic_store_explicit(
-                &hash_table[slot].row_index, (int)tid,
-                memory_order_relaxed);
-            return;
-        }
-        int current = atomic_load_explicit(
-            &hash_table[slot].key, memory_order_relaxed);
-        if (current == code) {
+                memory_order_relaxed, memory_order_relaxed);
+        if (claimed || expected == code) {
+            // The slot owns this key. Every inserting thread pushes its row
+            // the same way: swap it in as the chain head and link the previous
+            // head (or the -1 empty-chain sentinel) behind it. Chains are
+            // complete only once the kernel finishes; relaxed ordering
+            // suffices because the probe runs in a later command buffer,
+            // after this dispatch completes.
             int old_head = atomic_exchange_explicit(
                 &hash_table[slot].row_index, (int)tid,
                 memory_order_relaxed);
@@ -50,7 +53,10 @@ kernel void merge_hash_build(
                 memory_order_relaxed);
             return;
         }
-        slot = (slot + 1) & mask;
+        if (expected != EMPTY_SLOT) {
+            // Occupied by a different key — linear-probe onward.
+            slot = (slot + 1) & mask;
+        }
     }
 }
 
