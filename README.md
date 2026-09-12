@@ -2,7 +2,7 @@
   <img src="swift_pandas.png" alt="SwiftPandas" width="400">
 </p>
 
-# SwiftPandas v0.8.0-beta
+# SwiftPandas v0.8.3-beta
 
 > **BETA RELEASE** — This library is under active development and testing. APIs may change between releases. We welcome bug reports and feedback via [GitHub Issues](https://github.com/kiraa-ai/kiraa-swift-pandas/issues).
 
@@ -13,6 +13,21 @@ SwiftPandas provides `DataFrame`, `Series`, and `Index` types for tabular data m
 The `swiftpandas` CLI ships a **resident-memory daemon mode** (`swiftpandas server start`) that lets multiple shell invocations share an in-memory `DataFrameRegistry`, so a load-once → many-pipes workflow is sub-15 ms per transform vs Python pandas's ~650 ms per-invocation cold-start tax. See [docs/SERVER.md](docs/SERVER.md) and the [examples/cli/](examples/cli/) directory for the full surface.
 
 **Want to try it for yourself?** [docs/TUTORIAL.md](docs/TUTORIAL.md) walks you through a complete analytics workflow twice — first in Python with pandas, then in `swiftpandas` running as a Homebrew-installed daemon. Same dataset, same operations, side-by-side timings. ~20 minutes start to finish.
+
+## What's new in v0.8.3-beta
+
+- **Fix: GPU inner joins no longer drop duplicate-key matches** — `merge_hash_build` had a lost-update race: the thread that claimed a hash slot published the key first and stored the chain head one step later, unconditionally, overwriting any same-key rows that chained in during the window; affected joins silently returned a different short row count on every run. Every insert now goes through a single exchange-and-link push, so the chain head is only ever handed off, never overwritten. Adds a high-contention regression test (50,000 build rows over 4 keys). Fixes #27.
+
+## What's new in v0.8.2-beta
+
+- **`CSVReader.readValidated(from:)`** — a throwing sibling of `readWithReport(from:)`. Returns the frame only when every declared float, integer, or bool contract column parsed; otherwise throws `CSVContractError` carrying one `ColumnParseFailure` per offending column, with `description` naming each column, its failure count, and the first bad cell. Under `.infer` and `.allStrings` it never throws. `readWithReport` is unchanged. Closes #23.
+- `CSVContractError` is `Sendable` and `CustomStringConvertible`, so `"\(error)"` prints the report rather than a struct dump.
+
+## What's new in v0.8.1-beta
+
+- **Fix: operator-derived NAs no longer erased** — `BitVector.allValid` is now computed from the bitmap on every call instead of a cached flag. Previously `&` and `~` could leave the cache stale, so a column produced by `+ - * /` against an all-valid operand reported "all valid" while carrying an NA; `sortValues`, boolean filters, `groupBy` aggregates, `toCSV()` and `writeSPB` then surfaced the placeholder value where `nil` belonged. Fixes #18.
+- `BitVector` equality now compares bits and length only, so bitmaps with identical contents are `==` regardless of how they were built.
+- New `BitVectorInvariantTests` pin the invariant end to end. Cost: `allValid` is O(*n* / 64) (one hardware popcount per word); the 1M-row benchmark gate moved ≤0.1%.
 
 ## What's new in v0.8.0-beta
 
@@ -59,6 +74,7 @@ The **hot-cache release**: SwiftPandas now works as an in-process **analytics da
 - **Canonical RFC-4180 codec** — `CSVLine.parse` / `format` / `escapeField` with two named quoting modes (`CSVQuoting.minimal` and `.all` aka QUOTE_ALL); `CSVWriter` and `toCSV` gain a `quoting:` parameter for write-side symmetry.
 - **Join-index utilities** — `df.index(on:)`, composite-key `index(on:separator:)`, and `df.lookupTable(key:value:)` build O(1) join dictionaries with a documented **last-row-wins** guarantee.
 - **`estimatedBytes` accuracy pass** — string-column accounting now models array slots, small-string inlining, and heap-buffer headers; tested within ±20% of the documented model, so `FrameCache` budgets track real memory.
+- **LLM grammar & prompt kit** — new [docs/llm-grammar.md](docs/llm-grammar.md): a comprehensive ontology-and-grammar reference for the CLI pipe DSL, written for large language models that translate natural-language requests into pipelines. Includes lexical rules and EBNF for all 12 operations, a per-operation reference with pandas equivalents and pitfalls, an NL→DSL cookbook, ready-to-use system/few-shot/repair prompts, and a parser/runtime error appendix. Every example pipeline is validated against the built CLI.
 
 ## What's new in v0.6.2-beta
 
@@ -214,7 +230,7 @@ SwiftPandas supports two SwiftPM consumption modes from a single `Package.swift`
 
 ### Option A — Source build (default)
 
-Add SwiftPandas to your `Package.swift` and pin to the v0.8.0-beta tag (or track `main` for development):
+Add SwiftPandas to your `Package.swift` and pin to the v0.8.3-beta tag (or track `main` for development):
 
 ```swift
 // swift-tools-version: 5.9
@@ -225,7 +241,7 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v16)],
     dependencies: [
         // Recommended: pin to a tagged release
-        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.8.0-beta"),
+        .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", exact: "0.8.3-beta"),
 
         // Or track the latest development:
         // .package(url: "https://github.com/kiraa-ai/kiraa-swift-pandas.git", branch: "main"),
@@ -430,7 +446,7 @@ JSON format:
 | `-i`, `--input` | Input CSV file path (required in CLI mode) |
 | `-o`, `--output` | Output CSV file path (stdout if omitted) |
 | `-c`, `--chain` | Inline DSL transform chain |
-| `-f`, `--file` | Path to a `.json` transform file |
+| `-f`, `--file` | Path to a transform file: `.json` (structured) or any other extension (plain-text pipe DSL, `#` comments allowed) |
 | `--sep` | Column delimiter (default: `,`) |
 | `--dry-run` | Print schema + parsed chain, no output written |
 | `--verbose` | Detailed step-by-step logging with timing (stderr) |
@@ -453,24 +469,29 @@ JSON format:
 | `drop` | `drop(col1, col2)` | Remove specified columns |
 | `head` | `head(n)` | Keep first n rows |
 | `tail` | `tail(n)` | Keep last n rows |
-| `cast` | `cast(col, Type)` | Type coercion: `Int`, `Double`, `String` |
+| `cast` | `cast(col, Type)` | Type coercion: `Int`, `Double`, `Float`, `String` |
+
+The full grammar — lexical rules, EBNF, per-operation semantics and pitfalls, and an NL→DSL cookbook — is documented in **[docs/llm-grammar.md](docs/llm-grammar.md)**, which also ships ready-to-use prompt templates for driving the DSL from a large language model. Two behaviors worth knowing: `agg` targets (including `count`) must be numeric non-key columns, and one condition is allowed per `filter` (chain filters for AND; OR is not expressible).
 
 ### Example Scripts
 
-10 example bash scripts are provided in `examples/cli/`:
+13 example bash scripts are provided in `examples/cli/`:
 
 | Script | Description |
 |---|---|
+| `00_demo_resident_memory.sh` | Resident-memory daemon workflow demo |
 | `01_basic_filter.sh` | Simple filter on a numeric column |
 | `02_filter_sort_head.sh` | Filter + sort + head pipeline |
 | `03_groupby_agg.sh` | GroupBy with multiple aggregations |
 | `04_derive_computed_column.sh` | Derive a profit column, filter, sort |
 | `05_select_rename_round.sh` | Select, rename, and round columns |
 | `06_json_pipeline.sh` | Run transforms from a JSON file |
-| `07_dry_run.sh` | Validate pipeline without writing output |
-| `08_verbose_pipeline.sh` | Verbose mode showing per-stage row counts |
+| `07_inspect_resident_data.sh` | Inspect DataFrames held by the daemon |
+| `08_chained_pipelines.sh` | Multiple pipelines against shared resident data |
 | `09_write_output.sh` | Full pipeline writing to CSV file |
 | `10_error_handling.sh` | Demonstrate error messages and `--help-ops` |
+| `11_large_groupby_sum.sh` | GroupBy sum on a large generated dataset |
+| `12_dataframe_info.sh` | Schema / info output for a loaded DataFrame |
 
 ### GUI Mode (macOS)
 
@@ -525,82 +546,61 @@ Homebrew tap).
 
 ```
 SwiftPandas/
+├── Package.swift                   # SPM manifest (source build by default; SWIFTPANDAS_USE_BINARY=1 → XCFramework)
 ├── project.yml                     # XcodeGen project spec
-├── SwiftPandas.xcodeproj/          # Generated Xcode project
-├── benchmarks/
-│   ├── benchmark_pandas.py         # Python vs Swift side-by-side benchmark suite
-│   ├── run_all.py                  # Run all 30 individual benchmarks
-│   └── tests/                      # 30 individual benchmark scripts (01-30)
+├── SwiftPandas.xcodeproj/          # Generated Xcode project (regenerate with `xcodegen generate`)
 ├── Sources/
 │   ├── CSkipList/                  # C: skiplist for windowed median (-O3)
 │   ├── CKHash/                     # C: klib hash tables (-O3)
 │   ├── CUltraJSON/                 # C: UltraJSON encoder/decoder (-O3)
-│   └── SwiftPandas/
-│       ├── Core/
-│       │   ├── DType/              # Type system (DType protocol + concrete types)
-│       │   ├── Array/              # Array types (NativeArray, NullableArray, StringArray, Column)
-│       │   ├── Missing/            # BitVector validity bitmaps
-│       │   └── Storage/            # CoW buffer management
-│       ├── Index/                  # Index types (RangeIndex, StringIndex, Int64Index)
-│       ├── Series/                 # Series type + arithmetic + comparison + apply
-│       ├── DataFrame/              # DataFrame type with GroupBy, Merge, Concat, DataFrameError
-│       ├── Lazy/                   # Lazy evaluation & query optimization
-│       │   ├── Predicate.swift         # Col, ColumnPredicate expression tree + operators
-│       │   ├── QueryPlan.swift         # Logical query plan (indirect enum)
-│       │   ├── LazyDataFrame.swift     # LazyDataFrame API + LazyGroupBy
-│       │   ├── QueryOptimizer.swift    # 4-pass optimizer (fusion, pushdown, elimination)
-│       │   └── QueryExecutor.swift     # Recursive plan execution via eager DataFrame ops
-│       ├── Metal/                  # Metal GPU compute acceleration
-│       │   ├── Shaders/
-│       │   │   ├── ShaderCommon.h      # MurmurHash3, validity bitmap helpers
-│       │   │   ├── GroupByShaders.metal # 5 GPU kernels: hash_insert, reduce_{sum,min,max,count}
-│       │   │   └── MergeShaders.metal  # 2 GPU kernels: hash_build, hash_probe
-│       │   ├── MetalContext.swift       # Singleton device/queue/library + pipeline cache
-│       │   ├── MetalShaders.swift       # SPM-only: embedded MSL source strings
-│       │   ├── MetalGroupBy.swift       # GPU GroupBy: factorize → hash → reduce
-│       │   ├── MetalMerge.swift         # GPU Merge: co-factorize → hash build → probe
-│       │   └── MetalDispatch.swift      # Threshold-based GPU/CPU routing (≥500K rows)
-│       ├── IO/
-│       │   ├── CSV/                # CSV reader/writer with type inference
-│       │   └── JSON/               # JSON reader/writer (records orientation)
-│       └── Numeric/                # VectorOps with Accelerate support
-├── SwiftPandasApp/                 # macOS demo application (SwiftUI)
+│   ├── SwiftPandas/                # Library target
+│   │   ├── Core/
+│   │   │   ├── DType/              # Type system (PandasDType protocol hierarchy + DTypeEnum)
+│   │   │   ├── Array/              # NativeArray, NullableArray, StringArray, Column, PandasArray
+│   │   │   ├── Missing/            # BitVector validity bitmaps
+│   │   │   └── Storage/            # CoW ArrayBuffer
+│   │   ├── Index/                  # RangeIndex, StringIndex, Int64Index
+│   │   ├── Series/                 # Series type + arithmetic + comparison + apply
+│   │   ├── DataFrame/              # DataFrame, GroupBy, Merge, Concat, join-index utilities,
+│   │   │                           #   memory accounting (estimatedBytes), DataFrameError
+│   │   ├── Vector/                 # VectorArray (.floatVector columns), similarity search, vector ops
+│   │   ├── Lazy/                   # Predicate tree, QueryPlan, LazyDataFrame, QueryOptimizer, QueryExecutor
+│   │   ├── Metal/                  # GPU GroupBy, Merge, vector search; MetalContext + MetalDispatch
+│   │   │   ├── Shaders/            # .metal sources (Xcode builds) + ShaderCommon.h
+│   │   │   └── MetalShaders.swift  # Same MSL as Swift strings (SPM builds) — edit both together
+│   │   ├── IO/
+│   │   │   ├── CSV/                # Two-tier CSV reader, strict/contract reader, streaming, writer
+│   │   │   ├── JSON/               # Records-oriented JSON reader/writer (CUltraJSON-backed)
+│   │   │   └── SPB/                # SwiftPandas Binary format: writer, reader, layout constants
+│   │   ├── HotStore/               # Budgeted, file-stamp-validated hot cache (TextCache + FrameCache)
+│   │   └── Numeric/                # VectorOps with Accelerate (vDSP) support + scalar fallbacks
+│   └── SwiftPandasCLI/             # `swiftpandas` executable target
+│       ├── SwiftPandasCLI.swift        # @main root command (ArgumentParser); `run` is the default
+│       ├── Commands/                   # RunCommand (one-shot), ServerCommands, ClientCommands
+│       ├── DSL/                        # Token, Parser, Operation IR, JSONTransformParser
+│       ├── Transforms/                 # TransformRunner — sequential pipeline executor
+│       ├── Server/                     # Daemon, Client, Transport (Unix socket), Protocol (wire JSON),
+│       │                               #   Registry (actor), Handlers, Paths, PIDFile
+│       └── GUI/                        # SwiftUI GUI mode (--gui)
+├── SwiftPandasApp/                 # macOS SwiftUI demo app (Xcode target only)
 │   ├── SwiftPandasApp.swift        # @main entry point
 │   ├── ContentView.swift           # TabView with 3 demo tabs
-│   └── DemoViews/
-│       ├── DataFrameDemoView.swift # DataFrame creation, filter, sort, aggregate
-│       ├── GroupByDemoView.swift   # GroupBy sum/mean/count/min/max
-│       └── BenchmarkView.swift     # CPU vs GPU benchmark with configurable size
-├── Sources/SwiftPandasCLI/         # CLI executable target
-│   ├── SwiftPandasCLI.swift            # @main entry point (ArgumentParser)
-│   ├── CLIError.swift                  # Descriptive error types
-│   ├── DSL/
-│   │   ├── Token.swift                 # Tokenizer (char-by-char scanner)
-│   │   ├── Operation.swift             # Operation enum (parsed IR)
-│   │   ├── Parser.swift                # Pipe-chained DSL parser
-│   │   └── JSONTransformParser.swift   # Structured JSON transform file parser
-│   ├── Transforms/
-│   │   └── TransformRunner.swift       # Sequential operation pipeline executor
-│   └── GUI/
-│       └── GUIApp.swift                # SwiftUI GUI mode (--gui flag)
-├── examples/
-│   ├── cli/                        # 10 example CLI scripts (01-10)
-│   └── data/                       # Sample data & transform files
+│   └── DemoViews/                  # DataFrameDemoView, GroupByDemoView, BenchmarkView
 ├── Tests/
-│   ├── SwiftPandasTests/           # 229 library tests
-│   │   ├── SwiftPandasTests.swift      # Core unit tests (types, Series, DataFrame, GroupBy, Merge)
-│   │   ├── CSVDataFrameTests.swift     # Comprehensive API documentation & demo tests
-│   │   ├── BenchmarkTests.swift        # Performance benchmarks (Swift vs Python pandas)
-│   │   ├── LazyDataFrameTests.swift    # Lazy evaluation, predicates, optimizer tests
-│   │   ├── MetalTests.swift            # GPU correctness tests (GroupBy, Merge, dispatch)
-│   │   ├── NewFeaturesTests.swift      # Equatable, Sequence, JSON I/O, throwing API tests
-│   │   └── SampleData/employees.csv    # 15-row sample dataset
-│   └── SwiftPandasCLITests/        # 68 CLI tests
-│       ├── ParserTests.swift           # Tokenizer, DSL parser, JSON parser tests
-│       ├── TransformTests.swift        # Transform operation tests
-│       ├── IntegrationTests.swift      # End-to-end pipeline tests
-│       └── Fixtures/                   # Test data (sales.csv, transforms.json)
-└── Package.swift                   # SPM manifest
+│   ├── SwiftPandasTests/           # 377 library tests (16 files) + SampleData/employees.csv
+│   └── SwiftPandasCLITests/        # 186 CLI + daemon tests (15 files) + Fixtures/
+├── benchmarks/
+│   ├── benchmark_pandas.py         # Python vs Swift side-by-side benchmark suite
+│   ├── run_all.py                  # Run all 30 individual benchmarks
+│   └── tests/                      # 30 individual benchmark scripts (01-30)
+├── examples/
+│   ├── cli/                        # 13 example CLI scripts (00-12)
+│   └── data/                       # sales.csv + transforms.json
+├── scripts/
+│   ├── build-xcframework.sh        # Build SwiftPandas.xcframework.zip + print checksum
+│   └── build-release.sh            # Sign, notarize, and publish the CLI (maintainer only)
+└── docs/                           # SERVER.md, INSTALL.md, TUTORIAL.md, ROADMAP.md, vectors.md,
+                                    #   hotstore.md, llm-grammar.md, EMBEDDING.md, HOMEBREW.md, …
 ```
 
 ## Xcode Project Targets
@@ -608,9 +608,10 @@ SwiftPandas/
 | Target | Type | Description |
 |---|---|---|
 | **SwiftPandas** | macOS Framework | Core library with Metal shaders precompiled to `default.metallib` |
+| **SwiftPandas-iOS** | iOS Framework | Same sources built for iphoneos + iphonesimulator |
 | **SwiftPandasApp** | macOS Application | SwiftUI demo app with DataFrame, GroupBy, and Benchmark views |
-| **SwiftPandasTests** | Unit Test Bundle | 229 tests including GPU correctness, lazy evaluation, and performance benchmarks |
-| **SwiftPandasCLITests** | Unit Test Bundle | 68 tests covering DSL parsing, transforms, and end-to-end CLI pipelines |
+| **SwiftPandasCLI** | Command-line tool | The `swiftpandas` binary (one-shot CLI + resident-memory daemon) |
+| **SwiftPandasTests** | Unit Test Bundle | 377 library tests including GPU correctness, lazy evaluation, vectors, SPB, HotStore, and benchmarks |
 
 The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) from `project.yml`. Build settings:
 
@@ -618,11 +619,13 @@ The project is generated via [XcodeGen](https://github.com/yonaskolb/XcodeGen) f
 - **C libraries**: `-O3` in all configurations
 - **Metal**: Precompiled `.metal` → `default.metallib` at build time
 - **Framework**: `ENABLE_TESTABILITY = YES` in Release for benchmark validation
-- **Deployment target**: macOS 13.0
+- **Deployment target**: macOS 13.0 / iOS 16.0
+
+> **Note:** `SwiftPandasCLITests` is intentionally not an Xcode target — macOS executables don't export symbols for `@testable import`, so the CLI test bundle only links under SwiftPM. Run it with `swift test --filter SwiftPandasCLITests` (see the note at the bottom of `project.yml`).
 
 ## Metal GPU Acceleration
 
-SwiftPandas uses Metal compute shaders to accelerate GroupBy and Merge operations on Apple Silicon. GPU dispatch is transparent — operations automatically use the GPU for datasets ≥ 500K rows and fall back to the CPU for smaller datasets.
+SwiftPandas uses Metal compute shaders to accelerate GroupBy, Merge, and vector similarity search on Apple Silicon. GPU dispatch is transparent — GroupBy and Merge automatically use the GPU above a row-count threshold and fall back to the CPU below it (or whenever the GPU path returns `nil`).
 
 ### Architecture
 
@@ -646,7 +649,7 @@ CPU (Swift)                          GPU (Metal Compute Shaders)
 
 ### Metal Shader Details
 
-**7 GPU Compute Kernels** in 2 shader files:
+**8 GPU compute kernels** in 3 shader files:
 
 #### GroupBy Shaders (`GroupByShaders.metal`)
 - **`groupby_hash_insert`** — Open-addressing hash table maps factorized key codes to group IDs. Uses `atomic_compare_exchange_weak` for thread-safe slot insertion. Spin-waits on group ID write for concurrent readers.
@@ -658,6 +661,9 @@ CPU (Swift)                          GPU (Metal Compute Shaders)
 - **`merge_hash_build`** — Builds hash table from right table's factorized key codes. Duplicate keys are chained via `chain_next` linked list using `atomic_exchange`.
 - **`merge_hash_probe`** — Each left-table thread probes the hash table. Follows `chain_next` chains for duplicate matches. Output pairs are written to global buffers via `atomic_fetch_add` on an output counter.
 
+#### Vector Search Shader (`VectorSearchShaders.metal`)
+- **`swiftpandas_vector_batch_cosine`** — One thread per candidate row of a compacted Float32 plane; emits the raw cosine score per candidate. Threshold, top-K, and tie-break run on the CPU, and results must match the CPU vDSP path to ≤ 1e-5 with identical ranking (see `MetalVectorSearchTests`). Used by `similaritySearch` when the backend is `.metal` or `.auto`.
+
 #### Shared Utilities (`ShaderCommon.h`)
 - **`hash_uint`** / **`hash_int32`** — MurmurHash3-style finalizer for integer hashing
 - **`hash_combine`** — Hash combiner using the golden ratio constant (`0x9e3779b9`)
@@ -668,6 +674,7 @@ CPU (Swift)                          GPU (Metal Compute Shaders)
 
 ```swift
 public enum MetalDispatch {
+    // Overridable at launch via SWIFTPANDAS_GROUPBY_THRESHOLD / SWIFTPANDAS_MERGE_THRESHOLD
     public static var groupByThreshold = 10_000_000
     public static var mergeThreshold   = 500_000
 
@@ -677,58 +684,97 @@ public enum MetalDispatch {
 }
 ```
 
-- **Threshold-based**: CPU fast-path beats GPU for < 500K rows due to dispatch overhead
+- **Threshold-based**: the CPU fast path beats the GPU below the thresholds due to dispatch overhead; both thresholds are settable in code or via environment variable
 - **Automatic fallback**: Returns `nil` if GPU fails → caller uses CPU path
 - **Unified memory**: Apple Silicon shares memory between CPU and GPU — near zero-copy buffer transfers
-- **Pipeline caching**: All 7 compute pipeline states are created once at `MetalContext` initialization
+- **Pipeline caching**: All 8 compute pipeline states are created once at `MetalContext` initialization
 
 ### Xcode vs SPM Shader Loading
 
 | Build System | Shader Loading | Performance |
 |---|---|---|
 | **Xcode** | `.metal` files precompiled to `default.metallib` at build time | Instant load |
-| **SPM** | MSL source strings compiled at runtime via `device.makeLibrary(source:)` | ~100ms first-call overhead |
+| **SPM** | MSL source strings (`MetalShaders.swift`) compiled at runtime via `device.makeLibrary(source:)` | ~100ms first-call overhead |
+
+The two copies of the shader source must be kept in sync — any kernel change goes into both the `.metal` file and the matching string in `MetalShaders.swift`.
 
 ## Testing
 
 ### Running Tests
 
-297 tests across 9 test files. All tests use XCTest.
+563 tests across 31 test files (377 library, 186 CLI + daemon). All tests use XCTest.
 
 ```bash
 # Run all tests (Package.swift applies -O optimization even in debug config)
 swift test
 
-# Run a specific test file
-swift test --filter SwiftPandasTests       # core unit tests
-swift test --filter CSVDataFrameTests      # CSV & API demos
-swift test --filter LazyDataFrameTests     # lazy evaluation engine
-swift test --filter MetalTests             # GPU compute shaders
-swift test --filter BenchmarkTests         # performance benchmarks
-swift test --filter NewFeaturesTests       # Equatable, Sequence, JSON I/O, throwing API
+# Run one test target
+swift test --filter SwiftPandasTests          # library (also matches the SwiftPandasTests class)
+swift test --filter SwiftPandasCLITests       # CLI + daemon
 
-# CLI tests
-swift test --filter ParserTests            # DSL tokenizer & parser
-swift test --filter TransformTests         # transform operations
-swift test --filter IntegrationTests       # end-to-end pipelines
+# Run a specific test class
+swift test --filter LazyDataFrameTests        # lazy evaluation engine
+swift test --filter MetalTests                # GPU compute shaders
+swift test --filter VectorSearchTests         # CPU similarity search
+swift test --filter SPBTests                  # SPB binary format
+swift test --filter HotStore                  # hot cache (HotStoreLifecycle/ByteIdentity/View classes)
+swift test --filter ServerIntegrationTests    # real daemon via the CLI binary
+
+# Run a single test method (Class/method)
+swift test --filter 'SPBTests/test_roundTrip_allDtypes_withNulls'
 ```
 
 > **Note:** Package.swift specifies `-O` (optimized) for both the library and
 > test targets, so `swift test` produces optimized code suitable for benchmarking.
+>
+> The daemon tests (`ForegroundDaemonTests`, `BackgroundDaemonTests`,
+> `ServerIntegrationTests`, `CLISubcommandTests`) exec the real `swiftpandas`
+> binary that `swift test` builds, and isolate themselves from `~/.swiftpandas/`
+> via the `SWIFTPANDAS_RUNTIME_DIR` / `SWIFTPANDAS_SOCK` / `SWIFTPANDAS_PIDFILE`
+> overrides. `MetalTests` expect a Metal-capable Mac.
 
 ### Test Files
 
+**Library (`Tests/SwiftPandasTests`, 377 tests)**
+
 | File | Tests | Coverage |
 |---|---|---|
-| **SwiftPandasTests.swift** | ~90 | Core types (DType, NativeArray, BitVector, NullableArray, StringArray, Column, Index), Series (construction, aggregation, statistics, NA handling, arithmetic, comparison, apply/map, cumsum, unique/duplicated, sorting), DataFrame (construction, column access, row access, loc, filtering, mask subscript, single/multi-column sorting, aggregation, describe, duplicates, concat, rename), GroupBy (single/multi-column), Merge (inner, left), integration workflow |
-| **CSVDataFrameTests.swift** | ~10 | API documentation demos covering Series, DataFrame, GroupBy, Merge, Concat, CSV I/O, Core Types, Index Types, full pipeline; CSV file round-trip |
-| **LazyDataFrameTests.swift** | ~44 | Predicates (comparison, string, AND/OR/NOT), LazyDataFrame ops (filter, select, drop, sort, head, groupBy, merge), chained operations, query optimizer (filter fusion, predicate pushdown, limit elimination, identity select removal), explain output, edge cases (empty, single-row, all-filtered, NA values) |
-| **MetalTests.swift** | ~16 | Metal dispatch threshold logic, GPU GroupBy correctness (sum/mean/count/min/max, large dataset 100K), GPU Merge (inner join, no-matches, duplicate keys, column naming), GPU/CPU integration |
-| **NewFeaturesTests.swift** | ~21 | Equatable conformance (Series, DataFrame, Column), Sequence conformance (Series, DataFrame), JSON I/O (read/write string, path, URL, Data), throwing API, convenience initializers, Bool/Int? Series, fromOptionalInts/fromOptionalBools |
-| **BenchmarkTests.swift** | ~15 | Performance benchmarks at 1M rows: Series aggregation/arithmetic/sorting/statistics, DataFrame construction/filtering/sorting/aggregation, GroupBy, Merge, Concat, CSV I/O, Lazy vs Eager |
-| **ParserTests.swift** | ~37 | CLI: Tokenizer, DSL parser (all 12 operations), arithmetic expression precedence, JSON transform parser, error cases |
-| **TransformTests.swift** | ~21 | CLI: Filter, sort, rename, select, drop, head, tail, round, derive, cast, groupby+agg, chained pipelines |
-| **IntegrationTests.swift** | ~10 | CLI: Full pipeline (inline & JSON), empty results, derive pipeline, verbose mode, JSON error messages, edge cases |
+| **SwiftPandasTests.swift** | 123 | Core types (DType, NativeArray, BitVector, NullableArray, StringArray, Column, Index), Series (construction, aggregation, statistics, NA handling, arithmetic, comparison, apply/map, cumsum, unique/duplicated, sorting), DataFrame (construction, access, loc/iloc, filtering, sorting, aggregation, describe, duplicates, concat, rename), GroupBy, Merge, integration workflow |
+| **LazyDataFrameTests.swift** | 44 | Predicates, LazyDataFrame ops, chained operations, optimizer passes (filter fusion, predicate pushdown, limit elimination, identity-select removal), `explain` output, edge cases |
+| **HotStoreTests.swift** | 25 | Hermetic HotStore tests via an in-memory `FileSystemProbe`: budget/eviction, pinning, stamp validation, publish semantics, stats |
+| **CSVContractTests.swift** | 21 | Contract-driven CSV parsing (strict / allStrings), RFC-4180 `CSVLine` codec, writer quoting modes, streaming row reader |
+| **NewFeaturesTests.swift** | 21 | Equatable/Sequence conformance, JSON I/O, throwing API, convenience initializers, Bool/Int? Series |
+| **VectorSearchTests.swift** | 21 | CPU similarity search: exact numeric pins (bit-parity contract) and determinism |
+| **BenchmarkTests.swift** | 16 | 1M-row benchmarks: Series, DataFrame, GroupBy, Merge, Concat, CSV I/O, Lazy vs Eager |
+| **MetalTests.swift** | 16 | Dispatch thresholds, GPU GroupBy correctness, GPU Merge (inner, no-match, duplicate keys), GPU/CPU integration |
+| **VectorColumnTests.swift** | 16 | `VectorArray` construction and invariants, Column/Series integration, accessors |
+| **VectorOpsMatrixTests.swift** | 16 | Every DataFrame op verified on a mixed scalar+vector frame — supported ops work, unsupported ops throw |
+| **JoinIndexAndMemoryTests.swift** | 15 | Join-index utilities (last-row-wins) and `estimatedBytes` accuracy bound |
+| **SPBTests.swift** | 15 | SPB round-trip losslessness (all 5 dtypes × null patterns), byte-identical double writes, rejection of corrupt/truncated files |
+| **CSVDataFrameTests.swift** | 10 | API documentation demos covering Series, DataFrame, GroupBy, Merge, Concat, CSV I/O; CSV file round-trip |
+| **MetalVectorSearchTests.swift** | 7 | CPU↔Metal score parity (≤ 1e-5, identical ranking), strict `.metal` throw policy, `.auto` fallback |
+| **CSVMappedReadTests.swift** | 6 | Memory-mapped `readCSV(path:)` path (Phase A loader work) |
+| **DataFrameMemoryTests.swift** | 5 | `DataFrame.estimatedBytes` accounting used by the daemon's `list`/`drop` |
+
+**CLI + daemon (`Tests/SwiftPandasCLITests`, 186 tests)**
+
+| File | Tests | Coverage |
+|---|---|---|
+| **ParserTests.swift** | 37 | Tokenizer, DSL parser (all 12 operations), arithmetic expression precedence, JSON transform parser, error cases |
+| **TransformTests.swift** | 21 | Filter, sort, rename, select, drop, head, tail, round, derive, cast, groupby+agg, chained pipelines |
+| **HandlersTests.swift** | 19 | Daemon command handlers end-to-end against an in-process `DataFrameRegistry` |
+| **ProtocolTests.swift** | 13 | Wire-protocol JSON round-trips pinning the request/response schema |
+| **CLISubcommandTests.swift** | 12 | Black-box tests of the `swiftpandas` binary's subcommand surface |
+| **KindTaxonomyTests.swift** | 11 | The `kind` tag (transaction/metadata) across registry and wire protocol |
+| **PIDFileTests.swift** | 11 | `PIDFile` semantics in isolated temp directories |
+| **IntegrationTests.swift** | 10 | One-shot `run` pipelines (inline & JSON), empty results, verbose mode, error messages |
+| **RegistryTests.swift** | 10 | `DataFrameRegistry` actor: bind/lookup/drop/list semantics |
+| **PathsTests.swift** | 9 | Runtime-dir / socket / pid-file resolution and env overrides |
+| **ServerIntegrationTests.swift** | 9 | Entire `server` surface driven through the real CLI binary against a background daemon |
+| **BackgroundDaemonTests.swift** | 8 | `server start` re-exec/`setsid()` spawn path |
+| **ForegroundDaemonTests.swift** | 8 | Foreground daemon driven via the `Client` API |
+| **TransportTests.swift** | 8 | `Transport` over a real `NWListener` on a temp Unix-domain socket |
+
 
 ### Python Benchmarks
 
@@ -878,7 +924,7 @@ Both Swift and Python benchmarks are compiled with full optimizations:
 - [x] Concat with mixed column types
 - [x] Pretty-printed table output with box drawing
 - [x] Performance benchmarks (Swift vs Python pandas)
-- [x] Metal GPU compute shaders for GroupBy and Merge (7 kernels)
+- [x] Metal GPU compute shaders for GroupBy and Merge (7 kernels) plus batch-cosine vector search (8 total)
 - [x] Precompiled Metal shaders via Xcode (`.metal` → `default.metallib`)
 - [x] Python vs Swift side-by-side benchmark suite (`benchmarks/benchmark_pandas.py`)
 - [x] 30 individual detailed benchmark scripts (`benchmarks/tests/`)

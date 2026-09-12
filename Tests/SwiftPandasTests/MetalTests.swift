@@ -487,6 +487,39 @@ final class MetalMergeTests: XCTestCase {
         XCTAssertEqual(result.rowCount, 5)
     }
 
+    func testInnerJoinHighContentionDuplicateKeys() {
+        // Many build-side rows over few distinct keys drives maximal
+        // concurrent insertion into the same hash slots, exercising the
+        // build kernel's chain push under contention on any GPU width.
+        let rightN = 50_000
+        let keyCount = 4
+
+        var rightIds = [String]()
+        var rightVals = [Double]()
+        for i in 0..<rightN {
+            rightIds.append("k\(i % keyCount)")
+            rightVals.append(Double(i))
+        }
+        let leftIds = (0..<keyCount).map { "k\($0)" }
+
+        let left = DataFrame(columns: [
+            ("id", Column.fromStrings(leftIds)),
+            ("lval", Column.fromDoubles([Double](repeating: 0, count: keyCount))),
+        ])
+        let right = DataFrame(columns: [
+            ("id", Column.fromStrings(rightIds)),
+            ("rval", Column.fromDoubles(rightVals)),
+        ])
+
+        guard let result = MetalMerge.innerJoin(left: left, right: right, on: "id") else {
+            XCTFail("GPU merge returned nil")
+            return
+        }
+
+        // Each right row matches exactly one left row (one left row per key).
+        XCTAssertEqual(result.rowCount, rightN)
+    }
+
     func testMergeIntegration() {
         // Test that df.merge() uses GPU path transparently for inner joins
         let n = 2_000

@@ -3,8 +3,9 @@
 // CSVReaderStrict.swift
 // SwiftPandas — CSV I/O
 //
-// Contract-driven (strict / all-strings) parsing for CSVReader, plus the
-// per-column parse-failure report. This is the upstreamed replacement for
+// Contract-driven (strict / all-strings) parsing for CSVReader, the
+// per-column parse-failure report, and the throwing read that refuses a
+// frame whose contract was violated. This is the upstreamed replacement for
 // engine-side "makeColumn" loaders: dtype decisions come from a declared
 // contract, never from inference, so all-digit identifier columns can never
 // silently numerify.
@@ -51,6 +52,33 @@ public struct ColumnParseFailure: Equatable, Sendable {
     }
 }
 
+/// A strict read failed its declared contract: at least one cell in a
+/// declared column did not parse as its dtype. Carries the per-column report
+/// so the message names every offender.
+public struct CSVContractError: Error, LocalizedError, CustomStringConvertible, Sendable {
+    /// One entry per column that had at least one cell fail its declared
+    /// dtype, in header order.
+    public let failures: [ColumnParseFailure]
+
+    /// Creates an error from the per-column report of a strict read.
+    public init(failures: [ColumnParseFailure]) {
+        self.failures = failures
+    }
+
+    /// Every failing column on one line: its name, how many cells failed,
+    /// the declared dtype, and the first offending cell with its row.
+    public var description: String {
+        failures.map {
+            "\($0.column): \($0.failedCount) \($0.failedCount == 1 ? "cell" : "cells") failed \($0.declaredType) "
+            + "(first '\($0.firstFailedValue)' at row \($0.firstFailedRow))"
+        }.joined(separator: "; ")
+    }
+
+    /// The same text as ``description``, so `localizedDescription` names
+    /// every offender rather than a generic operation-failed message.
+    public var errorDescription: String? { description }
+}
+
 extension CSVReader {
     // MARK: - Public entry points
 
@@ -86,6 +114,19 @@ extension CSVReader {
         return data.withUnsafeBytes { rawBuf in
             readTypedFromBytes(rawBuf.bindMemory(to: UInt8.self))
         }
+    }
+
+    /// ``readWithReport(from:)-(String)`` with the report enforced: a frame is
+    /// returned only when it is empty, so a corrupt cell can never pass as NA.
+    /// - Parameter text: The CSV text to parse.
+    /// - Returns: The parsed frame.
+    /// - Throws: `CSVContractError` when any float, integer, or bool contract
+    ///   column had a cell that failed to parse. Never throws under
+    ///   ``ParseMode/infer`` or ``ParseMode/allStrings``.
+    public func readValidated(from text: String) throws -> DataFrame {
+        let (frame, failures) = readWithReport(from: text)
+        guard failures.isEmpty else { throw CSVContractError(failures: failures) }
+        return frame
     }
 
     // MARK: - Typed column building
