@@ -846,7 +846,7 @@ public struct CSVReader: Sendable {
         return parseFieldGridSerial(bytes)
     }
 
-    /// The single-pass serial grid scanner — the semantics oracle for the
+    /// The single-pass serial grid scanner — the semantics reference for the
     /// chunked parallel scanner, and the fallback whenever the parallel
     /// pass detects an anomaly (quoted newline, unterminated quote, or an
     /// overflow row) that makes speculative chunking unsound.
@@ -1001,7 +1001,7 @@ public struct CSVReader: Sendable {
               let sepByte = separator.asciiValue else { return nil }
 
         // Column count from the first row — mirrors the serial scanner's
-        // preliminary scan (kept duplicated so the serial oracle stays
+        // preliminary scan (kept duplicated so the serial reference stays
         // byte-for-byte untouched).
         var colCount = 1
         var scanI = 0
@@ -1326,21 +1326,11 @@ public struct CSVReader: Sendable {
 
 /// Serializes a ``DataFrame`` to CSV format with configurable separator, header, and quoting.
 ///
-/// `CSVWriter` uses a **column-wise pre-formatting** strategy for performance:
-///
-/// 1. **Pre-format phase:** Each column is converted to an array of `String` representations
-///    in bulk. Numeric columns use ``formatDouble(_:)`` which outputs integer-style strings
-///    (e.g., `"42"` instead of `"42.0"`) when the value has no fractional part, avoiding the
-///    overhead of `String(format:)`. A parallel `needsQuoting` array tracks which columns
-///    are string-typed and may require RFC 4180 quoting.
-///
-/// 2. **Size estimation:** The total output byte count is estimated by summing field lengths
-///    plus separators and newlines. The result `String` is pre-allocated via `reserveCapacity`
-///    to avoid incremental reallocation.
-///
-/// 3. **Row emission:** Rows are written by iterating row indices and pulling pre-formatted
-///    strings from the column arrays. String fields that contain the separator, double quotes,
-///    or newlines are wrapped in quotes with internal quotes doubled.
+/// The implementation (`CSVWriterBytes.swift`) works at the UTF-8 byte
+/// level: quoting decisions are a single byte scan per field, numeric cells
+/// format directly into the output buffer, column storage is read through
+/// borrowed buffer pointers, and large frames format row chunks
+/// concurrently. See the header of that file for the design notes.
 ///
 /// ## Usage
 /// ```swift
@@ -1392,247 +1382,34 @@ public struct CSVWriter: Sendable {
         self.quoting = quoting
     }
 
-    /// Applies this writer's quoting policy to one output field.
-    ///
-    /// Minimal mode quotes when the field contains this writer's separator
-    /// (which may differ from `,`), a double quote, LF, or CR; QUOTE_ALL
-    /// always quotes. Internal quotes are doubled in both modes.
-    private func escape(_ val: String) -> String {
-        switch quoting {
-        case .all:
-            return "\"" + val.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-        case .minimal:
-            if val.contains(separator) || val.contains("\"") || val.contains("\n") || val.contains("\r") {
-                return "\"" + val.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-            }
-            return val
-        }
-    }
-
     /// Serializes the given ``DataFrame`` to a CSV-formatted `String`.
-    ///
-    /// Dispatches to the byte-level fast writer (``writeBytes(_:sepByte:)``)
-    /// when the separator is a single UTF-8 byte — the common case. Exotic
-    /// multi-byte separators fall back to the legacy String-based path. Both
-    /// paths produce identical bytes for the same frame and options; the
-    /// contract is pinned by `CSVWriterGoldenTests`.
     ///
     /// - Parameter df: The ``DataFrame`` to serialize.
     /// - Returns: A CSV-formatted string with `\n` line endings.
     public func write(_ df: DataFrame) -> String {
-        if let sepByte = fastSeparatorByte {
-            return String(decoding: writeBytes(df, sepByte: sepByte), as: UTF8.self)
-        }
-        return writeLegacy(df)
-    }
-
-    /// The legacy String-based serializer — retained as the fallback for
-    /// multi-byte separators and as the byte-parity oracle for the fast
-    /// writer's tests.
-    ///
-    /// The method proceeds in four steps:
-    /// 1. Pre-format all columns into `[[String]]` (column-major).
-    /// 2. Estimate total output size and pre-allocate the result `String`.
-    /// 3. Write the header row (if enabled).
-    /// 4. Write data rows, applying RFC 4180 quoting to string fields as needed.
-    ///
-    /// - Parameter df: The ``DataFrame`` to serialize.
-    /// - Returns: A CSV-formatted string with `\n` line endings.
-    internal func writeLegacy(_ df: DataFrame) -> String {
-        let rowCount = df.rowCount
-        guard rowCount > 0 else {
-            if includeHeader {
-                return df.columnNames.map { escape($0) }.joined(separator: separator) + "\n"
-            }
-            return ""
-        }
-
-        // Step 1: Pre-format all columns in bulk (column-wise, not row-wise)
-        let colCount = df.columnNames.count
-        var formattedCols = [[String]]()
-        formattedCols.reserveCapacity(colCount)
-        var needsQuoting = [Bool]()  // track which columns might need quoting
-
-        for name in df.columnNames {
-            let col = df.columns[name]!
-            switch col {
-            case .double(let arr):
-                var strs = [String]()
-                strs.reserveCapacity(rowCount)
-                if arr.mask.allValid {
-                    arr.data.withUnsafeBufferPointer { buf in
-                        for i in 0..<rowCount {
-                            strs.append(formatDouble(buf[i]))
-                        }
-                    }
-                } else {
-                    arr.data.withUnsafeBufferPointer { buf in
-                        for i in 0..<rowCount {
-                            if arr.mask[i] {
-                                strs.append(formatDouble(buf[i]))
-                            } else {
-                                strs.append(naRepresentation)
-                            }
-                        }
-                    }
-                }
-                formattedCols.append(strs)
-                needsQuoting.append(false) // numbers never need quoting
-
-            case .int64(let arr):
-                var strs = [String]()
-                strs.reserveCapacity(rowCount)
-                for i in 0..<rowCount {
-                    if let v = arr[i] {
-                        strs.append("\(v)")
-                    } else {
-                        strs.append(naRepresentation)
-                    }
-                }
-                formattedCols.append(strs)
-                needsQuoting.append(false)
-
-            case .bool(let arr):
-                var strs = [String]()
-                strs.reserveCapacity(rowCount)
-                for i in 0..<rowCount {
-                    if let v = arr[i] {
-                        strs.append(v ? "True" : "False")
-                    } else {
-                        strs.append(naRepresentation)
-                    }
-                }
-                formattedCols.append(strs)
-                needsQuoting.append(false)
-
-            case .floatVector(let arr):
-                // CSV is explicitly out of scope for vector columns (SPB is
-                // the durable format). The throwing toCSV entry points reject
-                // vector frames with VectorError.unsupportedOperation before
-                // reaching this writer; this precondition backstops direct
-                // CSVWriter.write callers, whose signature cannot throw.
-                preconditionFailure(
-                    "CSV serialization is unsupported for floatVector(\(arr.dims)) columns; "
-                    + "drop/select the other columns or use writeSPB")
-
-            case .string(let arr):
-                var strs = [String]()
-                strs.reserveCapacity(rowCount)
-                for i in 0..<rowCount {
-                    if let v = arr[i] {
-                        strs.append(v)
-                    } else {
-                        strs.append(naRepresentation)
-                    }
-                }
-                formattedCols.append(strs)
-                needsQuoting.append(true) // string columns may need quoting
-            }
-        }
-
-        // Step 2: Estimate total size and pre-allocate
-        var estimatedSize = 0
-        if includeHeader {
-            for name in df.columnNames { estimatedSize += name.utf8.count + 1 }
-            estimatedSize += 1 // newline
-        }
-        for colIdx in 0..<colCount {
-            for rowIdx in 0..<rowCount {
-                estimatedSize += formattedCols[colIdx][rowIdx].utf8.count + 1
-            }
-        }
-        estimatedSize += rowCount // newlines
-
-        var result = ""
-        result.reserveCapacity(estimatedSize)
-
-        // Step 3: Write header
-        if includeHeader {
-            if includeIndex {
-                result.append(separator)
-            }
-            for (colIdx, name) in df.columnNames.enumerated() {
-                if colIdx > 0 { result.append(separator) }
-                result.append(escape(name))
-            }
-            result.append("\n")
-        }
-
-        // Step 4: Write data rows from pre-formatted columns
-        let quoteAll = (quoting == .all)
-        for i in 0..<rowCount {
-            if includeIndex {
-                result.append(escape(df.indexLabels[i]))
-                result.append(separator)
-            }
-            for colIdx in 0..<colCount {
-                if colIdx > 0 { result.append(separator) }
-                let val = formattedCols[colIdx][i]
-                if quoteAll {
-                    result.append("\"")
-                    result.append(val.contains("\"") ? val.replacingOccurrences(of: "\"", with: "\"\"") : val)
-                    result.append("\"")
-                } else if needsQuoting[colIdx]
-                            && (val.contains(separator) || val.contains("\"")
-                                || val.contains("\n") || val.contains("\r")) {
-                    result.append("\"")
-                    result.append(val.replacingOccurrences(of: "\"", with: "\"\""))
-                    result.append("\"")
-                } else {
-                    result.append(val)
-                }
-            }
-            result.append("\n")
-        }
-
-        return result
-    }
-
-    /// Fast double-to-string conversion that avoids `String(format:)` overhead.
-    ///
-    /// For values with no fractional part (and absolute value below 1e15), this method converts
-    /// to `Int64` first and uses `String(Int64)`, which produces a clean integer representation
-    /// (e.g., `"42"` instead of `"42.0"`). This matches Python pandas' CSV output behavior and
-    /// avoids the significant overhead of `String(format: "%.Ng")`. For values with a fractional
-    /// part, it falls back to `String(Double)`, which uses Swift's default shortest-representation
-    /// algorithm.
-    ///
-    /// - Parameter v: The double value to format.
-    /// - Returns: A string representation of the value.
-    private func formatDouble(_ v: Double) -> String {
-        if v.truncatingRemainder(dividingBy: 1) == 0 && abs(v) < 1e15 {
-            return String(Int64(v))
-        }
-        return String(v)
+        String(decoding: writeBytes(df), as: UTF8.self)
     }
 
     /// Writes the given ``DataFrame`` to a CSV file at the specified URL.
     ///
-    /// On the fast path the UTF-8 bytes are written directly (atomically) —
-    /// no intermediate `String` is ever materialized, halving peak memory
-    /// for large frames. The bytes on disk are identical to the legacy
-    /// `String.write(to:atomically:encoding:.utf8)` output (UTF-8, no BOM).
+    /// The UTF-8 bytes are written directly (atomically) — no intermediate
+    /// `String` is materialized, halving peak memory for large frames.
     ///
     /// - Parameters:
     ///   - df: The ``DataFrame`` to serialize.
     ///   - url: The file URL to write to.
     /// - Throws: Any error from file I/O.
     public func write(_ df: DataFrame, to url: URL) throws {
-        if let sepByte = fastSeparatorByte {
-            var bytes = writeBytes(df, sepByte: sepByte)
-            // Wrap the buffer without copying; `bytes` outlives the write.
-            try bytes.withUnsafeMutableBytes { buf -> Void in
-                guard let base = buf.baseAddress else {
-                    try Data().write(to: url, options: .atomic)
-                    return
-                }
-                let data = Data(bytesNoCopy: base, count: buf.count, deallocator: .none)
-                try data.write(to: url, options: .atomic)
+        var bytes = writeBytes(df)
+        // Wrap the buffer without copying; `bytes` outlives the write.
+        try bytes.withUnsafeMutableBytes { buf -> Void in
+            guard let base = buf.baseAddress else {
+                try Data().write(to: url, options: .atomic)
+                return
             }
-            return
+            let data = Data(bytesNoCopy: base, count: buf.count, deallocator: .none)
+            try data.write(to: url, options: .atomic)
         }
-        let text = writeLegacy(df)
-        try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Writes the given ``DataFrame`` to a CSV file at the specified file-system path.

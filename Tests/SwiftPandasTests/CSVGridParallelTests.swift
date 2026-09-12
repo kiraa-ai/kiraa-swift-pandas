@@ -6,7 +6,7 @@ import Foundation
 /// must produce a grid identical to the serial scanner — or return nil
 /// (forcing the serial fallback) whenever speculation would be unsound.
 ///
-/// Oracle: `parseFieldGridSerial` on the same bytes. Grids compare by
+/// Reference: `parseFieldGridSerial` on the same bytes. Grids compare by
 /// `fields` (every cell's byte range and escape flag), `rowCount`, and
 /// `colCount`.
 final class CSVGridParallelTests: XCTestCase {

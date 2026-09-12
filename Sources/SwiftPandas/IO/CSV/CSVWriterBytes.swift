@@ -1,38 +1,32 @@
 // ===----------------------------------------------------------------------===//
 //
-// CSVWriterBytes.swift — byte-level fast path for CSVWriter
+// CSVWriterBytes.swift — CSVWriter serialization
 //
-// The legacy writer (CSVReader.swift, `writeLegacy`) makes its per-cell
-// "needs quoting?" decision with `String.contains`, which on a
-// 6.7M-row × 43-column frame is ~287M Unicode-aware searches on one core —
-// a sampled production build spent 100% of its stacks there.
+// The writer works at the UTF-8 byte level throughout:
 //
-// This path replaces the decision with a single UTF-8 byte scan for the
-// separator, `"`, LF, and CR, formats numeric cells straight into a byte
-// buffer (no intermediate String except for fractional doubles, which need
-// Swift's shortest-representation algorithm), and formats row chunks
-// concurrently for large frames.
+//   * Quoting decisions are a single byte scan per field for the
+//     separator, `"`, LF, and CR — RFC 4180 semantics. Scanning bytes
+//     (not grapheme clusters) also quotes fields whose special characters
+//     hide inside a cluster, e.g. `"\r\n"` or a separator followed by a
+//     combining mark, which String-based `contains` misses.
+//   * Numeric cells format directly into the output buffer; only
+//     fractional doubles allocate (Swift's shortest-representation
+//     `String(Double)`).
+//   * Column storage is read through borrowed buffer pointers
+//     (`withColumnViews`). Per-cell access through `Column`/`NullableArray`
+//     would copy refcounted payloads, and under the concurrent row loop
+//     those atomic retain/releases on shared objects ping-pong cache lines
+//     between cores — measured 38× slower than the borrowed form.
+//   * Frames past 2^16 rows format disjoint row chunks concurrently and
+//     concatenate in order. Formatting is pure per-row, so chunked output
+//     is identical to sequential output by construction.
 //
-// **Why the borrowed-view layer exists:** per-cell access through
-// `Column`/`NullableArray` copies refcounted payloads (the CoW buffer
-// class, the mask's word array), and each copy is an atomic retain/release
-// on an object *shared by every worker thread*. Under the concurrent chunk
-// loop those atomics ping-pong cache lines between cores and made the
-// parallel path slower than the serial one. `withColumnViews` binds every
-// column's contiguous storage exactly once (recursively, since the column
-// count is dynamic), and the row loops then run on trivially-copyable
-// `UnsafeBufferPointer`s — zero ARC traffic per cell.
+// Separators of any UTF-8 length are supported; the common single-byte
+// case (",", "\t", ";") takes the tighter scan.
 //
-// **Byte-identity contract:** for every frame and option set, output here
-// is byte-identical to `writeLegacy` — with one deliberate exception:
-// special bytes hiding inside a grapheme cluster (`"\r\n"`, or a
-// separator/quote followed by a combining mark), which legacy fails to
-// quote because `String.contains` is grapheme-based, producing malformed
-// CSV. The byte scan quotes them correctly. `CSVWriterGoldenTests` pins
-// both the parity corpus and this divergence.
-//
-// The fast path activates when the configured separator is a single UTF-8
-// byte (",", "\t", ";", …). Multi-byte separators keep the legacy path.
+// `CSVWriterTests` pins the output contract: quoting matrix, numeric
+// formatting, NA handling, header/index options, chunked-vs-sequential
+// equality, and reader round-trips.
 //
 // ===----------------------------------------------------------------------===//
 
@@ -42,16 +36,6 @@ import Dispatch
 #endif
 
 extension CSVWriter {
-
-    /// The separator as a single UTF-8 byte, or `nil` if the configured
-    /// separator is empty or multi-byte (which routes to the legacy writer).
-    /// A one-byte UTF-8 scalar is necessarily ASCII, so scanning raw bytes
-    /// for it can never produce a false hit inside a multi-byte sequence.
-    internal var fastSeparatorByte: UInt8? {
-        let utf8 = separator.utf8
-        guard utf8.count == 1 else { return nil }
-        return utf8.first
-    }
 
     /// Borrowed, ARC-free view of one column's storage. Only valid inside
     /// the `withColumnViews` scope that produced it. A `nil` mask means
@@ -134,19 +118,25 @@ extension CSVWriter {
     }
 
     /// Serializes the frame to UTF-8 bytes. See the file header for the
-    /// byte-identity contract with ``writeLegacy(_:)``.
-    internal func writeBytes(_ df: DataFrame, sepByte: UInt8) -> [UInt8] {
+    /// output contract.
+    internal func writeBytes(_ df: DataFrame) -> [UInt8] {
+        let sep = Array(separator.utf8)
         let rowCount = df.rowCount
         let names = df.columnNames
         let quoteAll = (quoting == .all)
 
+        @inline(__always)
+        func appendSep(_ out: inout [UInt8]) {
+            if sep.count == 1 { out.append(sep[0]) } else { out.append(contentsOf: sep) }
+        }
+
         guard rowCount > 0 else {
-            // Legacy zero-row path: header only, no includeIndex prefix.
+            // Zero-row frame: header only, no includeIndex prefix.
             guard includeHeader else { return [] }
             var out = [UInt8]()
             for (i, name) in names.enumerated() {
-                if i > 0 { out.append(sepByte) }
-                Self.appendStringField(name, sepByte: sepByte, quoteAll: quoteAll, into: &out)
+                if i > 0 { appendSep(&out) }
+                Self.appendStringField(name, sep: sep, quoteAll: quoteAll, into: &out)
             }
             out.append(0x0A)
             return out
@@ -163,16 +153,16 @@ extension CSVWriter {
 
         let naBytes = Array(naRepresentation.utf8)
         // Constant per writer: whether the NA text itself needs quoting when
-        // it lands in a string column (legacy checks it there per cell).
-        let naNeedsQuote = Self.needsQuote(naBytes, sepByte: sepByte)
+        // it lands in a string column (numeric columns emit it unquoted).
+        let naNeedsQuote = Self.needsQuote(naBytes, sep: sep)
         let indexLabels: [String] = includeIndex ? df.indexLabels : []
 
         var head = [UInt8]()
         if includeHeader {
-            if includeIndex { head.append(sepByte) }
+            if includeIndex { appendSep(&head) }
             for (i, name) in names.enumerated() {
-                if i > 0 { head.append(sepByte) }
-                Self.appendStringField(name, sepByte: sepByte, quoteAll: quoteAll, into: &head)
+                if i > 0 { appendSep(&head) }
+                Self.appendStringField(name, sep: sep, quoteAll: quoteAll, into: &head)
             }
             head.append(0x0A)
         }
@@ -183,18 +173,18 @@ extension CSVWriter {
 
         /// Formats rows `range` into `out` from the borrowed views. Pure
         /// per-row: no state crosses row boundaries, which is what makes
-        /// chunked output byte-identical to sequential output.
+        /// chunked output identical to sequential output.
         func formatRows(
             _ views: UnsafeBufferPointer<ColView>, _ range: Range<Int>, into out: inout [UInt8]
         ) {
             for i in range {
                 if includeIndex {
-                    Self.appendStringField(indexLabels[i], sepByte: sepByte,
+                    Self.appendStringField(indexLabels[i], sep: sep,
                                            quoteAll: quoteAll, into: &out)
-                    out.append(sepByte)
+                    appendSep(&out)
                 }
                 for (c, view) in views.enumerated() {
-                    if c > 0 { out.append(sepByte) }
+                    if c > 0 { appendSep(&out) }
                     switch view {
                     case .doubles(let data, let mask):
                         if Self.isValid(mask, i) {
@@ -230,11 +220,11 @@ extension CSVWriter {
                         }
                     case .strings(let storage):
                         if let v = storage[i] {
-                            Self.appendStringField(v, sepByte: sepByte,
+                            Self.appendStringField(v, sep: sep,
                                                    quoteAll: quoteAll, into: &out)
                         } else if quoteAll || naNeedsQuote {
-                            // In a string column, legacy runs NA text through
-                            // the same quoting check as real values.
+                            // In a string column, NA text goes through the
+                            // same quoting check as real values.
                             Self.appendQuoted(naBytes, into: &out)
                         } else {
                             out.append(contentsOf: naBytes)
@@ -284,13 +274,35 @@ extension CSVWriter {
     private static let falseBytes: [UInt8] = Array("False".utf8)
 
     /// RFC 4180 quoting trigger: separator, `"`, LF, or CR anywhere in the
-    /// field. Byte-scan equivalent of the legacy `String.contains` checks.
+    /// field. Single-byte separators (the common case) scan in one pass;
+    /// longer separators add a byte-subsequence match, which is exact on
+    /// UTF-8 because the encoding is self-synchronizing.
     @inline(__always)
     internal static func needsQuote<C: Collection>(
-        _ bytes: C, sepByte: UInt8
+        _ bytes: C, sep: [UInt8]
     ) -> Bool where C.Element == UInt8 {
-        for b in bytes where b == sepByte || b == 0x22 || b == 0x0A || b == 0x0D {
+        if sep.count == 1 {
+            let s = sep[0]
+            for b in bytes where b == s || b == 0x22 || b == 0x0A || b == 0x0D {
+                return true
+            }
+            return false
+        }
+        for b in bytes where b == 0x22 || b == 0x0A || b == 0x0D {
             return true
+        }
+        guard !sep.isEmpty else { return false }
+        let arr = Array(bytes)
+        guard arr.count >= sep.count else { return false }
+        for start in 0...(arr.count - sep.count) {
+            if arr[start] == sep[0] {
+                var match = true
+                for j in 1..<sep.count where arr[start + j] != sep[j] {
+                    match = false
+                    break
+                }
+                if match { return true }
+            }
         }
         return false
     }
@@ -309,7 +321,7 @@ extension CSVWriter {
     }
 
     /// Emits one string-typed field (value, header name, or index label)
-    /// under this writer's quoting policy — the byte-level `escape()`.
+    /// under this writer's quoting policy.
     ///
     /// `withUTF8` guarantees a contiguous buffer for every string form —
     /// small strings (≤ 15 UTF-8 bytes, the common case in real data) spill
@@ -317,11 +329,11 @@ extension CSVWriter {
     /// scratch copy is a struct copy, not a heap allocation.
     @inline(__always)
     internal static func appendStringField(
-        _ s: String, sepByte: UInt8, quoteAll: Bool, into out: inout [UInt8]
+        _ s: String, sep: [UInt8], quoteAll: Bool, into out: inout [UInt8]
     ) {
         var scratch = s
         scratch.withUTF8 { buf in
-            if quoteAll || needsQuote(buf, sepByte: sepByte) {
+            if quoteAll || needsQuote(buf, sep: sep) {
                 appendQuoted(buf, into: &out)
             } else {
                 out.append(contentsOf: buf)
@@ -329,8 +341,8 @@ extension CSVWriter {
         }
     }
 
-    /// Emits NA in a numeric/bool column: legacy never quote-checks these,
-    /// but QUOTE_ALL wraps them (doubling any quotes in the NA text).
+    /// Emits NA in a numeric/bool column: never quote-checked there, but
+    /// QUOTE_ALL wraps it (doubling any quotes in the NA text).
     @inline(__always)
     private static func appendNA(_ naBytes: [UInt8], quoteAll: Bool, into out: inout [UInt8]) {
         if quoteAll {
@@ -361,10 +373,10 @@ extension CSVWriter {
         }
     }
 
-    /// Mirrors the legacy `formatDouble` byte-for-byte: integral values with
-    /// magnitude below 1e15 print as `Int64` (pandas-style `42`, not `42.0`);
-    /// everything else — fractional, NaN, ±inf, huge — uses Swift's default
-    /// shortest-representation `String(Double)`.
+    /// Integral values with magnitude below 1e15 print as `Int64`
+    /// (pandas-style `42`, not `42.0`); everything else — fractional, NaN,
+    /// ±inf, huge — uses Swift's default shortest-representation
+    /// `String(Double)`.
     @inline(__always)
     internal static func appendDouble(_ v: Double, into out: inout [UInt8]) {
         if v.truncatingRemainder(dividingBy: 1) == 0 && abs(v) < 1e15 {

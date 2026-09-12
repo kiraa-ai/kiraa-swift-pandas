@@ -6,7 +6,7 @@ import Foundation
 /// identical to serial parsing — values, dtypes, NA placement, column
 /// order, and failure reports.
 ///
-/// Oracle: a column's parse result depends only on its own column's bytes,
+/// Reference: a column's parse result depends only on its own column's bytes,
 /// so parsing each column as its own single-column CSV (small → serial
 /// path) gives the serial reference for the full-width parse (large →
 /// parallel path). The gate itself is also pinned so the test knows it
@@ -68,7 +68,7 @@ final class CSVColumnParallelTests: XCTestCase {
 
     func testGate_largeFrameTriggersParallel_smallDoesNot() {
         XCTAssertTrue(CSVReader.shouldParallelizeColumns(rows: 40_000, cols: 8),
-                      "40k×8 must take the parallel branch for the oracle below to mean anything")
+                      "40k×8 must take the parallel branch for the comparison below to mean anything")
         XCTAssertFalse(CSVReader.shouldParallelizeColumns(rows: 40_000, cols: 1))
         XCTAssertFalse(CSVReader.shouldParallelizeColumns(rows: 100, cols: 8))
     }
@@ -109,7 +109,7 @@ final class CSVColumnParallelTests: XCTestCase {
         XCTAssertTrue(failures.contains { $0.column == "c3" },
                       "expected int64 parse failures on c3 to survive the parallel path")
 
-        // Per-column serial oracle, including the failure report.
+        // Per-column serial reference, including the failure report.
         var rowFields = [[String]]()
         text.split(separator: "\n").dropFirst().forEach { line in
             rowFields.append(Self.splitTopLevel(String(line)))

@@ -18,7 +18,8 @@ final class SPBZeroCopyTests: XCTestCase {
     private func mixedFrame() throws -> DataFrame {
         DataFrame(columns: [
             ("d", .fromOptionalDoubles([1.5, nil, -3.25, 0, 42.0])),
-            ("s", .fromOptionalStrings(["odd", nil, "", "日本語", "x"])),
+            // "\u{FC}\u{2260}\u{1F642}" covers 2-, 3-, and 4-byte UTF-8 sequences.
+            ("s", .fromOptionalStrings(["odd", nil, "", "\u{FC}\u{2260}\u{1F642}", "x"])),
             ("b", .fromOptionalBools([true, false, nil, true, false])),
             ("i", .fromOptionalInts([Int.max, nil, -7, 0, 123])),
             ("v", try .fromOptionalVectors([[1, 2, 3], nil, [0, 0, 0], [-1.5, 2.5, 3.5], [9, 8, 7]], dims: 3)),

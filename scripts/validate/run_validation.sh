@@ -19,12 +19,12 @@ step "B6a — no dead C targets"
 if bash scripts/validate/no_dead_targets.sh; then :; else fail=1; fi
 
 step "B2a + B4 — in-suite parity & fuzz tests"
-# TopKParityTests: heap top-K is byte-identical to full-sort (oracle).
+# TopKSelectionTests: top-K result is the K-prefix of the full ranking.
 # SPBZeroCopyTests: unaligned round-trip, exhaustive truncation, byte-flip fuzz.
-if swift test --filter "TopKParityTests|SPBZeroCopyTests|SPBTests|BitVectorTests" 2>&1 \
+if swift test --filter "TopKSelectionTests|SPBZeroCopyTests|SPBTests|BitVectorTests" 2>&1 \
     | grep -E "Executed .* tests"; then :; else fail=1; fi
 # swift test's own exit code is authoritative:
-swift test --filter "TopKParityTests|SPBZeroCopyTests|SPBTests|BitVectorTests" >/dev/null 2>&1 \
+swift test --filter "TopKSelectionTests|SPBZeroCopyTests|SPBTests|BitVectorTests" >/dev/null 2>&1 \
     || fail=1
 
 echo "==================================================================="

@@ -11,7 +11,7 @@ Validation for the engine-first proposal (`docs/proposals/2026-07-engine-abstrac
 
 The B2a (heap top-K) and B4 (zero-copy SPB) correctness proofs live in the test suite, driven here via `swift test`:
 
-- `Tests/SwiftPandasTests/TopKParityTests.swift` — bounded-heap top-K is byte-identical to the old full-sort-then-prefix, across seeds, metrics, K edge cases, threshold, mask, and ties (oracle = the engine's own full-sort branch).
+- `Tests/SwiftPandasTests/TopKSelectionTests.swift` — the top-K result is exactly the K-prefix of the full ranking, across seeds, metrics, K edge cases, threshold, mask, and ties.
 - `Tests/SwiftPandasTests/SPBZeroCopyTests.swift` — unaligned numeric/vector payloads round-trip, every truncation throws a typed error, 4000 random byte-flips never crash and only ever yield an equal-or-rejected frame.
 
 Run everything:
