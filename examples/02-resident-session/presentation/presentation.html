@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hold a Session, Iterate at Conversational Speed</title>
+<style>
+  :root {
+    --bg:#0B1220; --panel:#0F172A; --codebg:#0d1424; --accent:#22D3EE;
+    --accent2:#C084FC; --text:#E2E8F0; --muted:#94A3B8; --codetext:#E5E7EB;
+    --border:#1E293B;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#05080f; color:var(--text);
+    font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  .deck { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .slide {
+    position:absolute; width:min(94vw,1280px); aspect-ratio:16/9; max-height:94vh;
+    background:radial-gradient(120% 120% at 12% 0%, #101c30 0%, var(--bg) 55%);
+    border:1px solid var(--border); border-radius:18px; padding:5.2% 6%;
+    opacity:0; transform:translateY(14px) scale(.99); pointer-events:none;
+    transition:opacity .28s ease, transform .28s ease; overflow:hidden;
+    box-shadow:0 30px 90px rgba(0,0,0,.55);
+  }
+  .slide.active { opacity:1; transform:none; pointer-events:auto; }
+  .content { height:100%; display:flex; flex-direction:column; }
+  h1 { font-size:clamp(28px,4.6vw,60px); line-height:1.05; margin:.1em 0 .2em; letter-spacing:-.02em; }
+  h2 { font-size:clamp(22px,3.2vw,40px); margin:.1em 0 .5em; letter-spacing:-.01em;
+        padding-bottom:.28em; position:relative; }
+  h2::after { content:""; position:absolute; left:0; bottom:0; width:56px; height:5px;
+               border-radius:3px; background:var(--a,var(--accent)); }
+  .tick { width:64px; height:7px; border-radius:4px; margin-bottom:26px; }
+  .subtitle { font-size:clamp(16px,1.9vw,24px); color:var(--muted); max-width:60ch; line-height:1.4; }
+  .brand { margin-top:auto; font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+  .tag { font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; margin-bottom:.2em; }
+  .cols { display:grid; grid-template-columns:1.05fr .95fr; gap:32px; align-items:start; flex:1; min-height:0; }
+  .single { flex:1; min-height:0; }
+  ul,ol { margin:.2em 0; padding-left:0; list-style:none; }
+  li { position:relative; padding-left:1.6em; margin:.52em 0; font-size:clamp(15px,1.7vw,21px); line-height:1.35; }
+  ul li::before { content:"▸"; position:absolute; left:0; color:var(--a,var(--accent)); font-weight:700; }
+  ol { counter-reset:li; }
+  ol li { counter-increment:li; }
+  ol li::before { content:counter(li,decimal-leading-zero); position:absolute; left:0;
+    color:var(--a,var(--accent)); font-weight:700; font-variant-numeric:tabular-nums; }
+  code { font-family:"SF Mono",Menlo,monospace; background:rgba(34,211,238,.1);
+    color:var(--codetext); padding:.05em .35em; border-radius:5px; font-size:.9em; }
+  pre.code { background:var(--codebg); border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; overflow:auto; margin:0; font-size:clamp(11px,1.15vw,14px); }
+  pre.code code { background:none; color:var(--codetext); padding:0; white-space:pre; }
+  .foot { margin-top:auto; padding-top:14px; display:flex; justify-content:space-between;
+    align-items:flex-end; gap:16px; color:var(--muted); font-size:13px; }
+  .visual { max-width:74%; line-height:1.3; }
+  .timing { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+  .page { position:absolute; top:20px; right:26px; color:var(--muted); font-size:12px;
+    font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+  .notes { position:absolute; left:0; right:0; bottom:0; background:rgba(5,8,15,.96);
+    border-top:1px solid var(--border); padding:16px 22px; max-height:42%; overflow:auto; }
+  .notes-h { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  .notes-body { font-size:15px; line-height:1.45; color:#cbd5e1; }
+  .muted { color:var(--muted); }
+  .hud { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px;
+    align-items:center; background:rgba(15,23,42,.8); border:1px solid var(--border);
+    border-radius:999px; padding:7px 14px; font-size:12px; color:var(--muted); backdrop-filter:blur(8px); z-index:10; }
+  .hud button { background:none; border:0; color:var(--text); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:6px; }
+  .hud button:hover { background:rgba(34,211,238,.15); }
+  .hud .sep { opacity:.4; }
+  .bar { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:11; transition:width .28s ease; }
+  @media (max-width:700px) { .cols { grid-template-columns:1fr; gap:14px; } .slide { padding:6% 6.5%; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar"></div>
+  <div class="deck" id="deck">
+    <section class="slide title" data-index="0"><div class="content"><div class="tick" style="background:var(--accent)"></div><h1>Hold a Session, Iterate at Conversational Speed</h1><p class="subtitle">Parse the data once. Ask it a hundred questions. Each answer in milliseconds.</p><p class="brand" style="color:var(--accent)">6-Minute Demo Presentation — Demo 2: Resident Session &nbsp;·&nbsp; *6-Minute Demo Presentation — Demo 2: Resident Session*</p></div><div class="page">01 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:00–0:30</div><div class="notes-body">Demo 1 was about jobs that start and stop. But sometimes you don&#x27;t want to stop — you want to load a dataset once and then interrogate it, question after question, the way you would in a notebook. That&#x27;s what this demo is. A resident session: the data stays hot in memory, and every question after the first is a round trip measured in milliseconds.</div></div></section>
+<section class="slide content" data-index="1"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 2 — THE NOTEBOOK PATTERN, WITHOUT THE NOTEBOOK</div><h2 style="--a:var(--accent)">You Already Know This Pattern — It&#x27;s the Warm Kernel</h2><div class="single"><ul style="--a:var(--accent)"><li>In a notebook, the first <code>read_csv</code> is slow; everything after is fast because the frame is in memory</li><li>The magic isn&#x27;t the notebook UI — it&#x27;s *keeping the data resident*</li><li>SwiftPandas gives you that as plain shell commands</li><li>A background daemon owns the frames; your commands are thin clients</li></ul></div><div class="foot"><span class="visual">▨ Split: left, a Jupyter cell; right, the same idea as <code>load</code> / <code>pipe</code> / <code>save</code> shell lines.</span><span class="timing" style="color:var(--accent)">0:30–1:15</span></div></div><div class="page">02 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:30–1:15</div><div class="notes-body">Here&#x27;s the insight. When people say they love notebooks for exploration, what they actually love is that the data is already in memory — you&#x27;re not re-reading a CSV every time you tweak a query. That warm-kernel feeling. SwiftPandas gives you exactly that, but as shell commands you can script, version, and automate. A daemon holds the dataframes; <code>load</code>, <code>pipe</code>, <code>show</code>, <code>save</code> are just thin clients talking to it.</div></div></section>
+<section class="slide content" data-index="2"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 3 — THE LIFECYCLE</div><h2 style="--a:var(--accent)">Seven Commands, One Session</h2><div class="single"><ol style="--a:var(--accent)"><li><code>server start</code> — boot the daemon</li><li><code>load sales.csv --name sales</code> — <strong>the only parse</strong></li><li><code>pipe --from sales …</code> — analyze (repeat freely)</li><li><code>list</code> — what&#x27;s resident?</li><li><code>show</code> — peek</li><li><code>save</code> — write a deliverable</li><li><code>server stop</code> — shut down</li></ol></div><div class="foot"><span class="visual">▨ A vertical timeline; step 2 highlighted as &quot;pay once&quot;, steps 3–6 tagged &quot;≈10ms each&quot;.</span><span class="timing" style="color:var(--accent)">1:15–1:45</span></div></div><div class="page">03 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:15–1:45</div><div class="notes-body">The whole session is seven commands. Start the daemon, load the file once — that&#x27;s the only time we touch the CSV — then run as many pipelines as we want against the hot copy. List what&#x27;s in memory, peek at a frame, save the ones we care about, and shut it down. Let me run it. Keep your eye on the timing next to <code>load</code> versus the timing next to each <code>pipe</code>. *[switch to terminal]*</div></div></section>
+<section class="slide content" data-index="3"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 4 — WHAT YOU JUST SAW</div><h2 style="--a:var(--accent)">The Parse Happened Once. Everything Else Was Free.</h2><div class="single"><ul style="--a:var(--accent)"><li><code>load</code> — 25,000 rows parsed, ~20ms, <strong>once</strong></li><li>Each <code>pipe</code> — group-bys and multi-filter chains — <strong>~10ms</strong>, no re-read</li><li>Derived frames stack up in memory: <code>sales → profitable → by_channel → …</code></li><li><code>save</code> only when you want an artifact on disk</li></ul></div><div class="foot"><span class="visual">▨ Two columns of timing bars — <code>load</code> a single tall bar, <code>pipe</code>s a row of tiny equal bars.</span><span class="timing" style="color:var(--accent)">1:45–2:45</span></div></div><div class="page">04 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:45–2:45</div><div class="notes-body">Look at the gap. Loading 25,000 rows took about twenty milliseconds — once. After that, every pipeline, including real group-bys and stacked filters, came back in about ten. Not because the work is trivial, but because the data never left memory. And notice we built a little tree of derived frames — profitable, by-channel, west-widgets — all resident, all named, none of them touching disk until we explicitly saved one.</div></div></section>
+<section class="slide content" data-index="4"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 5 — WHY A DAEMON, NOT A LIBRARY CALL</div><h2 style="--a:var(--accent)">Resident Memory Is a Superpower for Automation</h2><div class="single"><ul style="--a:var(--accent)"><li>A dashboard backend: load once at boot, serve queries per request at ~10ms</li><li>An interactive triage session: keep a big extract hot while you dig</li><li>A pipeline stage: hand frames between steps by name, not by re-serializing</li><li>Isolated by socket — many independent sessions, no collisions</li></ul></div><div class="foot"><span class="visual">▨ Three use-case cards: &quot;dashboard&quot;, &quot;triage&quot;, &quot;pipeline&quot;.</span><span class="timing" style="color:var(--accent)">2:45–3:45</span></div></div><div class="page">05 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 2:45–3:45</div><div class="notes-body">Why does resident memory matter beyond feeling fast? Because it changes what you can build. A dashboard backend loads its data once at startup and answers every user request in milliseconds. An analyst keeps a multi-gigabyte extract hot and explores it interactively. A multi-stage pipeline passes dataframes between steps by name instead of re-serializing to disk each time. And because sessions are isolated by socket, you can run many at once without them stepping on each other.</div></div></section>
+<section class="slide content" data-index="5"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 6 — THE SAME GRAMMAR, EVERYWHERE</div><h2 style="--a:var(--accent)">Inline or Resident — It&#x27;s One DSL</h2><div class="single"><ul style="--a:var(--accent)"><li>Demo 1&#x27;s <code>-c &quot;filter(...) | groupby(...)&quot;</code> is the *same* grammar as <code>pipe -c</code></li><li>Learn it once; use it one-shot or in a session</li><li>The same grammar an LLM emits from natural language</li><li>No second API to keep in your head</li></ul></div><div class="foot"><span class="visual">▨ One DSL string in the center, arrows to &quot;one-shot&quot; and &quot;resident&quot;.</span><span class="timing" style="color:var(--accent)">3:45–4:30</span></div></div><div class="page">06 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 3:45–4:30</div><div class="notes-body">And to be clear — this isn&#x27;t a different product from Demo 1. The pipeline grammar is identical whether you run it one-shot or inside a session. <code>filter</code>, <code>groupby</code>, <code>agg</code>, <code>derive</code> — you learn it once. It&#x27;s also the grammar our LLM tooling emits from plain English. One mental model, two execution modes.</div></div></section>
+<section class="slide close" data-index="6"><div class="content"><div class="tag" style="color:var(--accent2)">SLIDE 7 — CLOSE</div><h2 style="--a:var(--accent2)">Load Once. Ask Everything. Stay Fast.</h2><div class="single"><ul style="--a:var(--accent2)"><li>First read: pay once</li><li>Every question after: conversational speed</li><li>Notebook ergonomics, shell-scriptable, Apple-silicon-native</li></ul></div><div class="foot"><span class="visual">▨ SwiftPandas logo. &quot;Demo 3: batch reports as artifacts →&quot;</span><span class="timing" style="color:var(--accent2)">4:30–5:15</span></div></div><div class="page">07 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 4:30–5:15</div><div class="notes-body">So: one-shot when you want a job that starts and stops, resident when you want to hold a dataset and iterate. Same grammar, same speed, your choice of shape. In the last demo I&#x27;ll show the third face of this — turning a raw extract into a set of report artifacts a scheduler can build every night, unattended.</div></div></section>
+  </div>
+  <div class="hud">
+    <button id="prev" title="Previous (←)">◀</button>
+    <span id="counter">1 / 1</span>
+    <button id="next" title="Next (→)">▶</button>
+    <span class="sep">·</span>
+    <button id="notesBtn" title="Toggle speaker notes (N)">notes</button>
+  </div>
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let i = 0, notesOn = false;
+  const bar = document.getElementById('bar');
+  const counter = document.getElementById('counter');
+  function render() {
+    slides.forEach((s, k) => {
+      s.classList.toggle('active', k === i);
+      s.querySelector('.notes').hidden = !notesOn;
+    });
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function go(n) { i = Math.max(0, Math.min(slides.length - 1, n)); render(); }
+  document.getElementById('next').onclick = () => go(i + 1);
+  document.getElementById('prev').onclick = () => go(i - 1);
+  document.getElementById('notesBtn').onclick = () => { notesOn = !notesOn; render(); };
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight',' ','PageDown'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+    else if (['ArrowLeft','PageUp'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key.toLowerCase() === 'n') { notesOn = !notesOn; render(); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen();
+    }
+  });
+  const start = parseInt(location.hash.replace('#','')); if (start) go(start - 1); else render();
+</script>
+</body>
+</html>

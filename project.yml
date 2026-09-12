@@ -31,27 +31,11 @@ targets:
       # `xcodebuild docbuild`, whose clang ExtractAPI pass cannot parse it.
       - path: Sources/SwiftPandas
         headerVisibility: project
-      - path: Sources/CKHash
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
-      - path: Sources/CSkipList
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
-      - path: Sources/CUltraJSON
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.SwiftPandas
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCELERATE_AVAILABLE
-        HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/Sources/CKHash/include"
-          - "$(SRCROOT)/Sources/CSkipList/include"
-          - "$(SRCROOT)/Sources/CUltraJSON/include"
         MTL_HEADER_SEARCH_PATHS: "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders"
         DEFINES_MODULE: YES
         SWIFT_VERSION: "5.9"
@@ -74,28 +58,12 @@ targets:
       # `xcodebuild docbuild`, whose clang ExtractAPI pass cannot parse it.
       - path: Sources/SwiftPandas
         headerVisibility: project
-      - path: Sources/CKHash
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
-      - path: Sources/CSkipList
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
-      - path: Sources/CUltraJSON
-        headerVisibility: project
-        compilerFlags:
-          - "-O3"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.swiftpandas.SwiftPandas
         PRODUCT_NAME: SwiftPandas
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: ACCELERATE_AVAILABLE
-        HEADER_SEARCH_PATHS:
-          - "$(SRCROOT)/Sources/CKHash/include"
-          - "$(SRCROOT)/Sources/CSkipList/include"
-          - "$(SRCROOT)/Sources/CUltraJSON/include"
         MTL_HEADER_SEARCH_PATHS: "$(SRCROOT)/Sources/SwiftPandas/Metal/Shaders"
         DEFINES_MODULE: YES
         SWIFT_VERSION: "5.9"

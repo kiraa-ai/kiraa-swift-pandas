@@ -21,12 +21,11 @@
 // - **CSV I/O** — A two-tier CSV reader (fast byte-level path + character-based fallback) and
 //   a column-wise pre-formatting CSV writer. See `CSVReader.swift` for architecture details.
 //
-// - **JSON I/O** — JSON serialization/deserialization backed by the CUltraJSON C library.
+// - **JSON I/O** — JSON serialization/deserialization via Foundation's `JSONSerialization`.
 //
-// The library depends on three compiled C targets for performance-critical data structures:
-// - **CSkipList** — A skip list for O(log n) windowed median computation.
-// - **CKHash** — klib's khash hash tables for fast GroupBy key hashing (FNV-1a).
-// - **CUltraJSON** — UltraJSON's core C encoder/decoder for high-throughput JSON I/O.
+// The library is pure Swift with no compiled C dependencies. Performance-critical work
+// (GroupBy key hashing via a hand-rolled FNV-1a table, numeric kernels) is implemented in
+// Swift over contiguous buffers, dispatching to Accelerate where available.
 //
 // On Apple platforms (macOS, iOS), the library conditionally links the Accelerate framework
 // (via the `ACCELERATE_AVAILABLE` compilation flag) to leverage vDSP for vectorized numeric

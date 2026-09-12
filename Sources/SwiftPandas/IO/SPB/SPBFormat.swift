@@ -66,22 +66,30 @@ internal enum SPBFormat {
 
 /// Bounds-checked sequential reader over raw SPB bytes.
 ///
+/// Reads directly from the caller's buffer — for file loads this is the memory
+/// mapping itself (see ``DataFrame/readSPB(from:)-*``), so no whole-file copy
+/// is made and pages fault in only as the parse touches them. The buffer must
+/// outlive the cursor; the reader keeps it alive by parsing inside the
+/// `withUnsafeBytes` closure that vends it.
+///
 /// Every primitive read validates the remaining byte count and throws
 /// ``VectorError/corrupt(reason:)`` on overrun, so the reader body is
 /// straight-line layout code with no inline bounds arithmetic — truncated or
 /// corrupt files cannot be mishandled at call sites, and no partial
-/// ``DataFrame`` is ever constructed.
+/// ``DataFrame`` is ever constructed. Multi-byte integers use `loadUnaligned`
+/// (SPB payloads are unaligned whenever they follow variable-length strings)
+/// and are byte-swapped from little-endian to host order.
 internal struct SPBCursor {
-    private let bytes: [UInt8]
+    private let base: UnsafeRawBufferPointer
     private(set) var offset: Int = 0
 
-    init(_ data: Data) {
-        self.bytes = [UInt8](data)
+    init(_ buffer: UnsafeRawBufferPointer) {
+        self.base = buffer
     }
 
-    var remaining: Int { bytes.count - offset }
+    var remaining: Int { base.count - offset }
 
-    private mutating func require(_ count: Int, what: String) throws {
+    private func require(_ count: Int, what: String) throws {
         guard count >= 0, remaining >= count else {
             throw VectorError.corrupt(
                 reason: "truncated file: needed \(count) bytes for \(what) at offset \(offset), "
@@ -89,32 +97,28 @@ internal struct SPBCursor {
         }
     }
 
-    mutating func readBytes(_ count: Int, what: String) throws -> ArraySlice<UInt8> {
+    mutating func readBytes(_ count: Int, what: String) throws -> UnsafeRawBufferPointer {
         try require(count, what: what)
         defer { offset += count }
-        return bytes[offset..<(offset + count)]
+        return UnsafeRawBufferPointer(rebasing: base[offset..<(offset + count)])
     }
 
     mutating func readU8(_ what: String) throws -> UInt8 {
         try require(1, what: what)
         defer { offset += 1 }
-        return bytes[offset]
+        return base.loadUnaligned(fromByteOffset: offset, as: UInt8.self)
     }
 
     mutating func readU32(_ what: String) throws -> UInt32 {
         try require(4, what: what)
-        var value: UInt32 = 0
-        for i in 0..<4 { value |= UInt32(bytes[offset + i]) << (8 * i) }
-        offset += 4
-        return value
+        defer { offset += 4 }
+        return UInt32(littleEndian: base.loadUnaligned(fromByteOffset: offset, as: UInt32.self))
     }
 
     mutating func readU64(_ what: String) throws -> UInt64 {
         try require(8, what: what)
-        var value: UInt64 = 0
-        for i in 0..<8 { value |= UInt64(bytes[offset + i]) << (8 * i) }
-        offset += 8
-        return value
+        defer { offset += 8 }
+        return UInt64(littleEndian: base.loadUnaligned(fromByteOffset: offset, as: UInt64.self))
     }
 
     mutating func readString(byteLength: Int, what: String) throws -> String {
