@@ -6,6 +6,8 @@ semantic versioning once the public API is frozen for 1.0.
 
 ## [Unreleased]
 
+## [0.9.0-beta] — 2026-09-12
+
 ### Changed
 - CSV writer rewritten at the UTF-8 byte level with parallel row-chunk formatting: ~30× faster at 6.7M×43 (≈2 s vs ≈65 s); output contract pinned by `CSVWriterTests`.
 - CSV parsing parallelized in both stages (chunked field grid with serial fallback on quoted newlines; per-column type/typed parsing): `readCSV` 5.7 s → 3.3 s at 6.7M×43. Pinned by `CSVGridParallelTests` / `CSVColumnParallelTests`.
