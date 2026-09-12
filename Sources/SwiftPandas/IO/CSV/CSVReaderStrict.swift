@@ -16,6 +16,9 @@
 // ===----------------------------------------------------------------------===//
 
 import Foundation
+#if canImport(Dispatch)
+import Dispatch
+#endif
 
 /// A per-column report of cells that failed their declared dtype parse
 /// during a strict CSV load.
@@ -93,6 +96,9 @@ extension CSVReader {
         case int64
         case bool
         case string
+        /// `.declared` mode, column not in the contract: run the historical
+        /// inference (shared `inferColumn`) — never fails, never reports.
+        case inferred
     }
 
     private func target(for name: String) -> (TypedTarget, DTypeEnum) {
@@ -101,11 +107,19 @@ extension CSVReader {
             return (.string, .string)
         case .strict(let contract):
             guard let declared = contract[name] else { return (.string, .string) }
-            if declared.isFloat { return (.double, declared) }
-            if declared.isInteger { return (.int64, declared) }
-            if declared == .bool { return (.bool, declared) }
-            return (.string, declared)
+            return Self.contractTarget(declared)
+        case .declared(let contract):
+            guard let declared = contract[name] else { return (.inferred, .string) }
+            return Self.contractTarget(declared)
         }
+    }
+
+    /// Shared declared-dtype → storage mapping for `.strict` and `.declared`.
+    private static func contractTarget(_ declared: DTypeEnum) -> (TypedTarget, DTypeEnum) {
+        if declared.isFloat { return (.double, declared) }
+        if declared.isInteger { return (.int64, declared) }
+        if declared == .bool { return (.bool, declared) }
+        return (.string, declared)
     }
 
     /// Contract-driven column builder over the shared field grid.
@@ -141,20 +155,18 @@ extension CSVReader {
                 case .int64: return (name, Column.fromInts([]))
                 case .bool: return (name, Column.fromBools([]))
                 case .string: return (name, Column.fromStrings([]))
+                // Matches the infer path's zero-row column dtype.
+                case .inferred: return (name, Column.fromDoubles([]))
                 }
             }
             return (DataFrame(columns: Self.dedupeLastWins(empty)), [])
         }
 
-        let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
-        defer { strtodBuf.deallocate() }
-
-        var resultColumns = [(String, Column)]()
-        resultColumns.reserveCapacity(columnNames.count)
-        var failures = [ColumnParseFailure]()
-
-        for (colIdx, name) in columnNames.enumerated() {
-            guard colIdx < grid.colCount else { continue }
+        /// Builds one column (and its optional failure report) — the unit
+        /// of work for both the serial and column-parallel drives below.
+        func buildColumn(
+            colIdx: Int, name: String, strtodBuf: UnsafeMutablePointer<CChar>
+        ) -> (column: (String, Column), failure: ColumnParseFailure?) {
             let (storage, declared) = target(for: name)
 
             var failCount = 0
@@ -176,7 +188,14 @@ extension CSVReader {
                 return len == 0 || Self.isNACustom(bytes, start: s, length: len, patterns: naBytePatterns)
             }
 
+            let column: Column
             switch storage {
+            case .inferred:
+                column = inferColumn(
+                    bytes, grid: grid, colIdx: colIdx, dataStartRow: dataStartRow,
+                    rowCount: rowCount, useDefaultNA: useDefaultNA,
+                    naBytePatterns: naBytePatterns, strtodBuf: strtodBuf)
+
             case .string:
                 var values = [String?]()
                 values.reserveCapacity(rowCount)
@@ -185,7 +204,7 @@ extension CSVReader {
                     let (s, e) = Self.stripQuotes(bytes, start: field.start, end: field.end)
                     values.append(isNACell(s, e - s) ? nil : extractString(bytes, field: field))
                 }
-                resultColumns.append((name, .fromOptionalStrings(values)))
+                column = .fromOptionalStrings(values)
 
             case .double:
                 var data = ContiguousArray<Double>(repeating: 0, count: rowCount)
@@ -205,7 +224,7 @@ extension CSVReader {
                         }
                     }
                 }
-                resultColumns.append((name, .double(NullableArray(data: NativeArray(data), mask: valid))))
+                column = .double(NullableArray(data: NativeArray(data), mask: valid))
 
             case .int64:
                 var data = ContiguousArray<Int64>(repeating: 0, count: rowCount)
@@ -225,7 +244,7 @@ extension CSVReader {
                         }
                     }
                 }
-                resultColumns.append((name, .int64(NullableArray(data: NativeArray(data), mask: valid))))
+                column = .int64(NullableArray(data: NativeArray(data), mask: valid))
 
             case .bool:
                 var data = ContiguousArray<Bool>(repeating: false, count: rowCount)
@@ -242,14 +261,49 @@ extension CSVReader {
                         noteFailure(rowIdx, field)
                     }
                 }
-                resultColumns.append((name, .bool(NullableArray(data: NativeArray(data), mask: valid))))
+                column = .bool(NullableArray(data: NativeArray(data), mask: valid))
             }
 
-            if failCount > 0 {
-                failures.append(ColumnParseFailure(
-                    column: name, declaredType: declared, failedCount: failCount,
-                    firstFailedRow: firstFailRow, firstFailedValue: firstFailValue
-                ))
+            let failure = failCount > 0 ? ColumnParseFailure(
+                column: name, declaredType: declared, failedCount: failCount,
+                firstFailedRow: firstFailRow, firstFailedValue: firstFailValue
+            ) : nil
+            return ((name, column), failure)
+        }
+
+        var resultColumns: [(String, Column)]
+        var failures: [ColumnParseFailure]
+
+        if CSVReader.shouldParallelizeColumns(rows: rowCount, cols: grid.colCount) {
+            // Columns are independent over the shared read-only grid; each
+            // iteration owns one slot and its own strtod scratch. Slot-order
+            // assembly keeps columns and failure reports deterministic.
+            var slots = [((String, Column), ColumnParseFailure?)?](
+                repeating: nil, count: columnNames.count)
+            slots.withUnsafeMutableBufferPointer { buf in
+                DispatchQueue.concurrentPerform(iterations: columnNames.count) { colIdx in
+                    guard colIdx < grid.colCount else { return }
+                    let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
+                    defer { strtodBuf.deallocate() }
+                    buf[colIdx] = buildColumn(colIdx: colIdx, name: columnNames[colIdx],
+                                              strtodBuf: strtodBuf)
+                }
+            }
+            let built = slots.compactMap { $0 }
+            resultColumns = built.map { $0.0 }
+            failures = built.compactMap { $0.1 }
+        } else {
+            let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
+            defer { strtodBuf.deallocate() }
+            resultColumns = []
+            resultColumns.reserveCapacity(columnNames.count)
+            failures = []
+            for (colIdx, name) in columnNames.enumerated() {
+                guard colIdx < grid.colCount else { continue }
+                let (col, failure) = buildColumn(colIdx: colIdx, name: name,
+                                                 strtodBuf: strtodBuf)
+                resultColumns.append(col)
+                if let failure { failures.append(failure) }
             }
         }
 

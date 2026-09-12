@@ -32,6 +32,9 @@
 // convenience `DataFrame` extension methods (`readCSV`, `toCSV`) for ergonomic use.
 
 import Foundation
+#if canImport(Dispatch)
+import Dispatch
+#endif
 
 /// High-performance CSV reader that parses CSV text into a ``DataFrame``.
 ///
@@ -116,6 +119,13 @@ public struct CSVReader: Sendable {
         case strict([String: DTypeEnum])
         /// Every column stays `.string`, byte-preserving. Never infers.
         case allStrings
+        /// Hybrid: each listed column parses to its declared dtype (same
+        /// semantics as ``strict(_:)``, including failure reporting);
+        /// **unlisted columns keep the historical inference behavior**
+        /// byte-for-byte. Declaring an all-digit identifier column as
+        /// `.string` protects it (postcode `"0800"` stays `"0800"`) without
+        /// changing how any other column parses.
+        case declared([String: DTypeEnum])
     }
 
     /// Creates a reader that never infers: listed columns parse to their
@@ -138,6 +148,25 @@ public struct CSVReader: Sendable {
     ) -> CSVReader {
         CSVReader(separator: separator, header: header, naValues: naValues,
                   mode: .strict(columnTypes))
+    }
+
+    /// Creates a reader where listed columns parse to their declared dtypes
+    /// and **unlisted columns keep the historical inference** byte-for-byte.
+    ///
+    /// This is the migration-friendly middle ground between ``init`` (all
+    /// inference) and ``strict(columnTypes:separator:header:naValues:)``
+    /// (no inference anywhere): declare only the columns whose dtype is a
+    /// correctness contract (e.g. all-digit string identifiers) and leave
+    /// the rest exactly as they parse today. Declared-column parse failures
+    /// are reported via ``readWithReport(from:)-(String)``, same as strict.
+    public static func declared(
+        columnTypes: [String: DTypeEnum],
+        separator: Character = ",",
+        header: Bool = true,
+        naValues: Set<String> = ["", "NA", "N/A", "NaN", "nan", "null", "NULL", "None", "none", "."]
+    ) -> CSVReader {
+        CSVReader(separator: separator, header: header, naValues: naValues,
+                  mode: .declared(columnTypes))
     }
 
     /// A reader that parses every column as `.string`, preserving cell text
@@ -188,7 +217,7 @@ public struct CSVReader: Sendable {
     /// when extracting the field as a Swift `String`. For numeric parsing, escaped quotes are
     /// irrelevant since such fields will fail numeric conversion and fall through to string
     /// extraction.
-    internal struct FieldRange {
+    internal struct FieldRange: Equatable {
         /// Byte offset of the first character of the field (inclusive).
         let start: Int
         /// Byte offset one past the last character of the field (exclusive).
@@ -375,14 +404,6 @@ public struct CSVReader: Sendable {
             return DataFrame(columns: columnNames.map { ($0, Column.fromDoubles([])) })
         }
 
-        // Allocate a reusable buffer for strtod fallback (avoids per-cell allocation)
-        let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
-        defer { strtodBuf.deallocate() }
-
-        // Build columns with fast type inference
-        var resultColumns = [(String, Column)]()
-        resultColumns.reserveCapacity(columnNames.count)
-
         // Check if using default NA values for fast-path matching
         let useDefaultNA = (naValues == ["", "NA", "N/A", "NaN", "nan", "null", "NULL", "None", "none", "."])
 
@@ -390,80 +411,135 @@ public struct CSVReader: Sendable {
         let naBytePatterns: [[UInt8]] = useDefaultNA ? [] : naValues.map { Array($0.utf8) }
 
         let colCount = grid.colCount
+        var resultColumns: [(String, Column)]
 
-        for (colIdx, name) in columnNames.enumerated() {
-            guard colIdx < colCount else { continue }
-
-            var allNumeric = true
-            var doubles = ContiguousArray<Double>()
-            doubles.reserveCapacity(rowCount)
-            var hasNA = false
-            var naRows = ContiguousArray<Int>()
-
-            for rowIdx in 0..<rowCount {
-                let field = grid.field(row: dataStartRow + rowIdx, col: colIdx)
-                let (s, e) = Self.stripQuotes(bytes, start: field.start, end: field.end)
-                let fieldLen = e - s
-
-                let isNA: Bool
-                if useDefaultNA {
-                    isNA = Self.isNADefault(bytes, start: s, length: fieldLen)
-                } else {
-                    isNA = fieldLen == 0 || Self.isNACustom(bytes, start: s, length: fieldLen, patterns: naBytePatterns)
-                }
-
-                if isNA {
-                    doubles.append(0.0)
-                    naRows.append(rowIdx)
-                    hasNA = true
-                } else {
-                    let (success, value) = Self.fastParseDouble(bytes, start: s, end: e, strtodBuf: strtodBuf)
-                    if success {
-                        doubles.append(value)
-                    } else {
-                        allNumeric = false
-                        break
-                    }
+        if Self.shouldParallelizeColumns(rows: rowCount, cols: colCount) {
+            // Columns are independent over the shared read-only grid, so
+            // stage 2 parallelizes per column. Each iteration owns one
+            // slot and its own strtod scratch; assembly by slot index
+            // keeps output order (and dedupe semantics) deterministic.
+            var slots = [(String, Column)?](repeating: nil, count: columnNames.count)
+            slots.withUnsafeMutableBufferPointer { buf in
+                DispatchQueue.concurrentPerform(iterations: columnNames.count) { colIdx in
+                    guard colIdx < colCount else { return }
+                    let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
+                    defer { strtodBuf.deallocate() }
+                    buf[colIdx] = (columnNames[colIdx], inferColumn(
+                        bytes, grid: grid, colIdx: colIdx, dataStartRow: dataStartRow,
+                        rowCount: rowCount, useDefaultNA: useDefaultNA,
+                        naBytePatterns: naBytePatterns, strtodBuf: strtodBuf))
                 }
             }
-
-            if allNumeric {
-                let mask: BitVector
-                if hasNA {
-                    var bits = BitVector(repeating: true, count: rowCount)
-                    for idx in naRows { bits[idx] = false }
-                    mask = bits
-                } else {
-                    mask = BitVector(repeating: true, count: rowCount)
-                }
-                let na = NullableArray(data: NativeArray(doubles), mask: mask)
-                resultColumns.append((name, .double(na)))
-            } else {
-                var stringValues = [String?]()
-                stringValues.reserveCapacity(rowCount)
-                for rowIdx in 0..<rowCount {
-                    let field = grid.field(row: dataStartRow + rowIdx, col: colIdx)
-                    let (s, e) = Self.stripQuotes(bytes, start: field.start, end: field.end)
-                    let fieldLen = e - s
-
-                    let isNA: Bool
-                    if useDefaultNA {
-                        isNA = Self.isNADefault(bytes, start: s, length: fieldLen)
-                    } else {
-                        isNA = fieldLen == 0 || Self.isNACustom(bytes, start: s, length: fieldLen, patterns: naBytePatterns)
-                    }
-
-                    if isNA {
-                        stringValues.append(nil)
-                    } else {
-                        stringValues.append(extractString(bytes, field: field))
-                    }
-                }
-                resultColumns.append((name, .fromOptionalStrings(stringValues)))
+            resultColumns = slots.compactMap { $0 }
+        } else {
+            // Reusable strtod fallback buffer (avoids per-cell allocation).
+            let strtodBuf = UnsafeMutablePointer<CChar>.allocate(capacity: 64)
+            defer { strtodBuf.deallocate() }
+            resultColumns = []
+            resultColumns.reserveCapacity(columnNames.count)
+            for (colIdx, name) in columnNames.enumerated() {
+                guard colIdx < colCount else { continue }
+                resultColumns.append((name, inferColumn(
+                    bytes, grid: grid, colIdx: colIdx, dataStartRow: dataStartRow,
+                    rowCount: rowCount, useDefaultNA: useDefaultNA,
+                    naBytePatterns: naBytePatterns, strtodBuf: strtodBuf)))
             }
         }
 
         return DataFrame(columns: Self.dedupeLastWins(resultColumns))
+    }
+
+    /// Column-parallel parse gate: enough cells to amortize dispatch, more
+    /// than one column to spread, more than one core to spread over.
+    /// Column results depend only on their own column's bytes, so the
+    /// parallel and serial paths produce identical frames by construction
+    /// (pinned observationally by `CSVColumnParallelTests`).
+    internal static func shouldParallelizeColumns(rows: Int, cols: Int) -> Bool {
+        cols > 1 && rows >= 4096 && rows * cols >= 1 << 18
+            && ProcessInfo.processInfo.activeProcessorCount > 1
+    }
+
+    /// Infers and builds one column from the field grid — the historical
+    /// inference behavior (all non-NA cells parse as numbers → `.double`,
+    /// else `.string`). Extracted verbatim from the `.infer` read loop so
+    /// the ``ParseMode/declared(_:)`` mode's unlisted columns share it and
+    /// are byte-for-byte identical to a plain inferred read.
+    internal func inferColumn(
+        _ bytes: UnsafeBufferPointer<UInt8>,
+        grid: FieldGrid,
+        colIdx: Int,
+        dataStartRow: Int,
+        rowCount: Int,
+        useDefaultNA: Bool,
+        naBytePatterns: [[UInt8]],
+        strtodBuf: UnsafeMutablePointer<CChar>
+    ) -> Column {
+        var allNumeric = true
+        var doubles = ContiguousArray<Double>()
+        doubles.reserveCapacity(rowCount)
+        var hasNA = false
+        var naRows = ContiguousArray<Int>()
+
+        for rowIdx in 0..<rowCount {
+            let field = grid.field(row: dataStartRow + rowIdx, col: colIdx)
+            let (s, e) = Self.stripQuotes(bytes, start: field.start, end: field.end)
+            let fieldLen = e - s
+
+            let isNA: Bool
+            if useDefaultNA {
+                isNA = Self.isNADefault(bytes, start: s, length: fieldLen)
+            } else {
+                isNA = fieldLen == 0 || Self.isNACustom(bytes, start: s, length: fieldLen, patterns: naBytePatterns)
+            }
+
+            if isNA {
+                doubles.append(0.0)
+                naRows.append(rowIdx)
+                hasNA = true
+            } else {
+                let (success, value) = Self.fastParseDouble(bytes, start: s, end: e, strtodBuf: strtodBuf)
+                if success {
+                    doubles.append(value)
+                } else {
+                    allNumeric = false
+                    break
+                }
+            }
+        }
+
+        if allNumeric {
+            let mask: BitVector
+            if hasNA {
+                var bits = BitVector(repeating: true, count: rowCount)
+                for idx in naRows { bits[idx] = false }
+                mask = bits
+            } else {
+                mask = BitVector(repeating: true, count: rowCount)
+            }
+            return .double(NullableArray(data: NativeArray(doubles), mask: mask))
+        }
+
+        var stringValues = [String?]()
+        stringValues.reserveCapacity(rowCount)
+        for rowIdx in 0..<rowCount {
+            let field = grid.field(row: dataStartRow + rowIdx, col: colIdx)
+            let (s, e) = Self.stripQuotes(bytes, start: field.start, end: field.end)
+            let fieldLen = e - s
+
+            let isNA: Bool
+            if useDefaultNA {
+                isNA = Self.isNADefault(bytes, start: s, length: fieldLen)
+            } else {
+                isNA = fieldLen == 0 || Self.isNACustom(bytes, start: s, length: fieldLen, patterns: naBytePatterns)
+            }
+
+            if isNA {
+                stringValues.append(nil)
+            } else {
+                stringValues.append(extractString(bytes, field: field))
+            }
+        }
+        return .fromOptionalStrings(stringValues)
     }
 
     /// Hot-path double parser optimized for the common `[-]digits[.digits]` numeric pattern.
@@ -764,6 +840,17 @@ public struct CSVReader: Sendable {
     /// - Parameter bytes: The contiguous UTF-8 byte buffer to scan.
     /// - Returns: A populated ``FieldGrid`` with all cell byte ranges.
     internal func parseFieldGrid(_ bytes: UnsafeBufferPointer<UInt8>) -> FieldGrid {
+        if let parallel = parseFieldGridParallel(bytes) {
+            return parallel
+        }
+        return parseFieldGridSerial(bytes)
+    }
+
+    /// The single-pass serial grid scanner — the semantics oracle for the
+    /// chunked parallel scanner, and the fallback whenever the parallel
+    /// pass detects an anomaly (quoted newline, unterminated quote, or an
+    /// overflow row) that makes speculative chunking unsound.
+    internal func parseFieldGridSerial(_ bytes: UnsafeBufferPointer<UInt8>) -> FieldGrid {
         let sepByte = separator.asciiValue!
         let count = bytes.count
 
@@ -875,6 +962,229 @@ public struct CSVReader: Sendable {
         }
 
         return FieldGrid(fields: fields, rowCount: rowCount, colCount: colCount)
+    }
+
+    // MARK: - Parallel Grid Construction (D4 stage 2)
+
+    /// Minimum byte count for the chunked grid scan. Below this the serial
+    /// scanner wins on dispatch overhead alone.
+    internal static let parallelGridByteThreshold = 1 << 22  // 4 MiB
+
+    /// Chunked, speculative grid scan. Returns `nil` — meaning "use the
+    /// serial scanner" — below the size gate or when any chunk detects an
+    /// anomaly that makes speculation unsound.
+    ///
+    /// **Why speculation is safe:** chunk boundaries are placed just past a
+    /// newline byte, and every chunk runs the exact serial state machine
+    /// assuming it starts at a row boundary outside quotes. If the file
+    /// contains no quoted newline, every `\n` is a true row break, all
+    /// assumptions hold, and each chunk's output is exactly the serial
+    /// output for its range. If the file *does* contain a quoted newline,
+    /// consider the first one: every boundary before it is a true row
+    /// break, so the chunk containing it started in a correct state and
+    /// parses exactly — and therefore reports it (`\n` seen inside quotes,
+    /// or the chunk ending inside quotes when the anomaly is the boundary
+    /// newline itself). The dirty flag forces the serial fallback before
+    /// any wrongly-speculated chunk's output can be used. Rows with *more*
+    /// fields than `colCount` also flag: the serial scanner lets them
+    /// shift row-major alignment globally, which chunking can't reproduce.
+    ///
+    /// - Parameter byteThreshold: Overridable for tests; production callers
+    ///   use the default gate.
+    internal func parseFieldGridParallel(
+        _ bytes: UnsafeBufferPointer<UInt8>,
+        byteThreshold: Int = CSVReader.parallelGridByteThreshold
+    ) -> FieldGrid? {
+        let count = bytes.count
+        let cores = ProcessInfo.processInfo.activeProcessorCount
+        guard count >= byteThreshold, cores > 1,
+              let sepByte = separator.asciiValue else { return nil }
+
+        // Column count from the first row — mirrors the serial scanner's
+        // preliminary scan (kept duplicated so the serial oracle stays
+        // byte-for-byte untouched).
+        var colCount = 1
+        var scanI = 0
+        var scanInQuotes = false
+        while scanI < count {
+            let b = bytes[scanI]
+            if scanInQuotes {
+                if b == 0x22 {
+                    if scanI + 1 < count && bytes[scanI + 1] == 0x22 {
+                        scanI += 2; continue
+                    } else {
+                        scanInQuotes = false
+                    }
+                }
+                scanI += 1; continue
+            }
+            if b == 0x22 { scanInQuotes = true; scanI += 1; continue }
+            if b == sepByte { colCount += 1; scanI += 1; continue }
+            if b == 0x0A { break }
+            scanI += 1
+        }
+
+        // Boundaries at ~equal offsets, advanced past the next newline.
+        let minChunk = max(1, byteThreshold / 2)
+        let targetChunks = min(cores, max(2, count / minChunk))
+        var boundaries = [0]
+        for k in 1..<targetChunks {
+            var p = count * k / targetChunks
+            guard p > boundaries.last! else { continue }
+            while p < count && bytes[p] != 0x0A { p += 1 }
+            p = Swift.min(p + 1, count)
+            if p > boundaries.last! && p < count { boundaries.append(p) }
+        }
+        boundaries.append(count)
+        let chunkCount = boundaries.count - 1
+        guard chunkCount > 1 else { return nil }
+
+        struct ChunkResult {
+            var fields = ContiguousArray<FieldRange>()
+            var rows = 0
+            var clean = true
+        }
+        var slots = [ChunkResult?](repeating: nil, count: chunkCount)
+        slots.withUnsafeMutableBufferPointer { buf in
+            DispatchQueue.concurrentPerform(iterations: chunkCount) { k in
+                var result = ChunkResult()
+                // ~6.5 bytes/field is typical; over-reserving slightly
+                // beats growth-doubling copies on 100M+ field chunks.
+                result.fields.reserveCapacity((boundaries[k + 1] - boundaries[k]) / 6 + 16)
+                result.clean = self.scanFieldChunk(
+                    bytes, from: boundaries[k], to: boundaries[k + 1],
+                    isLast: k == chunkCount - 1, sepByte: sepByte,
+                    colCount: colCount, fields: &result.fields, rows: &result.rows)
+                buf[k] = result
+            }
+        }
+
+        var totalRows = 0
+        var offsets = [Int](repeating: 0, count: chunkCount)
+        var totalFields = 0
+        for k in 0..<chunkCount {
+            guard let s = slots[k], s.clean else { return nil }
+            offsets[k] = totalFields
+            totalRows += s.rows
+            totalFields += s.fields.count
+        }
+        // Disjoint parallel merge: FieldRange is trivial, so initializing
+        // each chunk's slice of the final buffer is a plain memcpy.
+        let fields = ContiguousArray<FieldRange>(unsafeUninitializedCapacity: totalFields) { dest, initialized in
+            guard let base = dest.baseAddress else { initialized = 0; return }
+            slots.withUnsafeBufferPointer { src in
+                DispatchQueue.concurrentPerform(iterations: chunkCount) { k in
+                    src[k]!.fields.withUnsafeBufferPointer { chunk in
+                        guard let chunkBase = chunk.baseAddress else { return }
+                        (base + offsets[k]).initialize(from: chunkBase, count: chunk.count)
+                    }
+                }
+            }
+            initialized = totalFields
+        }
+        return FieldGrid(fields: fields, rowCount: totalRows, colCount: colCount)
+    }
+
+    /// Scans one byte range with the same state machine as
+    /// ``parseFieldGridSerial(_:)``, assuming the range starts at a row
+    /// boundary outside quotes. Returns `false` ("dirty") when that output
+    /// must not be trusted: a newline inside quotes, the range ending
+    /// inside quotes, or a row with more fields than `colCount`.
+    ///
+    /// The escaped-quote lookahead uses the chunk's `end` where the serial
+    /// scanner uses the file's `count`; the two can only differ when the
+    /// chunk ends inside quotes — interior boundaries sit just past a
+    /// newline, so a boundary byte can't be a quote — and that case is
+    /// dirty regardless.
+    private func scanFieldChunk(
+        _ bytes: UnsafeBufferPointer<UInt8>, from start: Int, to end: Int,
+        isLast: Bool, sepByte: UInt8, colCount: Int,
+        fields: inout ContiguousArray<FieldRange>, rows: inout Int
+    ) -> Bool {
+        var clean = true
+        var currentColInRow = 0
+        var fieldStart = start
+        var inQuotes = false
+        var hasQuotes = false
+        var i = start
+
+        while i < end {
+            let b = bytes[i]
+
+            if inQuotes {
+                if b == 0x0A {
+                    clean = false  // quoted newline: speculative split unsound
+                }
+                if b == 0x22 {
+                    if i + 1 < end && bytes[i + 1] == 0x22 {
+                        hasQuotes = true
+                        i += 2
+                        continue
+                    } else {
+                        inQuotes = false
+                    }
+                }
+                i += 1
+                continue
+            }
+
+            if b == 0x22 && (i == fieldStart || (i == fieldStart + 1 && i > 0 && bytes[fieldStart] == 0x0D)) {
+                inQuotes = true
+                i += 1
+                continue
+            }
+
+            if b == sepByte {
+                fields.append(FieldRange(start: fieldStart, end: i, hasEscapedQuotes: hasQuotes))
+                currentColInRow += 1
+                fieldStart = i + 1
+                hasQuotes = false
+                i += 1
+                continue
+            }
+
+            if b == 0x0A {
+                var fieldEnd = i
+                if fieldEnd > fieldStart && bytes[fieldEnd - 1] == 0x0D { fieldEnd -= 1 }
+                fields.append(FieldRange(start: fieldStart, end: fieldEnd, hasEscapedQuotes: hasQuotes))
+                currentColInRow += 1
+                if currentColInRow > colCount {
+                    clean = false  // overflow row shifts global alignment serially
+                }
+                while currentColInRow < colCount {
+                    fields.append(FieldRange(start: fieldEnd, end: fieldEnd, hasEscapedQuotes: false))
+                    currentColInRow += 1
+                }
+                rows += 1
+                currentColInRow = 0
+                fieldStart = i + 1
+                hasQuotes = false
+                i += 1
+                continue
+            }
+
+            i += 1
+        }
+
+        if isLast && fieldStart <= end {
+            var fieldEnd = end
+            if fieldEnd > fieldStart && bytes[fieldEnd - 1] == 0x0D { fieldEnd -= 1 }
+            if fieldStart < fieldEnd || currentColInRow > 0 {
+                fields.append(FieldRange(start: fieldStart, end: fieldEnd, hasEscapedQuotes: hasQuotes))
+                currentColInRow += 1
+                if currentColInRow > colCount {
+                    clean = false
+                }
+                while currentColInRow < colCount {
+                    fields.append(FieldRange(start: fieldEnd, end: fieldEnd, hasEscapedQuotes: false))
+                    currentColInRow += 1
+                }
+                rows += 1
+            }
+        }
+
+        if inQuotes { clean = false }
+        return clean
     }
 
     // MARK: - Character-Based Fallback Parsing (Tier 2)
@@ -1101,6 +1411,25 @@ public struct CSVWriter: Sendable {
 
     /// Serializes the given ``DataFrame`` to a CSV-formatted `String`.
     ///
+    /// Dispatches to the byte-level fast writer (``writeBytes(_:sepByte:)``)
+    /// when the separator is a single UTF-8 byte — the common case. Exotic
+    /// multi-byte separators fall back to the legacy String-based path. Both
+    /// paths produce identical bytes for the same frame and options; the
+    /// contract is pinned by `CSVWriterGoldenTests`.
+    ///
+    /// - Parameter df: The ``DataFrame`` to serialize.
+    /// - Returns: A CSV-formatted string with `\n` line endings.
+    public func write(_ df: DataFrame) -> String {
+        if let sepByte = fastSeparatorByte {
+            return String(decoding: writeBytes(df, sepByte: sepByte), as: UTF8.self)
+        }
+        return writeLegacy(df)
+    }
+
+    /// The legacy String-based serializer — retained as the fallback for
+    /// multi-byte separators and as the byte-parity oracle for the fast
+    /// writer's tests.
+    ///
     /// The method proceeds in four steps:
     /// 1. Pre-format all columns into `[[String]]` (column-major).
     /// 2. Estimate total output size and pre-allocate the result `String`.
@@ -1109,7 +1438,7 @@ public struct CSVWriter: Sendable {
     ///
     /// - Parameter df: The ``DataFrame`` to serialize.
     /// - Returns: A CSV-formatted string with `\n` line endings.
-    public func write(_ df: DataFrame) -> String {
+    internal func writeLegacy(_ df: DataFrame) -> String {
         let rowCount = df.rowCount
         guard rowCount > 0 else {
             if includeHeader {
@@ -1279,15 +1608,30 @@ public struct CSVWriter: Sendable {
 
     /// Writes the given ``DataFrame`` to a CSV file at the specified URL.
     ///
-    /// The CSV content is first generated in memory via ``write(_:)-String`` and then written
-    /// atomically to disk using UTF-8 encoding.
+    /// On the fast path the UTF-8 bytes are written directly (atomically) —
+    /// no intermediate `String` is ever materialized, halving peak memory
+    /// for large frames. The bytes on disk are identical to the legacy
+    /// `String.write(to:atomically:encoding:.utf8)` output (UTF-8, no BOM).
     ///
     /// - Parameters:
     ///   - df: The ``DataFrame`` to serialize.
     ///   - url: The file URL to write to.
-    /// - Throws: Any error from `String.write(to:atomically:encoding:)`.
+    /// - Throws: Any error from file I/O.
     public func write(_ df: DataFrame, to url: URL) throws {
-        let text = write(df)
+        if let sepByte = fastSeparatorByte {
+            var bytes = writeBytes(df, sepByte: sepByte)
+            // Wrap the buffer without copying; `bytes` outlives the write.
+            try bytes.withUnsafeMutableBytes { buf -> Void in
+                guard let base = buf.baseAddress else {
+                    try Data().write(to: url, options: .atomic)
+                    return
+                }
+                let data = Data(bytesNoCopy: base, count: buf.count, deallocator: .none)
+                try data.write(to: url, options: .atomic)
+            }
+            return
+        }
+        let text = writeLegacy(df)
         try text.write(to: url, atomically: true, encoding: .utf8)
     }
 
@@ -1345,6 +1689,36 @@ extension DataFrame {
         header: Bool = true
     ) throws -> DataFrame {
         let reader = CSVReader(separator: separator, header: header)
+        return try reader.read(fromPath: path)
+    }
+
+    /// Reads a CSV file with a declared-dtype contract for chosen columns.
+    ///
+    /// Columns named in `dtypes` skip inference entirely — an all-digit
+    /// cell in a declared `.string` column stays a string (postcode
+    /// `"0800"` never becomes `800`). **Undeclared columns keep today's
+    /// inference byte-for-byte.** Declared cells that fail to parse become
+    /// NA; use ``CSVReader/readWithReport(from:)-(URL)`` with
+    /// ``CSVReader/declared(columnTypes:separator:header:naValues:)`` when
+    /// you need the per-column failure report.
+    ///
+    /// - Parameters:
+    ///   - path: An absolute or relative file-system path to the CSV file.
+    ///   - dtypes: Declared dtypes per column name. `nil` or empty is
+    ///     equivalent to plain ``readCSV(path:separator:header:)``.
+    ///   - separator: The field delimiter character. Defaults to `","`.
+    ///   - header: Whether the first row contains column names. Defaults to `true`.
+    public static func readCSV(
+        path: String,
+        dtypes: [String: DTypeEnum]?,
+        separator: Character = ",",
+        header: Bool = true
+    ) throws -> DataFrame {
+        guard let dtypes, !dtypes.isEmpty else {
+            return try readCSV(path: path, separator: separator, header: header)
+        }
+        let reader = CSVReader.declared(columnTypes: dtypes,
+                                        separator: separator, header: header)
         return try reader.read(fromPath: path)
     }
 
