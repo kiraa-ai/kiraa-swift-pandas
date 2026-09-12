@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Batch Analytics as Artifacts</title>
+<style>
+  :root {
+    --bg:#0B1220; --panel:#0F172A; --codebg:#0d1424; --accent:#22D3EE;
+    --accent2:#C084FC; --text:#E2E8F0; --muted:#94A3B8; --codetext:#E5E7EB;
+    --border:#1E293B;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#05080f; color:var(--text);
+    font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  .deck { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .slide {
+    position:absolute; width:min(94vw,1280px); aspect-ratio:16/9; max-height:94vh;
+    background:radial-gradient(120% 120% at 12% 0%, #101c30 0%, var(--bg) 55%);
+    border:1px solid var(--border); border-radius:18px; padding:5.2% 6%;
+    opacity:0; transform:translateY(14px) scale(.99); pointer-events:none;
+    transition:opacity .28s ease, transform .28s ease; overflow:hidden;
+    box-shadow:0 30px 90px rgba(0,0,0,.55);
+  }
+  .slide.active { opacity:1; transform:none; pointer-events:auto; }
+  .content { height:100%; display:flex; flex-direction:column; }
+  h1 { font-size:clamp(28px,4.6vw,60px); line-height:1.05; margin:.1em 0 .2em; letter-spacing:-.02em; }
+  h2 { font-size:clamp(22px,3.2vw,40px); margin:.1em 0 .5em; letter-spacing:-.01em;
+        padding-bottom:.28em; position:relative; }
+  h2::after { content:""; position:absolute; left:0; bottom:0; width:56px; height:5px;
+               border-radius:3px; background:var(--a,var(--accent)); }
+  .tick { width:64px; height:7px; border-radius:4px; margin-bottom:26px; }
+  .subtitle { font-size:clamp(16px,1.9vw,24px); color:var(--muted); max-width:60ch; line-height:1.4; }
+  .brand { margin-top:auto; font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+  .tag { font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; margin-bottom:.2em; }
+  .cols { display:grid; grid-template-columns:1.05fr .95fr; gap:32px; align-items:start; flex:1; min-height:0; }
+  .single { flex:1; min-height:0; }
+  ul,ol { margin:.2em 0; padding-left:0; list-style:none; }
+  li { position:relative; padding-left:1.6em; margin:.52em 0; font-size:clamp(15px,1.7vw,21px); line-height:1.35; }
+  ul li::before { content:"▸"; position:absolute; left:0; color:var(--a,var(--accent)); font-weight:700; }
+  ol { counter-reset:li; }
+  ol li { counter-increment:li; }
+  ol li::before { content:counter(li,decimal-leading-zero); position:absolute; left:0;
+    color:var(--a,var(--accent)); font-weight:700; font-variant-numeric:tabular-nums; }
+  code { font-family:"SF Mono",Menlo,monospace; background:rgba(34,211,238,.1);
+    color:var(--codetext); padding:.05em .35em; border-radius:5px; font-size:.9em; }
+  pre.code { background:var(--codebg); border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; overflow:auto; margin:0; font-size:clamp(11px,1.15vw,14px); }
+  pre.code code { background:none; color:var(--codetext); padding:0; white-space:pre; }
+  .foot { margin-top:auto; padding-top:14px; display:flex; justify-content:space-between;
+    align-items:flex-end; gap:16px; color:var(--muted); font-size:13px; }
+  .visual { max-width:74%; line-height:1.3; }
+  .timing { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+  .page { position:absolute; top:20px; right:26px; color:var(--muted); font-size:12px;
+    font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+  .notes { position:absolute; left:0; right:0; bottom:0; background:rgba(5,8,15,.96);
+    border-top:1px solid var(--border); padding:16px 22px; max-height:42%; overflow:auto; }
+  .notes-h { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  .notes-body { font-size:15px; line-height:1.45; color:#cbd5e1; }
+  .muted { color:var(--muted); }
+  .hud { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px;
+    align-items:center; background:rgba(15,23,42,.8); border:1px solid var(--border);
+    border-radius:999px; padding:7px 14px; font-size:12px; color:var(--muted); backdrop-filter:blur(8px); z-index:10; }
+  .hud button { background:none; border:0; color:var(--text); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:6px; }
+  .hud button:hover { background:rgba(34,211,238,.15); }
+  .hud .sep { opacity:.4; }
+  .bar { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:11; transition:width .28s ease; }
+  @media (max-width:700px) { .cols { grid-template-columns:1fr; gap:14px; } .slide { padding:6% 6.5%; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar"></div>
+  <div class="deck" id="deck">
+    <section class="slide title" data-index="0"><div class="content"><div class="tick" style="background:var(--accent)"></div><h1>Batch Analytics as Artifacts</h1><p class="subtitle">One raw extract in. A folder of report deliverables out. Cron-ready, no state to manage.</p><p class="brand" style="color:var(--accent)">6-Minute Demo Presentation — Demo 3: Sales Report &nbsp;·&nbsp; *6-Minute Demo Presentation — Demo 3: Sales Report*</p></div><div class="page">01 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:00–0:30</div><div class="notes-body">The first two demos were about speed and interactivity. This one&#x27;s about the boring, essential thing every data team actually lives on: turning a raw extract into deliverables, on a schedule, without a human in the loop. I&#x27;ll show you a nightly report job that&#x27;s nothing more than a shell file — and why that&#x27;s exactly what you want.</div></div></section>
+<section class="slide content" data-index="1"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 2 — THE JOB EVERYONE HAS</div><h2 style="--a:var(--accent)">Every Team Has a &quot;Build the Numbers&quot; Job</h2><div class="single"><ul style="--a:var(--accent)"><li>Raw data lands (export, dump, extract)</li><li>Someone needs the same cuts every day: leaderboards, summaries, top-N</li><li>Today: a Python script, a runtime, a scheduler, and a prayer about dependencies</li><li>The output is what matters — a few clean CSVs someone downstream consumes</li></ul></div><div class="foot"><span class="visual">▨ A pipeline: &quot;raw.csv → [job] → a.csv, b.csv, c.csv&quot;.</span><span class="timing" style="color:var(--accent)">0:30–1:15</span></div></div><div class="page">02 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:30–1:15</div><div class="notes-body">Everybody has this job. Raw data shows up, and every morning someone needs the same set of cuts — the margin leaderboard, the channel summary, the top transactions. Usually that&#x27;s a Python script with a pinned environment, a scheduler, and some anxiety about whether the runtime still works. But strip it down: the *value* is just a few clean CSV files that a dashboard or a stakeholder consumes. Everything else is overhead.</div></div></section>
+<section class="slide content" data-index="2"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 3 — THE REPORT</div><h2 style="--a:var(--accent)">Three Sections, Three Pipelines, One File</h2><div class="single"><ul style="--a:var(--accent)"><li><strong>A — Margin leaderboard:</strong> profit &amp; avg margin % by region × product, ranked</li><li><strong>B — Channel summary:</strong> revenue, profit, avg units per channel</li><li><strong>C — Top 10 transactions:</strong> the highest-profit individual rows</li><li>Each section is a single, readable pipeline over 50,000 rows</li></ul></div><div class="foot"><span class="visual">▨ Three stacked pipeline strips, one per section.</span><span class="timing" style="color:var(--accent)">1:15–1:45</span></div></div><div class="page">03 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:15–1:45</div><div class="notes-body">Here&#x27;s a realistic report — three sections. A margin leaderboard grouped by region and product. A channel performance summary. And the ten biggest individual transactions. Each one is a single pipeline you can read top to bottom. Fifty thousand rows. Let me run the whole thing. *[switch to terminal, run ./run.sh]*</div></div></section>
+<section class="slide content" data-index="3"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 4 — WHAT YOU JUST SAW</div><h2 style="--a:var(--accent)">Three Real Reports, Each a Self-Contained Process</h2><div class="single"><ul style="--a:var(--accent)"><li>Chained <code>derive</code> — build <code>profit</code>, then <code>margin_pct</code> from it</li><li>Multi-key <code>groupby(region, product)</code></li><li><code>select → sort → head</code> to surface notable individual rows</li><li>Three CSV artifacts written to <code>out/</code> — the actual deliverable</li></ul></div><div class="foot"><span class="visual">▨ The <code>out/</code> folder with three files and their row counts.</span><span class="timing" style="color:var(--accent)">1:45–2:45</span></div></div><div class="page">04 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:45–2:45</div><div class="notes-body">Three reports, done. Notice what&#x27;s in there: chained derivations — I compute profit, then compute margin percent *from* profit a stage later. Multi-column group-bys. A projection-and-top-N to pull out the biggest deals. These aren&#x27;t toy operations; it&#x27;s the real vocabulary of analytics. And the output is exactly three CSV files sitting in a folder, ready for whatever consumes them next.</div></div></section>
+<section class="slide content" data-index="4"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 5 — WHY THIS SHAPE WINS</div><h2 style="--a:var(--accent)">No Runtime, No State — Just a File a Scheduler Runs</h2><div class="single"><ul style="--a:var(--accent)"><li>The job <strong>is</strong> the shell file — point cron or CI at it, done</li><li>Nothing resident between runs: no memory to leak, no server to babysit</li><li>Deterministic: same input → same bytes out (great for diffing &amp; auditing)</li><li>One self-contained binary as the only dependency</li></ul></div><div class="foot"><span class="visual">▨ A cron line <code>0 6 * * *  ./run.sh</code> above the three output files.</span><span class="timing" style="color:var(--accent)">2:45–3:45</span></div></div><div class="page">05 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 2:45–3:45</div><div class="notes-body">Now the payoff. Because there&#x27;s no resident state, this file *is* the job. You point cron at it, or a CI step, and you&#x27;re finished — there&#x27;s nothing running between executions to leak memory or fall over. It&#x27;s deterministic: the same extract produces byte-for-byte the same reports, which is a gift when you&#x27;re diffing yesterday&#x27;s numbers against today&#x27;s or handing them to an auditor. And the only dependency is a single binary. No environment to pin.</div></div></section>
+<section class="slide content" data-index="5"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 6 — SCALE &amp; COMPOSE</div><h2 style="--a:var(--accent)">From One Report to a Reporting Fleet</h2><div class="single"><ul style="--a:var(--accent)"><li>Fan out: a loop over 100 regional extracts, each its own report folder</li><li>Compose with Demo 1 &amp; 2: one-shot sections here, resident sessions for interactive drill-down</li><li>Deterministic output makes CI assertions trivial (&quot;did the numbers change?&quot;)</li><li>Same DSL an analyst reads and an LLM writes</li></ul></div><div class="foot"><span class="visual">▨ One report file multiplying into a grid of report folders.</span><span class="timing" style="color:var(--accent)">3:45–4:30</span></div></div><div class="page">06 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 3:45–4:30</div><div class="notes-body">And it scales the way shell scales. Wrap it in a loop and you&#x27;ve got a reporting fleet — one report folder per regional extract, per client, per day. Because output is deterministic, your CI can literally assert the numbers didn&#x27;t unexpectedly move. It composes with the other two modes: batch sections like these for the scheduled work, a resident session when a human needs to drill in. Same grammar throughout.</div></div></section>
+<section class="slide close" data-index="6"><div class="content"><div class="tag" style="color:var(--accent2)">SLIDE 7 — CLOSE</div><h2 style="--a:var(--accent2)">The Deliverable Is the Point. Everything Else Gets Out of the Way.</h2><div class="single"><ul style="--a:var(--accent2)"><li>Raw in → artifacts out, unattended</li><li>No runtime, no state, deterministic, one binary</li><li>The same engine behind Demo 1&#x27;s speed and Demo 2&#x27;s sessions</li></ul></div><div class="foot"><span class="visual">▨ SwiftPandas logo. The three demos as one arc: &quot;fast · resident · scheduled&quot;.</span><span class="timing" style="color:var(--accent2)">4:30–5:15</span></div></div><div class="page">07 / 07</div><div class="notes" hidden><div class="notes-h">Speaker notes · 4:30–5:15</div><div class="notes-body">That&#x27;s the trilogy. Demo 1: startup is free, so put analytics anywhere. Demo 2: hold a session and iterate at conversational speed. Demo 3: turn raw data into deliverables on a schedule, with nothing to babysit. Three shapes, one engine, one grammar — all of it compiled and native to the hardware in your laptop. The deliverable is the point; SwiftPandas just gets out of the way.</div></div></section>
+  </div>
+  <div class="hud">
+    <button id="prev" title="Previous (←)">◀</button>
+    <span id="counter">1 / 1</span>
+    <button id="next" title="Next (→)">▶</button>
+    <span class="sep">·</span>
+    <button id="notesBtn" title="Toggle speaker notes (N)">notes</button>
+  </div>
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let i = 0, notesOn = false;
+  const bar = document.getElementById('bar');
+  const counter = document.getElementById('counter');
+  function render() {
+    slides.forEach((s, k) => {
+      s.classList.toggle('active', k === i);
+      s.querySelector('.notes').hidden = !notesOn;
+    });
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function go(n) { i = Math.max(0, Math.min(slides.length - 1, n)); render(); }
+  document.getElementById('next').onclick = () => go(i + 1);
+  document.getElementById('prev').onclick = () => go(i - 1);
+  document.getElementById('notesBtn').onclick = () => { notesOn = !notesOn; render(); };
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight',' ','PageDown'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+    else if (['ArrowLeft','PageUp'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key.toLowerCase() === 'n') { notesOn = !notesOn; render(); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen();
+    }
+  });
+  const start = parseInt(location.hash.replace('#','')); if (start) go(start - 1); else render();
+</script>
+</body>
+</html>

@@ -176,19 +176,96 @@ enum VectorSearchEngine {
 
         // --- 4. Deterministic ranking: primary by score in metric direction,
         //        tie-break by source row index ascending. topK truncates
-        //        after threshold filtering. ---
+        //        after threshold filtering.
+        //
+        //        Survivor rows are unique, so `ranksBefore` is a strict total
+        //        order and the top-K set — and its ordering — is uniquely
+        //        determined. When there are more survivors than K we select
+        //        the K best with a bounded heap and sort only those, which is
+        //        O(n log k) instead of O(n log n) and byte-identical to a full
+        //        sort followed by `prefix(K)`. ---
         let higherIsBetter = options.metric != .euclidean
-        survivors.sort { a, b in
+        func ranksBefore(
+            _ a: (row: Int, score: Double), _ b: (row: Int, score: Double)
+        ) -> Bool {
             if a.score != b.score {
                 return higherIsBetter ? a.score > b.score : a.score < b.score
             }
             return a.row < b.row
         }
-        let top = survivors.prefix(options.topK)
+
+        let top: [(row: Int, score: Double)]
+        if survivors.count <= options.topK {
+            survivors.sort(by: ranksBefore)
+            top = survivors
+        } else {
+            top = selectTopK(survivors, k: options.topK, ranksBefore: ranksBefore)
+        }
         return Hits(
             rowIndices: top.map { $0.row },
             scores: top.map { $0.score },
             backendUsed: backendUsed)
+    }
+
+    /// Selects the `k` best of `items` under `ranksBefore` (a strict total
+    /// order) and returns them sorted best-first.
+    ///
+    /// Uses a bounded max-heap of size `k` whose root is the *worst* (lowest
+    /// ranked) of the best `k` seen so far: a new item is admitted only when it
+    /// ranks before that root, so the scan is O(n log k). The final `k`
+    /// elements are sorted with the same predicate, making the result
+    /// byte-identical to `items.sorted(by: ranksBefore).prefix(k)`. Requires
+    /// `0 < k < items.count`.
+    private static func selectTopK(
+        _ items: [(row: Int, score: Double)],
+        k: Int,
+        ranksBefore: ((row: Int, score: Double), (row: Int, score: Double)) -> Bool
+    ) -> [(row: Int, score: Double)] {
+        var heap = [(row: Int, score: Double)]()
+        heap.reserveCapacity(k)
+
+        // Move the element at `start` up while it is worse than its parent
+        // (i.e. the parent ranks before it), keeping the worst element at root.
+        func siftUp(_ start: Int) {
+            var child = start
+            while child > 0 {
+                let parent = (child - 1) / 2
+                if ranksBefore(heap[parent], heap[child]) {
+                    heap.swapAt(child, parent)
+                    child = parent
+                } else {
+                    break
+                }
+            }
+        }
+        // Push the element at `start` down until it is no worse than either
+        // child, restoring the worst-at-root invariant.
+        func siftDown(_ start: Int) {
+            var parent = start
+            let n = heap.count
+            while true {
+                let left = 2 * parent + 1
+                let right = 2 * parent + 2
+                var worst = parent
+                if left < n, ranksBefore(heap[worst], heap[left]) { worst = left }
+                if right < n, ranksBefore(heap[worst], heap[right]) { worst = right }
+                if worst == parent { break }
+                heap.swapAt(parent, worst)
+                parent = worst
+            }
+        }
+
+        for item in items {
+            if heap.count < k {
+                heap.append(item)
+                siftUp(heap.count - 1)
+            } else if ranksBefore(item, heap[0]) {
+                // Better than the current worst of the top-k — replace it.
+                heap[0] = item
+                siftDown(0)
+            }
+        }
+        return heap.sorted(by: ranksBefore)
     }
 
     // MARK: CPU scorer (the bit-parity path — see file header contract)

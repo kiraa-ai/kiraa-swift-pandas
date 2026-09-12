@@ -6,15 +6,14 @@
 // SwiftPandas is a high-performance data manipulation library for Swift,
 // inspired by Python's pandas. This manifest supports two build modes:
 //
-//   1. **Source build (default)** — compiles SwiftPandas and its three
-//      vendored C targets (CSkipList, CKHash, CUltraJSON) from source.
+//   1. **Source build (default)** — compiles SwiftPandas from source.
 //      Includes the test suites and the swiftpandas CLI executable.
 //
 //   2. **Binary build (opt-in)** — set `SWIFTPANDAS_USE_BINARY=1` in the
 //      environment to consume a precompiled `SwiftPandas.xcframework.zip`
-//      published on the GitHub release for the matching tag. The C targets
-//      and test targets are dropped from the package graph in this mode;
-//      the CLI continues to build from source against the binary library.
+//      published on the GitHub release for the matching tag. The test
+//      targets are dropped from the package graph in this mode; the CLI
+//      continues to build from source against the binary library.
 //
 //   Source mode supports macOS, iOS, and Linux (with reduced functionality
 //   when Accelerate/Metal aren't available). Binary mode supports macOS
@@ -24,9 +23,8 @@
 // ## Dependencies
 //
 //   The package has one external Swift package dependency
-//   (swift-argument-parser, used by the CLI). All native C libraries
-//   (CSkipList, CKHash, CUltraJSON) are vendored under Sources/ and
-//   compiled as part of the source build.
+//   (swift-argument-parser, used by the CLI). The library itself is pure
+//   Swift; numeric hot paths use Apple's Accelerate framework directly.
 //
 // ## Conditional Compilation Flags
 //
@@ -37,8 +35,6 @@
 //
 // ## Unsafe Build Flags
 //
-//   - `-O3` on all C targets — maximises compiler optimisation for the
-//     performance-critical C data structures and JSON codec.
 //   - `-O` on the Swift library and test targets — keeps benchmarks and
 //     tests representative of release performance.
 //
@@ -61,35 +57,7 @@ let xcframeworkChecksum = "6f8b425c0ed35f02b282ab92ae0be1d902bc3fc6152d57ce5f94f
 // ── Source-mode targets ──
 let sourceTargets: [Target] = [
     .target(
-        name: "CSkipList",
-        path: "Sources/CSkipList",
-        publicHeadersPath: "include",
-        cSettings: [
-            .headerSearchPath("include"),
-            .unsafeFlags(["-O3"]),
-        ]
-    ),
-    .target(
-        name: "CKHash",
-        path: "Sources/CKHash",
-        publicHeadersPath: "include",
-        cSettings: [
-            .headerSearchPath("include"),
-            .unsafeFlags(["-O3"]),
-        ]
-    ),
-    .target(
-        name: "CUltraJSON",
-        path: "Sources/CUltraJSON",
-        publicHeadersPath: "include",
-        cSettings: [
-            .headerSearchPath("include"),
-            .unsafeFlags(["-O3"]),
-        ]
-    ),
-    .target(
         name: "SwiftPandas",
-        dependencies: ["CSkipList", "CKHash", "CUltraJSON"],
         path: "Sources/SwiftPandas",
         exclude: [
             "Metal/Shaders/GroupByShaders.metal",

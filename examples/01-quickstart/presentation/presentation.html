@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Startup Is Not a Tax</title>
+<style>
+  :root {
+    --bg:#0B1220; --panel:#0F172A; --codebg:#0d1424; --accent:#22D3EE;
+    --accent2:#C084FC; --text:#E2E8F0; --muted:#94A3B8; --codetext:#E5E7EB;
+    --border:#1E293B;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#05080f; color:var(--text);
+    font-family:-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  .deck { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  .slide {
+    position:absolute; width:min(94vw,1280px); aspect-ratio:16/9; max-height:94vh;
+    background:radial-gradient(120% 120% at 12% 0%, #101c30 0%, var(--bg) 55%);
+    border:1px solid var(--border); border-radius:18px; padding:5.2% 6%;
+    opacity:0; transform:translateY(14px) scale(.99); pointer-events:none;
+    transition:opacity .28s ease, transform .28s ease; overflow:hidden;
+    box-shadow:0 30px 90px rgba(0,0,0,.55);
+  }
+  .slide.active { opacity:1; transform:none; pointer-events:auto; }
+  .content { height:100%; display:flex; flex-direction:column; }
+  h1 { font-size:clamp(28px,4.6vw,60px); line-height:1.05; margin:.1em 0 .2em; letter-spacing:-.02em; }
+  h2 { font-size:clamp(22px,3.2vw,40px); margin:.1em 0 .5em; letter-spacing:-.01em;
+        padding-bottom:.28em; position:relative; }
+  h2::after { content:""; position:absolute; left:0; bottom:0; width:56px; height:5px;
+               border-radius:3px; background:var(--a,var(--accent)); }
+  .tick { width:64px; height:7px; border-radius:4px; margin-bottom:26px; }
+  .subtitle { font-size:clamp(16px,1.9vw,24px); color:var(--muted); max-width:60ch; line-height:1.4; }
+  .brand { margin-top:auto; font-size:13px; letter-spacing:.04em; text-transform:uppercase; }
+  .tag { font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; margin-bottom:.2em; }
+  .cols { display:grid; grid-template-columns:1.05fr .95fr; gap:32px; align-items:start; flex:1; min-height:0; }
+  .single { flex:1; min-height:0; }
+  ul,ol { margin:.2em 0; padding-left:0; list-style:none; }
+  li { position:relative; padding-left:1.6em; margin:.52em 0; font-size:clamp(15px,1.7vw,21px); line-height:1.35; }
+  ul li::before { content:"▸"; position:absolute; left:0; color:var(--a,var(--accent)); font-weight:700; }
+  ol { counter-reset:li; }
+  ol li { counter-increment:li; }
+  ol li::before { content:counter(li,decimal-leading-zero); position:absolute; left:0;
+    color:var(--a,var(--accent)); font-weight:700; font-variant-numeric:tabular-nums; }
+  code { font-family:"SF Mono",Menlo,monospace; background:rgba(34,211,238,.1);
+    color:var(--codetext); padding:.05em .35em; border-radius:5px; font-size:.9em; }
+  pre.code { background:var(--codebg); border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; overflow:auto; margin:0; font-size:clamp(11px,1.15vw,14px); }
+  pre.code code { background:none; color:var(--codetext); padding:0; white-space:pre; }
+  .foot { margin-top:auto; padding-top:14px; display:flex; justify-content:space-between;
+    align-items:flex-end; gap:16px; color:var(--muted); font-size:13px; }
+  .visual { max-width:74%; line-height:1.3; }
+  .timing { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+  .page { position:absolute; top:20px; right:26px; color:var(--muted); font-size:12px;
+    font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+  .notes { position:absolute; left:0; right:0; bottom:0; background:rgba(5,8,15,.96);
+    border-top:1px solid var(--border); padding:16px 22px; max-height:42%; overflow:auto; }
+  .notes-h { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  .notes-body { font-size:15px; line-height:1.45; color:#cbd5e1; }
+  .muted { color:var(--muted); }
+  .hud { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px;
+    align-items:center; background:rgba(15,23,42,.8); border:1px solid var(--border);
+    border-radius:999px; padding:7px 14px; font-size:12px; color:var(--muted); backdrop-filter:blur(8px); z-index:10; }
+  .hud button { background:none; border:0; color:var(--text); cursor:pointer; font-size:14px; padding:2px 6px; border-radius:6px; }
+  .hud button:hover { background:rgba(34,211,238,.15); }
+  .hud .sep { opacity:.4; }
+  .bar { position:fixed; top:0; left:0; height:3px; background:var(--accent); z-index:11; transition:width .28s ease; }
+  @media (max-width:700px) { .cols { grid-template-columns:1fr; gap:14px; } .slide { padding:6% 6.5%; } }
+</style>
+</head>
+<body>
+  <div class="bar" id="bar"></div>
+  <div class="deck" id="deck">
+    <section class="slide title" data-index="0"><div class="content"><div class="tick" style="background:var(--accent)"></div><h1>Startup Is Not a Tax</h1><p class="subtitle">A whole analytics job that starts, runs, and exits before pandas finishes <code>import</code></p><p class="brand" style="color:var(--accent)">5-Minute Demo Presentation — Demo 1: Quickstart &nbsp;·&nbsp; *5-Minute Demo Presentation — Demo 1: Quickstart*</p></div><div class="page">01 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:00–0:30</div><div class="notes-body">Every pandas script you&#x27;ve ever run paid a toll before it read a single row: boot the interpreter, import pandas — half a second, sometimes more, gone every time. We&#x27;ve all just accepted it. In the next five minutes I&#x27;m going to show you a data engine where that toll is zero, and why that changes where you&#x27;re willing to put analytics.</div></div></section>
+<section class="slide content" data-index="1"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 2 — THE HIDDEN COST</div><h2 style="--a:var(--accent)">The Half-Second You Pay Every Single Time</h2><div class="single"><ul style="--a:var(--accent)"><li><code>python -c &quot;import pandas&quot;</code> — typically <strong>0.5–0.8s</strong> before line one of *your* code</li><li>Fine for a notebook you open once</li><li>Deadly for anything you run *often*: pre-commit hooks, <code>make</code> targets, cron jobs, per-request batch</li><li>So teams avoid using their best tool in exactly those places</li></ul></div><div class="foot"><span class="visual">▨ A bar: &quot;pandas cold start&quot; (long red) vs &quot;actual work&quot; (tiny). The tax dwarfs the task.</span><span class="timing" style="color:var(--accent)">0:30–1:15</span></div></div><div class="page">02 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 0:30–1:15</div><div class="notes-body">Here&#x27;s the thing about that half-second. If you run analysis once a day, who cares. But the moment you want analytics *inside* something — a git hook that checks a data file, a build step, a job that fires per request — that startup cost is now the whole story. You&#x27;re paying it thousands of times. So people just... don&#x27;t. They keep the fast, sharp tool out of the fast, sharp places. SwiftPandas is a compiled binary. There is nothing to boot.</div></div></section>
+<section class="slide content" data-index="2"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 3 — THE DEMO</div><h2 style="--a:var(--accent)">One Command: CSV In, Report Out</h2><div class="cols"><ul style="--a:var(--accent)"><li>2,000-row sales dataset</li><li>One pipeline: <code>derive → groupby → agg → sort → round</code></li><li>Profit per region, ranked</li></ul><pre class="code"><code>swiftpandas run -i sales.csv -o by_region.csv \
+  -c &quot;derive(profit = revenue - cost) | groupby(region) \
+      | agg(sum:profit, mean:units) | sort(profit, desc) | round(units, 1)&quot;</code></pre></div><div class="foot"><span class="visual">▨ The pipeline as a horizontal flow of five labelled boxes.</span><span class="timing" style="color:var(--accent)">1:15–1:45</span></div></div><div class="page">03 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:15–1:45</div><div class="notes-body">Let me show you a real job — not a toy. Read a sales file, compute profit, group by region, aggregate, rank. Five stages. Watch the clock at the bottom of the screen when I run it. *[switch to terminal, run ./run.sh]*</div></div></section>
+<section class="slide content" data-index="3"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 4 — WHAT YOU JUST SAW</div><h2 style="--a:var(--accent)">The Whole Job Was the Number at the Bottom</h2><div class="single"><ul style="--a:var(--accent)"><li>Process start <strong>+</strong> CSV parse <strong>+</strong> 5-stage pipeline <strong>+</strong> CSV write <strong>+</strong> process exit</li><li>All of it — tens of milliseconds</li><li>No daemon left running. No kernel to keep warm. Nothing imported.</li></ul></div><div class="foot"><span class="visual">▨ The same bar from Slide 2, now inverted — work fills it, startup is a sliver.</span><span class="timing" style="color:var(--accent)">1:45–2:45</span></div></div><div class="page">04 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 1:45–2:45</div><div class="notes-body">Everything just happened. The number you saw wasn&#x27;t &#x27;time to run the pipeline&#x27; — it was time for the entire process to be born, parse the file, do five stages of real work, write the output, and die. There&#x27;s no server sitting in the background now. If I run it again, I pay the same tiny cost again, because the tiny cost is the *whole* cost. This is what &#x27;own the hardware&#x27; feels like at the command line.</div></div></section>
+<section class="slide content" data-index="4"><div class="content"><div class="tag" style="color:var(--accent)">SLIDE 5 — WHERE THIS UNLOCKS</div><h2 style="--a:var(--accent)">Now You Can Put Analytics Where It Was Too Heavy Before</h2><div class="single"><ul style="--a:var(--accent)"><li>Pre-commit hook: validate a data file on every commit</li><li><code>Makefile</code> target: regenerate numbers as part of the build</li><li>Cron / CI: hundreds of small jobs, none amortizing a runtime</li><li>A shell loop over 500 files — and it still feels instant</li></ul></div><div class="foot"><span class="visual">▨ Four small icons: git, make, clock, terminal.</span><span class="timing" style="color:var(--accent)">2:45–3:45</span></div></div><div class="page">05 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 2:45–3:45</div><div class="notes-body">So what does zero startup actually buy you? It buys you *placement*. You can drop this into a pre-commit hook and every commit checks your data without anyone noticing the cost. You can make it a build target. You can fan it out across hundreds of files in a shell loop. All the places where &#x27;just use pandas&#x27; quietly meant &#x27;accept a half-second tax per invocation&#x27; — those are open now.</div></div></section>
+<section class="slide close" data-index="5"><div class="content"><div class="tag" style="color:var(--accent2)">SLIDE 6 — CLOSE</div><h2 style="--a:var(--accent2)">The Fast Tool Belongs in the Fast Places</h2><div class="single"><ul style="--a:var(--accent2)"><li>Same DSL inline and resident (see Demo 2)</li><li>Same grammar an LLM can emit (<code>docs/llm-grammar.md</code>)</li><li>Compiled, Apple-silicon-native, no runtime to warm</li></ul></div><div class="foot"><span class="visual">▨ SwiftPandas logo. &quot;Demo 2: hold a session →&quot;</span><span class="timing" style="color:var(--accent2)">3:45–4:30</span></div></div><div class="page">06 / 06</div><div class="notes" hidden><div class="notes-h">Speaker notes · 3:45–4:30</div><div class="notes-body">One command, no tax — that&#x27;s the foundation. In the next demo I&#x27;ll show you the other half: when you *do* want to keep data hot and ask it a hundred questions in a row, there&#x27;s a session mode for that too. Same grammar, same speed, just resident. But it all starts here: the fast tool finally gets to live in the fast places.</div></div></section>
+  </div>
+  <div class="hud">
+    <button id="prev" title="Previous (←)">◀</button>
+    <span id="counter">1 / 1</span>
+    <button id="next" title="Next (→)">▶</button>
+    <span class="sep">·</span>
+    <button id="notesBtn" title="Toggle speaker notes (N)">notes</button>
+  </div>
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  let i = 0, notesOn = false;
+  const bar = document.getElementById('bar');
+  const counter = document.getElementById('counter');
+  function render() {
+    slides.forEach((s, k) => {
+      s.classList.toggle('active', k === i);
+      s.querySelector('.notes').hidden = !notesOn;
+    });
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    bar.style.width = ((i + 1) / slides.length * 100) + '%';
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function go(n) { i = Math.max(0, Math.min(slides.length - 1, n)); render(); }
+  document.getElementById('next').onclick = () => go(i + 1);
+  document.getElementById('prev').onclick = () => go(i - 1);
+  document.getElementById('notesBtn').onclick = () => { notesOn = !notesOn; render(); };
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight',' ','PageDown'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+    else if (['ArrowLeft','PageUp'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key.toLowerCase() === 'n') { notesOn = !notesOn; render(); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen();
+    }
+  });
+  const start = parseInt(location.hash.replace('#','')); if (start) go(start - 1); else render();
+</script>
+</body>
+</html>

@@ -140,6 +140,24 @@ public struct BitVector: Sendable, Equatable {
         }
     }
 
+    // MARK: - Equatable
+
+    /// Two bitmaps are equal when they track the same number of bits with the
+    /// same values.
+    ///
+    /// `_knownAllValid` is deliberately excluded: it is a one-way cache flag,
+    /// not semantic state, so two masks with identical bits must compare equal
+    /// regardless of how each was built (e.g. `init(repeating: true)` sets the
+    /// flag, `init([Bool])` and the SPB reader do not). Comparing `words` is
+    /// sufficient because the trailing bits beyond `bitCount` are always zero
+    /// by invariant, so equal contents imply equal words. Without this, an
+    /// all-valid column round-tripped through SPB compared unequal to its
+    /// original purely on the cache flag — breaking frame equality and any
+    /// determinism check built on it.
+    public static func == (lhs: BitVector, rhs: BitVector) -> Bool {
+        lhs.bitCount == rhs.bitCount && lhs.words == rhs.words
+    }
+
     // MARK: - Element Access
 
     /// Accesses the validity bit at the given element index.

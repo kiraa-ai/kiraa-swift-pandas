@@ -80,6 +80,16 @@ to right**. Each stage sees only the output of the previous stage:
 filter(status == "active") | groupby(region) | agg(sum:revenue) | sort(revenue, desc) | head(5)
 ```
 
+The same shape in the abstract: for a frame with columns `FeatureA`,
+`FeatureB`, `FeatureC`, `FeatureD`, ...
+
+```
+filter(FeatureA == "x") | groupby(FeatureB) | agg(sum:FeatureC) | sort(FeatureD, desc) | head(5)
+```
+
+A dataframe is just a table — columns and rows — so every operation above is
+column-generic; nothing depends on what the columns mean.
+
 Consequences the LLM must internalize:
 
 1. **Column references resolve against the *current* frame.** After

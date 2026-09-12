@@ -22,10 +22,18 @@ extension DataFrame {
     ///   ``VectorError/versionUnsupported(found:supported:)`` for files newer
     ///   than format version 1. No partial loads.
     public static func readSPB(from data: Data) throws -> DataFrame {
-        var cursor = SPBCursor(data)
+        // Parse in place over the buffer (the memory map for file loads): no
+        // whole-file copy, and the mapping stays valid for the closure's life.
+        try data.withUnsafeBytes { rawBuffer in
+            try parseSPB(rawBuffer)
+        }
+    }
+
+    private static func parseSPB(_ buffer: UnsafeRawBufferPointer) throws -> DataFrame {
+        var cursor = SPBCursor(buffer)
 
         let magic = try cursor.readBytes(4, what: "magic")
-        guard Array(magic) == SPBFormat.magic else {
+        guard magic.elementsEqual(SPBFormat.magic) else {
             throw VectorError.corrupt(reason: "bad magic (expected \"SPB1\")")
         }
         let version = try cursor.readU32("formatVersion")
@@ -185,15 +193,13 @@ extension DataFrame {
         guard !overflow else {
             throw VectorError.corrupt(reason: "column '\(column)': payload size overflows")
         }
-        let slice = try cursor.readBytes(byteCount, what: "column '\(column)' payload")
-        // Little-endian hosts only (see SPBWriter header). copyBytes rather
+        let raw = try cursor.readBytes(byteCount, what: "column '\(column)' payload")
+        // Little-endian hosts only (see SPBWriter header). copyMemory rather
         // than bindMemory: the payload offset is unaligned whenever it
         // follows variable-length string cells.
-        return slice.withUnsafeBytes { raw in
-            [T](unsafeUninitializedCapacity: count) { buffer, initialized in
-                raw.copyBytes(to: UnsafeMutableRawBufferPointer(buffer))
-                initialized = count
-            }
+        return [T](unsafeUninitializedCapacity: count) { buffer, initialized in
+            UnsafeMutableRawBufferPointer(buffer).copyMemory(from: raw)
+            initialized = count
         }
     }
 
